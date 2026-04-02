@@ -744,7 +744,7 @@ def load_reference_satker():
     """
     try:
         url = (
-            "https://raw.githubusercontent.com/ameernoor/kinerjakeuangansatkerbtastreamlit/main/templates/Template_Data_Referensi.xlsx"
+            "https://raw.githubusercontent.com/ameernoor/kinerjakeuangansatkerbta/main/templates/Template_Data_Referensi.xlsx"
         )
 
         ref = pd.read_excel(url, dtype=str)
@@ -1160,7 +1160,7 @@ def normalize_kode_ba(x):
 # ===============================
 def load_reference_ba():
     url = (
-        "https://raw.githubusercontent.com/ameernoor/kinerjakeuangansatkerbtastreamlit/main/templates/Template_Data_Referensi.xlsx"
+        "https://raw.githubusercontent.com/ameernoor/kinerjakeuangansatkerbta/main/templates/Template_Data_Referensi.xlsx"
     )
     ref = pd.read_excel(url, sheet_name=0, dtype=str)
     ref['Kode BA'] = ref['Kode BA'].apply(normalize_kode_ba)
@@ -1301,7 +1301,7 @@ section.main > div{
     position:absolute;
     inset:0;
 
-    background-image:url("https://raw.githubusercontent.com/ameernoor/kinerjakeuangansatkerbtastreamlit/main/kppn_backgound.png");
+    background-image:url("https://raw.githubusercontent.com/ameernoor/kinerjakeuangansatkerbta/main/kppn_backgound.png");
 
     background-size:cover;
 
@@ -10701,7 +10701,7 @@ def show_loading_logo():
     st.markdown(
         """
         <div style="display:flex;justify-content:center;align-items:center;height:70vh;">
-        <img src="https://raw.githubusercontent.com/ameernoor/kinerjakeuangansatkerbtastreamlit/main/logo_kppn_baturaja.png" width="500">
+        <img src="https://raw.githubusercontent.com/ameernoor/kinerjakeuangansatkerbta/main/logo_kppn_baturaja.png" width="500">
         </div>
         """,
         unsafe_allow_html=True
