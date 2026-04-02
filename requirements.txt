@@ -1,9 +1,9 @@
 streamlit==1.32.0
-streamlit-aggrid
-pandas
-numpy
-plotly
-requests
-PyGithub
-openpyxl
-xlsxwriter
+streamlit-aggrid==0.3.4.post3
+pandas==2.2.2
+numpy==1.26.4
+plotly==5.18.0
+requests==2.31.0
+PyGithub==2.3.0
+openpyxl==3.1.2
+xlsxwriter==3.2.0
