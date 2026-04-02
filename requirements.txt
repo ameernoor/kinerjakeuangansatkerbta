@@ -1,0 +1,9 @@
+streamlit==1.32.0
+streamlit-aggrid
+pandas
+numpy
+plotly
+requests
+PyGithub
+openpyxl
+xlsxwriter
