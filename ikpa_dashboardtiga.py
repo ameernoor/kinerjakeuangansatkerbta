@@ -2480,7 +2480,7 @@ def load_data_ikpa_kppn_from_github():
     repo = g.get_repo(repo_name)
 
     # GANTI PATH INI SESUAI HASIL DEBUG
-    KPPN_PATH = "data_kppn"   # <- UBAH DI SINI
+    KPPN_PATH = "Data IKPA KPPN"   # <- UBAH DI SINI
 
     try:
         contents = repo.get_contents(KPPN_PATH)
@@ -8575,7 +8575,7 @@ def page_admin():
                         save_file_to_github(
                             excel_bytes.getvalue(),
                             filename,
-                            folder="data_kppn"
+                            folder="Data IKPA KPPN"
                         )
                         
                         log_activity(
@@ -9788,8 +9788,8 @@ def page_admin():
             g = Github(auth=Auth.Token(token))
             repo = g.get_repo(repo_name)
 
-            # Ambil semua file di folder data_kppn
-            contents = repo.get_contents("data_kppn")
+            # Ambil semua file di folder Data IKPA KPPN
+            contents = repo.get_contents("Data IKPA KPPN")
 
             files_kppn = [
                 c.name for c in contents
@@ -9824,7 +9824,7 @@ def page_admin():
         # ===============================
         if st.button("🗑️ Hapus Data IKPA KPPN", type="primary") and confirm_delete:
             try:
-                file_path = f"data_kppn/{selected_file}"
+                file_path = f"Data IKPA KPPN/{selected_file}"
                 content = repo.get_contents(file_path)
 
                 repo.delete_file(
@@ -10299,7 +10299,7 @@ def page_admin():
             g = Github(auth=Auth.Token(token))
             repo = g.get_repo(repo_name)
 
-            contents = repo.get_contents("data_kppn")
+            contents = repo.get_contents("Data IKPA KPPN")
 
             files_kppn = [
                 c.name for c in contents
@@ -10329,7 +10329,7 @@ def page_admin():
         # AMBIL FILE DARI GITHUB
         # ===============================
         try:
-            file_path = f"data_kppn/{selected_file}"
+            file_path = f"Data IKPA KPPN/{selected_file}"
             file_content = repo.get_contents(file_path)
             file_bytes = file_content.decoded_content
         except Exception as e:
