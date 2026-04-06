@@ -4072,6 +4072,8 @@ def generate_cms_from_session(df_master, periode="Tahunan", tahun_filter=None):
 
     return result.fillna(0)
 
+if "cms_master" not in st.session_state:
+    st.session_state.cms_master = pd.DataFrame()
 
 # HALAMAN 1: DASHBOARD UTAMA
 def page_dashboard():
@@ -8264,8 +8266,6 @@ def page_admin():
                     st.warning(" Status merge direset. Data akan diproses ulang.")
                     st.rerun()
 
-    if "cms_master" not in st.session_state:
-        load_cms_from_github()
 
     # ===============================
     # 📌 TAB MENU
@@ -9959,10 +9959,9 @@ def page_admin():
         st.markdown("---")
         st.subheader("🗑️ Hapus Data CMS")
 
-        if "cms_master" not in st.session_state or st.session_state.cms_master.empty:
 
-            st.info("ℹ️ Belum ada data CMS tersimpan.")
-
+        if st.session_state.get("cms_master") is None or st.session_state.cms_master.empty:
+            st.info("ℹ️ Belum ada data CMS tersedia.")
         else:
 
             cms_df = st.session_state.cms_master.copy()
