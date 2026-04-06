@@ -1872,6 +1872,7 @@ def post_process_ikpa_satker(df, source="Upload"):
 def process_kppn_ringkas(uploaded_file, year, detected_month):
     uploaded_file.seek(0)
     df = pd.read_excel(uploaded_file)
+    st.write("Kolom yang terdeteksi:", df.columns.tolist())
 
     df.columns = (
         df.columns.astype(str)
