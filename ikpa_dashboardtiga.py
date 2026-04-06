@@ -2487,7 +2487,6 @@ def load_data_ikpa_kppn_from_github():
 
     KPPN_PATH = "Data IKPA KPPN"
 
-    # Baca rekursif — support flat maupun subfolder tahun (2022, 2023, dst)
     def collect_xlsx_files(path):
         all_files = []
         try:
@@ -2508,16 +2507,28 @@ def load_data_ikpa_kppn_from_github():
         try:
             df = pd.read_excel(io.BytesIO(base64.b64decode(f.content)))
 
-            # Fallback 1: ambil dari nama file (IKPA_KPPN_SEPTEMBER_2024.xlsx)
+            # Format nama file: "IKPA KPPN Agustus 2022.xlsx"
+            # → split spasi → ["IKPA", "KPPN", "Agustus", "2022"]
             if "Bulan" not in df.columns or "Tahun" not in df.columns:
-                parts = f.name.replace(".xlsx", "").split("_")
-                if len(parts) >= 4:
-                    if "Bulan" not in df.columns:
-                        df["Bulan"] = parts[2].upper()
-                    if "Tahun" not in df.columns:
-                        df["Tahun"] = parts[3]
+                name_clean = f.name.replace(".xlsx", "")
+                parts = name_clean.split(" ")
+                # Cari tahun (4 digit angka)
+                tahun = None
+                bulan = None
+                for i, p in enumerate(parts):
+                    if p.isdigit() and len(p) == 4:
+                        tahun = p
+                        # Bulan = kata sebelum tahun
+                        if i > 0:
+                            bulan = parts[i - 1].upper()
+                        break
 
-            # Fallback 2: ambil tahun dari nama subfolder path
+                if "Bulan" not in df.columns and bulan:
+                    df["Bulan"] = bulan
+                if "Tahun" not in df.columns and tahun:
+                    df["Tahun"] = tahun
+
+            # Fallback: ambil tahun dari nama subfolder path
             if "Tahun" not in df.columns:
                 for part in f.path.split("/"):
                     if part.isdigit() and len(part) == 4:
