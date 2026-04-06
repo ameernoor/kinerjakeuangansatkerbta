@@ -1943,10 +1943,10 @@ def process_excel_file_kppn(uploaded_file, year, detected_month=None):
         # ===============================
         # 2️⃣ BACA FILE (FORMAT RINGKAS)
         # ===============================
+        header_row = detect_header_row(uploaded_file)
+
         uploaded_file.seek(0)
-        df = pd.read_excel(uploaded_file)
-        
-        st.write("Kolom terdeteksi:", df.columns.tolist())
+        df = pd.read_excel(uploaded_file, header=header_row)
 
         # ===============================
         # 3️⃣ NORMALISASI NAMA KOLOM
@@ -2467,13 +2467,10 @@ def load_data_from_github(_cache_buster: int = 0):
     return data_storage
 
 
-from github import Github, Auth
-import base64
-import io
-
 def load_data_ikpa_kppn_from_github():
     from github import Github, Auth
     import base64, io
+    import pandas as pd
 
     token = st.secrets.get("GITHUB_TOKEN")
     repo_name = st.secrets.get("GITHUB_REPO")
@@ -2505,45 +2502,71 @@ def load_data_ikpa_kppn_from_github():
     xlsx_files = collect_xlsx_files(KPPN_PATH)
 
     data = {}
+
     for f in xlsx_files:
         try:
-            df = pd.read_excel(io.BytesIO(base64.b64decode(f.content)))
+            file_bytes = io.BytesIO(base64.b64decode(f.content))
 
-            # Format nama file: "IKPA KPPN Agustus 2022.xlsx"
-            # → split spasi → ["IKPA", "KPPN", "Agustus", "2022"]
-            if "Bulan" not in df.columns or "Tahun" not in df.columns:
-                name_clean = f.name.replace(".xlsx", "")
-                parts = name_clean.split(" ")
-                # Cari tahun (4 digit angka)
-                tahun = None
-                bulan = None
-                for i, p in enumerate(parts):
-                    if p.isdigit() and len(p) == 4:
-                        tahun = p
-                        # Bulan = kata sebelum tahun
-                        if i > 0:
-                            bulan = parts[i - 1].upper()
-                        break
+            # 🔥 DETECT HEADER
+            header_row = detect_header_row(file_bytes)
 
-                if "Bulan" not in df.columns and bulan:
-                    df["Bulan"] = bulan
-                if "Tahun" not in df.columns and tahun:
-                    df["Tahun"] = tahun
+            file_bytes.seek(0)
+            df = pd.read_excel(file_bytes, header=header_row)
 
-            # Fallback: ambil tahun dari nama subfolder path
-            if "Tahun" not in df.columns:
-                for part in f.path.split("/"):
-                    if part.isdigit() and len(part) == 4:
-                        df["Tahun"] = part
-                        break
+            # 🔧 NORMALISASI KOLOM
+            df.columns = (
+                df.columns.astype(str)
+                .str.strip()
+                .str.replace(r"\s+", " ", regex=True)
+            )
 
-            if "Bulan" in df.columns and "Tahun" in df.columns:
-                key = (
-                    str(df["Bulan"].iloc[0]).upper(),
-                    str(df["Tahun"].iloc[0])
-                )
-                data[key] = df
-        except Exception:
+            # 🔍 DEBUG (WAJIB SAAT TESTING)
+            st.write(f"FILE: {f.name}")
+            st.write("Kolom:", df.columns.tolist())
+
+            # ===============================
+            # 🔥 DETEKSI FORMAT
+            # ===============================
+            if "Nilai Akhir (Nilai Total/Konversi Bobot)" in df.columns:
+                # ✅ FORMAT KPPN (flat)
+                df_final = df
+
+            else:
+                # 🔥 FORMAT SATKER → PAKAI PARSER UTAMA
+                file_bytes.seek(0)
+                df_final, bulan, tahun = process_excel_file(file_bytes, 2025)
+
+                df_final = post_process_ikpa_satker(df_final)
+
+                key = (bulan, str(tahun))
+                data[key] = df_final
+                continue
+
+            # ===============================
+            # METADATA BULAN & TAHUN
+            # ===============================
+            name_clean = f.name.replace(".xlsx", "")
+            parts = name_clean.split(" ")
+
+            tahun = None
+            bulan = None
+
+            for i, p in enumerate(parts):
+                if p.isdigit() and len(p) == 4:
+                    tahun = p
+                    if i > 0:
+                        bulan = parts[i - 1].upper()
+                    break
+
+            if bulan and tahun:
+                df_final["Bulan"] = bulan
+                df_final["Tahun"] = tahun
+
+                key = (bulan, tahun)
+                data[key] = df_final
+
+        except Exception as e:
+            st.write(f"ERROR FILE {f.name}:", e)
             continue
 
     return data
@@ -8201,17 +8224,26 @@ def push_to_github(file_bytes, repo_path, repo_name, token, commit_message):
         st.error(f"❌ Gagal push ke GitHub: {e}")
         
 # Deteksi IKPA KPPN
-def detect_header_row(excel_file, keyword, max_rows=10):
-    """
-    Mendeteksi baris header berdasarkan keyword kolom
-    """
-    preview = pd.read_excel(excel_file, header=None, nrows=max_rows)
+def detect_header_row(file, max_scan=15):
+    import pandas as pd
+
+    file.seek(0)
+    preview = pd.read_excel(file, header=None, nrows=max_scan)
+
+    keywords = ["KODE", "KPPN", "SATKER", "NILAI"]
 
     for i in range(len(preview)):
-        row = preview.iloc[i].astype(str).str.strip()
-        if keyword in row.values:
+        row = preview.iloc[i].astype(str).str.upper()
+
+        score = sum(
+            any(k in cell for cell in row)
+            for k in keywords
+        )
+
+        if score >= 2:
             return i
-    return None
+
+    return 0
 
 # ============================================================
 #  Menu Admin
