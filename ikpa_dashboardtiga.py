@@ -2520,9 +2520,6 @@ def load_data_ikpa_kppn_from_github():
                 .str.replace(r"\s+", " ", regex=True)
             )
 
-            # 🔍 DEBUG (WAJIB SAAT TESTING)
-            st.write(f"FILE: {f.name}")
-            st.write("Kolom:", df.columns.tolist())
 
             # ===============================
             # 🔥 DETEKSI FORMAT
@@ -7655,9 +7652,6 @@ def detect_dipa_header(uploaded_file):
         # Hapus baris kosong
         df = df.dropna(how='all').reset_index(drop=True)
         
-        # Debug: tampilkan preview
-        st.write("**Preview 5 baris pertama setelah deteksi header:**")
-        st.dataframe(df.head(5))
         
         return df
         
@@ -7876,10 +7870,6 @@ def process_uploaded_dipa(uploaded_file, save_file_to_github):
         if raw.empty:
             return None, None, "❌ File kosong"
         
-        # 🔍 DEBUG STRUKTUR FILE (SEMENTARA)
-        st.write("🧱 DEBUG RAW SHAPE:", raw.shape)
-        st.write("🧱 DEBUG RAW PREVIEW (10 baris):")
-        st.dataframe(raw.head(10))
 
 
         # 2️⃣ Standarisasi format
