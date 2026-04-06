@@ -9480,42 +9480,47 @@ def page_admin():
         st.markdown("---")
         st.subheader("Upload Data CMS")
 
+        # ============================================================
+        # FILTER PERIODE (AUTO DEFAULT TAHUN & TRIWULAN)
+        # ============================================================
         now = datetime.now()
         current_year = now.year
         current_month = now.month
 
-        default_tw = (
-            "TW1" if current_month <= 3 else
-            "TW2" if current_month <= 6 else
-            "TW3" if current_month <= 9 else
-            "TW4"
-        )
+        if current_month <= 3:
+            default_tw = "TW1"
+        elif current_month <= 6:
+            default_tw = "TW2"
+        elif current_month <= 9:
+            default_tw = "TW3"
+        else:
+            default_tw = "TW4"
 
+        st.markdown("### Filter Periode Data")
         col1, col2 = st.columns(2)
-
-        year_options = list(range(2022, current_year + 1))
-        tw_options = ["TW1", "TW2", "TW3", "TW4"]
 
         with col1:
             selected_year = st.selectbox(
                 "Pilih Tahun",
-                options=year_options,
-                index=len(year_options) - 1
+                options=list(range(2022, current_year + 1)),
+                index=len(list(range(2022, current_year + 1))) - 1
             )
 
         with col2:
             selected_triwulan = st.selectbox(
                 "Pilih Triwulan",
-                options=tw_options,
-                index=tw_options.index(default_tw)
+                options=["TW1", "TW2", "TW3", "TW4"],
+                index=["TW1", "TW2", "TW3", "TW4"].index(default_tw)
             )
 
-        selected_year = int(selected_year)
-        selected_triwulan = selected_triwulan.upper().strip()
+        st.session_state.selected_year = selected_year
+        st.session_state.selected_triwulan = selected_triwulan
+
 
         uploaded_cms = st.file_uploader(
             "Upload File Excel CMS (Multi Sheet)",
-            type=["xlsx"]
+            type=["xlsx"],
+            key="upload_cms_admin"
         )
 
         # ============================================================
@@ -9532,17 +9537,10 @@ def page_admin():
 
                     df_raw = pd.read_excel(xls, sheet_name=sheet, header=None, dtype=str)
 
-                    # ===============================
-                    # HEADER DETECT (LEBIH FLEXIBLE)
-                    # ===============================
                     header_row = None
-                    KEYWORDS = ["KPPN", "SATKER", "JUMLAH", "NAMA"]
-
-                    for i in range(min(30, len(df_raw))):
+                    for i in range(min(20, len(df_raw))):
                         row_text = " ".join(df_raw.iloc[i].astype(str)).upper()
-                        score = sum(k in row_text for k in KEYWORDS)
-
-                        if score >= 1:
+                        if "SATKER" in row_text and "KANWIL" in row_text:
                             header_row = i
                             break
 
@@ -9559,128 +9557,103 @@ def page_admin():
                     df.columns = (
                         df.columns.astype(str)
                         .str.replace("\n", " ")
+                        .str.replace("\r", " ")
                         .str.strip()
                         .str.upper()
                     )
 
-                    df = df.dropna(how="all")
-
-                    # ===============================
-                    # DETECT KPPN
-                    # ===============================
+                    # Cari kolom KPPN
                     col_kppn = None
                     for col in df.columns:
-                        test = df[col].astype(str).str.extract(r"(\d{3})")[0]
-                        if (test == "109").sum() > 3:
+                        test = (
+                            df[col]
+                            .astype(str)
+                            .str.extract(r"(\d+)")[0]
+                            .fillna("")
+                            .str.zfill(3)
+                        )
+                        if (test == "109").sum() > 5:
                             col_kppn = col
-                            df[col] = test.fillna("").str.zfill(3)
+                            df[col] = test
                             break
 
                     if not col_kppn:
                         continue
 
-                    # ===============================
-                    # DETECT SATKER
-                    # ===============================
+                    # Cari kolom Satker
                     col_satker = None
                     for col in df.columns:
-                        test = df[col].astype(str).str.extract(r"(\d{6})")[0]
-                        if test.notna().sum() > 5:
+                        test = (
+                            df[col]
+                            .astype(str)
+                            .str.extract(r"(\d+)")[0]
+                            .fillna("")
+                            .str.zfill(6)
+                        )
+                        if test.str.len().eq(6).sum() > 5:
                             col_satker = col
+                            df[col] = test
                             break
 
                     if not col_satker:
                         continue
 
-                    # ===============================
-                    # FILTER KPPN 109
-                    # ===============================
                     df = df[df[col_kppn] == "109"]
 
                     if df.empty:
                         continue
 
-                    # ===============================
-                    # FINAL CLEAN
-                    # ===============================
-                    df_clean = pd.DataFrame()
+                    df["TAHUN"] = selected_year
+                    df["TRIWULAN"] = selected_triwulan
+                    df["SOURCE_SHEET"] = sheet
 
-                    df_clean["SATKER"] = (
-                        df[col_satker]
-                        .astype(str)
-                        .str.extract(r"(\d{6})")[0]
-                        .fillna("")
-                        .str.zfill(6)
-                    )
+                    all_valid_data.append(df)
 
-                    df_clean = df_clean[df_clean["SATKER"].str.len() == 6]
-
-                    df_clean["TAHUN"] = selected_year
-                    df_clean["TRIWULAN"] = selected_triwulan
-
-                    all_valid_data.append(df_clean)
-
-                # ===============================
-                # VALIDASI
-                # ===============================
                 if not all_valid_data:
-                    st.error("❌ Tidak ada data CMS terbaca")
+                    st.error("❌ Tidak ada data CMS KPPN 109 ditemukan.")
                     st.stop()
 
                 df_final = pd.concat(all_valid_data, ignore_index=True)
 
-                st.write("DEBUG CMS:", df_final.head())
-                st.write("TOTAL DATA:", len(df_final))
+                # ============================================================
+                # 🔥 SMART OVERWRITE CMS MASTER
+                # ============================================================
+                UNIQUE_KEY = col_satker
+                df_final = df_final.drop_duplicates(subset=[UNIQUE_KEY])
 
-                # ===============================
-                # UNIQUE KEY
-                # ===============================
-                UNIQUE_KEY = ["SATKER", "TAHUN", "TRIWULAN"]
-                df_final = df_final.drop_duplicates(subset=UNIQUE_KEY)
-
-                if "cms_master" not in st.session_state or st.session_state.cms_master.empty:
+                if st.session_state.cms_master.empty:
                     st.session_state.cms_master = df_final.copy()
                     new_count = len(df_final)
                     overwrite_count = 0
-
                 else:
                     master_df = st.session_state.cms_master.copy()
 
-                    master_df["MERGE_KEY"] = (
-                        master_df["SATKER"] + "_" +
-                        master_df["TAHUN"].astype(str) + "_" +
-                        master_df["TRIWULAN"]
-                    )
-
-                    df_final["MERGE_KEY"] = (
-                        df_final["SATKER"] + "_" +
-                        df_final["TAHUN"].astype(str) + "_" +
-                        df_final["TRIWULAN"]
-                    )
-
-                    overwrite_mask = master_df["MERGE_KEY"].isin(df_final["MERGE_KEY"])
+                    overwrite_mask = master_df[UNIQUE_KEY].isin(df_final[UNIQUE_KEY])
                     overwrite_count = overwrite_mask.sum()
 
                     master_df = master_df[~overwrite_mask]
-                    master_df = pd.concat([master_df, df_final], ignore_index=True)
-                    master_df = master_df.drop(columns=["MERGE_KEY"], errors="ignore")
+
+                    master_df = pd.concat(
+                        [master_df, df_final],
+                        ignore_index=True
+                    )
 
                     new_count = len(df_final) - overwrite_count
-
                     st.session_state.cms_master = master_df.copy()
 
-                # ===============================
+                # ============================================================
                 # SIMPAN KE GITHUB
-                # ===============================
+                # ============================================================
                 excel_bytes = io.BytesIO()
 
+                sheet_name = f"CMS_109_{selected_triwulan}_{selected_year}"
                 file_name = f"CMS_109_{selected_triwulan}_{selected_year}.xlsx"
 
                 with pd.ExcelWriter(excel_bytes, engine="openpyxl") as writer:
                     st.session_state.cms_master.to_excel(
                         writer,
                         index=False,
-                        sheet_name="CMS"
+                        sheet_name=sheet_name
                     )
 
                 excel_bytes.seek(0)
@@ -9692,8 +9665,10 @@ def page_admin():
                 )
 
             st.success(
-                f"✅ Upload CMS berhasil | "
-                f"{new_count} baru | {overwrite_count} update"
+                f"✅ Upload CMS selesai | "
+                f"{new_count} data baru | "
+                f"{overwrite_count} data diperbarui | "
+                f"Disimpan sebagai {file_name}"
             )
 
 
