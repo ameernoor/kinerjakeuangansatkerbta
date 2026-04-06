@@ -1872,7 +1872,6 @@ def post_process_ikpa_satker(df, source="Upload"):
 def process_kppn_ringkas(uploaded_file, year, detected_month):
     uploaded_file.seek(0)
     df = pd.read_excel(uploaded_file)
-    st.write("Kolom yang terdeteksi:", df.columns.tolist())
 
     df.columns = (
         df.columns.astype(str)
@@ -1946,6 +1945,8 @@ def process_excel_file_kppn(uploaded_file, year, detected_month=None):
         # ===============================
         uploaded_file.seek(0)
         df = pd.read_excel(uploaded_file)
+        
+        st.write("Kolom terdeteksi:", df.columns.tolist())
 
         # ===============================
         # 3️⃣ NORMALISASI NAMA KOLOM
