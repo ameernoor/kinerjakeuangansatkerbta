@@ -9714,60 +9714,59 @@ def page_admin():
                 if c.name.startswith("IKPA_KPPN_") and c.name.endswith(".xlsx")
             ]
 
-        except Exception as e:
-            st.error(f"❌ Gagal membaca data dari GitHub: {e}")
-            st.stop()
+        except Exception:
+            files_kppn = []
 
         # ===============================
         # JIKA BELUM ADA DATA
         # ===============================
         if not files_kppn:
             st.info("ℹ️ Belum ada data IKPA KPPN tersimpan.")
-            st.stop()
 
-        # ===============================
-        # PILIH FILE
-        # ===============================
-        selected_file = st.selectbox(
-            "Pilih data IKPA KPPN yang akan dihapus",
-            sorted(files_kppn, reverse=True)
-        )
+        else:
+            # ===============================
+            # PILIH FILE
+            # ===============================
+            selected_file = st.selectbox(
+                "Pilih data IKPA KPPN yang akan dihapus",
+                sorted(files_kppn, reverse=True)
+            )
 
-        confirm_delete = st.checkbox(
-            f"⚠️ Saya yakin ingin menghapus **{selected_file}** dari sistem dan GitHub"
-        )
+            confirm_delete = st.checkbox(
+                f"⚠️ Saya yakin ingin menghapus **{selected_file}** dari sistem dan GitHub"
+            )
 
-        # ===============================
-        # PROSES HAPUS
-        # ===============================
-        if st.button("🗑️ Hapus Data IKPA KPPN", type="primary") and confirm_delete:
-            try:
-                file_path = f"Data IKPA KPPN/{selected_file}"
-                content = repo.get_contents(file_path)
+            # ===============================
+            # PROSES HAPUS
+            # ===============================
+            if st.button("🗑️ Hapus Data IKPA KPPN", type="primary") and confirm_delete:
+                try:
+                    file_path = f"Data IKPA KPPN/{selected_file}"
+                    content = repo.get_contents(file_path)
 
-                repo.delete_file(
-                    content.path,
-                    f"Delete {selected_file}",
-                    content.sha
-                )
+                    repo.delete_file(
+                        content.path,
+                        f"Delete {selected_file}",
+                        content.sha
+                    )
 
-                # Log aktivitas
-                if "activity_log" not in st.session_state:
-                    st.session_state.activity_log = []
+                    # Log aktivitas
+                    if "activity_log" not in st.session_state:
+                        st.session_state.activity_log = []
 
-                st.session_state.activity_log.append({
-                    "Waktu": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                    "Aksi": "Hapus IKPA KPPN",
-                    "File": selected_file,
-                    "Status": "✅ Sukses"
-                })
+                    st.session_state.activity_log.append({
+                        "Waktu": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                        "Aksi": "Hapus IKPA KPPN",
+                        "File": selected_file,
+                        "Status": "✅ Sukses"
+                    })
 
-                st.success(f"✅ {selected_file} berhasil dihapus.")
-                st.snow()
-                st.rerun()
+                    st.success(f"✅ {selected_file} berhasil dihapus.")
+                    st.snow()
+                    st.rerun()
 
-            except Exception as e:
-                st.error(f"❌ Gagal menghapus data IKPA KPPN: {e}")
+                except Exception as e:
+                    st.error(f"❌ Gagal menghapus data IKPA KPPN: {e}")
 
 
         # Submenu Hapus Data DIPA
@@ -10224,45 +10223,43 @@ def page_admin():
                 if c.name.startswith("IKPA_KPPN_") and c.name.endswith(".xlsx")
             ]
 
-        except Exception as e:
-            st.error(f"❌ Gagal membaca data dari GitHub: {e}")
-            st.stop()
+        except Exception:
+            files_kppn = []
 
         # ===============================
         # JIKA BELUM ADA DATA
         # ===============================
         if not files_kppn:
             st.info("ℹ️ Belum ada data IKPA KPPN tersedia untuk diunduh.")
-            st.stop()
 
-        # ===============================
-        # PILIH FILE
-        # ===============================
-        selected_file = st.selectbox(
-            "Pilih data IKPA KPPN",
-            sorted(files_kppn, reverse=True)
-        )
+        else:
+            # ===============================
+            # PILIH FILE
+            # ===============================
+            selected_file = st.selectbox(
+                "Pilih data IKPA KPPN",
+                sorted(files_kppn, reverse=True)
+            )
 
-        # ===============================
-        # AMBIL FILE DARI GITHUB
-        # ===============================
-        try:
-            file_path = f"Data IKPA KPPN/{selected_file}"
-            file_content = repo.get_contents(file_path)
-            file_bytes = file_content.decoded_content
-        except Exception as e:
-            st.error(f"❌ Gagal mengambil file: {e}")
-            st.stop()
+            # ===============================
+            # AMBIL FILE DARI GITHUB
+            # ===============================
+            try:
+                file_path = f"Data IKPA KPPN/{selected_file}"
+                file_content = repo.get_contents(file_path)
+                file_bytes = file_content.decoded_content
 
-        # ===============================
-        # DOWNLOAD BUTTON
-        # ===============================
-        st.download_button(
-            label="📥 Download File IKPA KPPN",
-            data=file_bytes,
-            file_name=selected_file,
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-        )
+                # ===============================
+                # DOWNLOAD BUTTON
+                # ===============================
+                st.download_button(
+                    label="📥 Download File IKPA KPPN",
+                    data=file_bytes,
+                    file_name=selected_file,
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                )
+            except Exception as e:
+                st.error(f"❌ Gagal mengambil file: {e}")
                 
         # ===========================
         # Submenu Download Data DIPA
