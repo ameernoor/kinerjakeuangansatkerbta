@@ -2476,21 +2476,27 @@ def load_data_ikpa_kppn_from_github():
     token = st.secrets.get("GITHUB_TOKEN")
     repo_name = st.secrets.get("GITHUB_REPO")
 
-    g = Github(auth=Auth.Token(token))
-    repo = g.get_repo(repo_name)
+    if not token or not repo_name:
+        return {}
 
-    # GANTI PATH INI SESUAI HASIL DEBUG
-    KPPN_PATH = "Data IKPA KPPN"   # <- UBAH DI SINI
+    try:
+        g = Github(auth=Auth.Token(token))
+        repo = g.get_repo(repo_name)
+    except Exception:
+        return {}
+
+    KPPN_PATH = "Data IKPA KPPN"
 
     try:
         contents = repo.get_contents(KPPN_PATH)
-    except Exception as e:
-        st.error(f"Folder '{KPPN_PATH}' tidak ditemukan di GitHub")
+    except Exception:
         return {}
 
     data = {}
     for f in contents:
-        if f.name.endswith(".xlsx"):
+        if not f.name.endswith(".xlsx"):
+            continue
+        try:
             df = pd.read_excel(io.BytesIO(base64.b64decode(f.content)))
             if "Bulan" in df.columns and "Tahun" in df.columns:
                 key = (
@@ -2498,6 +2504,8 @@ def load_data_ikpa_kppn_from_github():
                     str(df["Tahun"].iloc[0])
                 )
                 data[key] = df
+        except Exception:
+            continue
 
     return data
 
@@ -10737,8 +10745,11 @@ def main():
     if "data_storage_kppn" not in st.session_state:
         st.session_state.data_storage_kppn = {}
 
-    if not st.session_state.data_storage_kppn:
-        st.session_state.data_storage_kppn = load_data_ikpa_kppn_from_github()
+    if "auto_loaded_kppn" not in st.session_state:
+        result_kppn = load_data_ikpa_kppn_from_github()
+        if result_kppn:
+            st.session_state.data_storage_kppn = result_kppn
+        st.session_state.auto_loaded_kppn = True
 
     # ===============================
     # NOTIF BERHASIL LOAD (SEKALI)
@@ -10800,19 +10811,29 @@ def main():
     # ============================================================
     # AUTO LOAD CMS & DIGIPAY
     # ============================================================
-    if "auto_loaded_cms" not in st.session_state:
+    cms_sudah_ada = (
+        "cms_master" in st.session_state and
+        not st.session_state.cms_master.empty
+    )
+    if not cms_sudah_ada:
         cms_count = load_cms_from_github()
         st.session_state.auto_loaded_cms = True
-
         if cms_count > 0:
             add_notification("Data CMS berhasil dimuat")
+    elif "auto_loaded_cms" not in st.session_state:
+        st.session_state.auto_loaded_cms = True
 
-    if "auto_loaded_digipay" not in st.session_state:
+    digipay_sudah_ada = (
+        "digipay_master" in st.session_state and
+        not st.session_state.digipay_master.empty
+    )
+    if not digipay_sudah_ada:
         digipay_count = load_digipay_from_github()
         st.session_state.auto_loaded_digipay = True
-
         if digipay_count > 0:
             add_notification("Data DIGIPAY berhasil dimuat")
+    elif "auto_loaded_digipay" not in st.session_state:
+        st.session_state.auto_loaded_digipay = True
 
     if (
         st.session_state.get("auto_loaded_cms") or
