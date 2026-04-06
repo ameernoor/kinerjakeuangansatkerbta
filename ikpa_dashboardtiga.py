@@ -2487,12 +2487,7 @@ def load_data_ikpa_kppn_from_github():
 
     KPPN_PATH = "Data IKPA KPPN"
 
-    # ============================================================
-    # Kumpulkan semua file .xlsx secara rekursif (termasuk subfolder)
-    # Struktur yang didukung:
-    #   Data IKPA KPPN/file.xlsx          (flat)
-    #   Data IKPA KPPN/2024/file.xlsx     (subfolder tahun)
-    # ============================================================
+    # Baca rekursif — support flat maupun subfolder tahun (2022, 2023, dst)
     def collect_xlsx_files(path):
         all_files = []
         try:
@@ -2513,8 +2508,7 @@ def load_data_ikpa_kppn_from_github():
         try:
             df = pd.read_excel(io.BytesIO(base64.b64decode(f.content)))
 
-            # Fallback: ambil Bulan & Tahun dari nama file jika kolom tidak ada
-            # Format nama file: IKPA_KPPN_{BULAN}_{TAHUN}.xlsx
+            # Fallback 1: ambil dari nama file (IKPA_KPPN_SEPTEMBER_2024.xlsx)
             if "Bulan" not in df.columns or "Tahun" not in df.columns:
                 parts = f.name.replace(".xlsx", "").split("_")
                 if len(parts) >= 4:
@@ -2523,10 +2517,9 @@ def load_data_ikpa_kppn_from_github():
                     if "Tahun" not in df.columns:
                         df["Tahun"] = parts[3]
 
-            # Fallback kedua: ambil tahun dari path subfolder
+            # Fallback 2: ambil tahun dari nama subfolder path
             if "Tahun" not in df.columns:
-                path_parts = f.path.split("/")
-                for part in path_parts:
+                for part in f.path.split("/"):
                     if part.isdigit() and len(part) == 4:
                         df["Tahun"] = part
                         break
