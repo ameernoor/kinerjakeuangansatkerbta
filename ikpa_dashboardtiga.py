@@ -2487,17 +2487,50 @@ def load_data_ikpa_kppn_from_github():
 
     KPPN_PATH = "Data IKPA KPPN"
 
-    try:
-        contents = repo.get_contents(KPPN_PATH)
-    except Exception:
-        return {}
+    # ============================================================
+    # Kumpulkan semua file .xlsx secara rekursif (termasuk subfolder)
+    # Struktur yang didukung:
+    #   Data IKPA KPPN/file.xlsx          (flat)
+    #   Data IKPA KPPN/2024/file.xlsx     (subfolder tahun)
+    # ============================================================
+    def collect_xlsx_files(path):
+        all_files = []
+        try:
+            items = repo.get_contents(path)
+        except Exception:
+            return all_files
+        for item in items:
+            if item.type == "dir":
+                all_files.extend(collect_xlsx_files(item.path))
+            elif item.name.endswith(".xlsx"):
+                all_files.append(item)
+        return all_files
+
+    xlsx_files = collect_xlsx_files(KPPN_PATH)
 
     data = {}
-    for f in contents:
-        if not f.name.endswith(".xlsx"):
-            continue
+    for f in xlsx_files:
         try:
             df = pd.read_excel(io.BytesIO(base64.b64decode(f.content)))
+
+            # Fallback: ambil Bulan & Tahun dari nama file jika kolom tidak ada
+            # Format nama file: IKPA_KPPN_{BULAN}_{TAHUN}.xlsx
+            if "Bulan" not in df.columns or "Tahun" not in df.columns:
+                parts = f.name.replace(".xlsx", "").split("_")
+                if len(parts) >= 4:
+                    if "Bulan" not in df.columns:
+                        df["Bulan"] = parts[2].upper()
+                    if "Tahun" not in df.columns:
+                        df["Tahun"] = parts[3]
+
+            # Fallback kedua: ambil tahun dari path subfolder
+            if "Tahun" not in df.columns:
+                path_parts = f.path.split("/")
+                for part in path_parts:
+                    if part.isdigit() and len(part) == 4:
+                        df["Tahun"] = part
+                        break
+
             if "Bulan" in df.columns and "Tahun" in df.columns:
                 key = (
                     str(df["Bulan"].iloc[0]).upper(),
