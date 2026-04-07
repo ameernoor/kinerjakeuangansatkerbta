@@ -2787,7 +2787,7 @@ def process_excel_file_kkp(uploaded_file):
     return df.reset_index(drop=True)
 
 #DATA IKPA KPPN
-def get_all_kppn_files(repo, path="DATA IKPA KPPN"): 
+def get_all_kppn_files(repo, path="Data IKPA KPPN"): 
     all_files = []
 
     try:
@@ -8510,7 +8510,7 @@ def page_admin():
                     st.error(
                         "GAGAL UPLOAD!\n\n"
                         "Kolom **'Nama KPPN'** tidak ditemukan.\n"
-                        "File ini BUKAN data IKPA KPPN yang valid."
+                        "File ini BUKAN Data IKPA KPPN yang valid."
                     )
                     st.stop()
 
@@ -8601,7 +8601,7 @@ def page_admin():
                 else:
                     confirm_replace = True
                     st.info(
-                        f"Akan mengunggah data IKPA KPPN "
+                        f"Akan mengunggah Data IKPA KPPN "
                         f"untuk periode **{month_preview} {upload_year_kppn}**"
                     )
 
@@ -9772,7 +9772,7 @@ def page_admin():
             repo = g.get_repo(repo_name)
             
             # 🔥 DEBUG PATH
-            st.write("DEBUG PATH:", "DATA IKPA KPPN")
+            st.write("DEBUG PATH:", "Data IKPA KPPN")
 
             files_kppn = get_all_kppn_files(repo)
             
@@ -10268,7 +10268,7 @@ def page_admin():
             repo = g.get_repo(repo_name)
             
             # 🔥 DEBUG PATH
-            st.write("DEBUG PATH:", "DATA IKPA KPPN")
+            st.write("DEBUG PATH:", "Data IKPA KPPN")
 
             files_kppn = get_all_kppn_files(repo)
             
