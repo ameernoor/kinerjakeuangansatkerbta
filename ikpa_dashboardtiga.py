@@ -8638,12 +8638,18 @@ def page_admin():
                 disabled=not confirm_replace,
                 key="proses_kppn"
             ):
+
+                # 🔴 WAJIB TAMBAH INI
+                if uploaded_file_kppn is None:
+                    st.error("Silakan upload file terlebih dahulu")
+                    st.stop()
+
                 with st.spinner("Memproses data IKPA KPPN..."):
 
                     df_processed, month, year = process_excel_file_kppn(
                         uploaded_file_kppn,
                         upload_year_kppn,
-                        month_preview   
+                        month_preview
                     )
 
 
@@ -8681,7 +8687,7 @@ def page_admin():
                         log_activity(
                             menu="Upload Data",
                             action="Upload IKPA KPPN",
-                            detail=f"{uploaded_file.name} | {month} {year}"
+                            detail=f"{uploaded_file_kppn.name} | {month} {year}"
                         )
 
                         st.success(
