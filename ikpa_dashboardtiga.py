@@ -2466,7 +2466,7 @@ def load_data_from_github(_cache_buster: int = 0):
 
     return data_storage
 
-
+#load data ikpa kppn
 def load_data_ikpa_kppn_from_github():
     from github import Github, Auth
     import base64, io
@@ -2484,11 +2484,9 @@ def load_data_ikpa_kppn_from_github():
     except Exception:
         return {}
 
-    KPPN_PATH = "Data IKPA KPPN"
+    KPPN_PATH = "Data IKPA KPPN"   # ✅ konsisten
 
-    # ===============================
-    # AMBIL SEMUA FILE XLSX
-    # ===============================
+    # 🔥 recursive scan semua folder tahun
     def collect_xlsx_files(path):
         all_files = []
         try:
@@ -2506,85 +2504,53 @@ def load_data_ikpa_kppn_from_github():
 
     xlsx_files = collect_xlsx_files(KPPN_PATH)
 
+    st.write("📁 Total file terbaca:", len(xlsx_files))  # debug
+
     data = {}
 
     for f in xlsx_files:
         try:
             file_bytes = io.BytesIO(base64.b64decode(f.content))
 
-            # ===============================
-            # 🔥 DETECT HEADER
-            # ===============================
             header_row = detect_header_row(file_bytes)
 
             file_bytes.seek(0)
             df = pd.read_excel(file_bytes, header=header_row)
 
-            # ===============================
-            # NORMALISASI KOLOM
-            # ===============================
             df.columns = (
                 df.columns.astype(str)
                 .str.strip()
                 .str.replace(r"\s+", " ", regex=True)
             )
 
-            # ===============================
-            # 🔥 DETEKSI FORMAT
-            # ===============================
-            cols = [str(c).upper() for c in df.columns]
+            # =========================
+            # 🔥 AMBIL TAHUN DARI PATH
+            # =========================
+            path_parts = f.path.split("/")
+            tahun = next((p for p in path_parts if p.isdigit()), str(datetime.now().year))
 
-            is_kppn = any("NILAI AKHIR" in c for c in cols)
+            # =========================
+            # 🔥 AMBIL BULAN DARI NAMA FILE
+            # =========================
+            name = f.name.upper()
+            bulan = "UNKNOWN"
 
-            # ===============================
-            # 🔥 PARSER
-            # ===============================
-            if is_kppn:
-                # FORMAT KPPN (flat)
-                df_final = df.copy()
-
-            else:
-                # FORMAT SATKER (multi-row)
-                file_bytes.seek(0)
-                df_processed, bulan, tahun = process_excel_file(file_bytes, datetime.now().year)
-
-                df_final = post_process_ikpa_satker(df_processed)
-
-                key = (bulan, str(tahun))
-                data[key] = df_final
-                continue
-
-            # ===============================
-            # METADATA BULAN & TAHUN
-            # ===============================
-            name_clean = f.name.replace(".xlsx", "")
-            parts = name_clean.split(" ")
-
-            tahun = None
-            bulan = None
-
-            for i, p in enumerate(parts):
-                if p.isdigit() and len(p) == 4:
-                    tahun = p
-                    if i > 0:
-                        bulan = parts[i - 1].upper()
+            for m in [
+                "JANUARI","FEBRUARI","MARET","APRIL","MEI","JUNI",
+                "JULI","AGUSTUS","SEPTEMBER","OKTOBER","NOVEMBER","DESEMBER"
+            ]:
+                if m in name:
+                    bulan = m
                     break
 
-            # fallback kalau gagal parsing nama file
-            if not tahun:
-                tahun = str(datetime.now().year)
-            if not bulan:
-                bulan = "JULI"
+            df["Bulan"] = bulan
+            df["Tahun"] = tahun
 
-            df_final["Bulan"] = bulan
-            df_final["Tahun"] = tahun
-
-            key = (bulan, str(tahun))
-            data[key] = df_final
+            key = (bulan, tahun)
+            data[key] = df
 
         except Exception as e:
-            st.write(f"❌ ERROR FILE {f.name}:", e)
-            continue
+            st.write(f"❌ ERROR {f.path}:", e)
 
     return data
 
@@ -8639,7 +8605,6 @@ def page_admin():
                 key="proses_kppn"
             ):
 
-                # 🔴 WAJIB TAMBAH INI
                 if uploaded_file_kppn is None:
                     st.error("Silakan upload file terlebih dahulu")
                     st.stop()
@@ -8681,7 +8646,7 @@ def page_admin():
                         save_file_to_github(
                             excel_bytes.getvalue(),
                             filename,
-                            folder="data_kppn"
+                            folder=f"Data IKPA KPPN/{year}"
                         )
                         
                         log_activity(
