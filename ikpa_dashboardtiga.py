@@ -2486,17 +2486,22 @@ def load_data_ikpa_kppn_from_github():
 
     KPPN_PATH = "Data IKPA KPPN"
 
+    # ===============================
+    # AMBIL SEMUA FILE XLSX
+    # ===============================
     def collect_xlsx_files(path):
         all_files = []
         try:
             items = repo.get_contents(path)
         except Exception:
             return all_files
+
         for item in items:
             if item.type == "dir":
                 all_files.extend(collect_xlsx_files(item.path))
             elif item.name.endswith(".xlsx"):
                 all_files.append(item)
+
         return all_files
 
     xlsx_files = collect_xlsx_files(KPPN_PATH)
@@ -2507,33 +2512,43 @@ def load_data_ikpa_kppn_from_github():
         try:
             file_bytes = io.BytesIO(base64.b64decode(f.content))
 
+            # ===============================
             # 🔥 DETECT HEADER
+            # ===============================
             header_row = detect_header_row(file_bytes)
 
             file_bytes.seek(0)
             df = pd.read_excel(file_bytes, header=header_row)
 
-            # 🔧 NORMALISASI KOLOM
+            # ===============================
+            # NORMALISASI KOLOM
+            # ===============================
             df.columns = (
                 df.columns.astype(str)
                 .str.strip()
                 .str.replace(r"\s+", " ", regex=True)
             )
 
-
             # ===============================
             # 🔥 DETEKSI FORMAT
             # ===============================
-            if "Nilai Akhir (Nilai Total/Konversi Bobot)" in df.columns:
-                # ✅ FORMAT KPPN (flat)
-                df_final = df
+            cols = [str(c).upper() for c in df.columns]
+
+            is_kppn = any("NILAI AKHIR" in c for c in cols)
+
+            # ===============================
+            # 🔥 PARSER
+            # ===============================
+            if is_kppn:
+                # FORMAT KPPN (flat)
+                df_final = df.copy()
 
             else:
-                # 🔥 FORMAT SATKER → PAKAI PARSER UTAMA
+                # FORMAT SATKER (multi-row)
                 file_bytes.seek(0)
-                df_final, bulan, tahun = process_excel_file(file_bytes, 2025)
+                df_processed, bulan, tahun = process_excel_file(file_bytes, datetime.now().year)
 
-                df_final = post_process_ikpa_satker(df_final)
+                df_final = post_process_ikpa_satker(df_processed)
 
                 key = (bulan, str(tahun))
                 data[key] = df_final
@@ -2555,15 +2570,20 @@ def load_data_ikpa_kppn_from_github():
                         bulan = parts[i - 1].upper()
                     break
 
-            if bulan and tahun:
-                df_final["Bulan"] = bulan
-                df_final["Tahun"] = tahun
+            # fallback kalau gagal parsing nama file
+            if not tahun:
+                tahun = str(datetime.now().year)
+            if not bulan:
+                bulan = "JULI"
 
-                key = (bulan, tahun)
-                data[key] = df_final
+            df_final["Bulan"] = bulan
+            df_final["Tahun"] = tahun
+
+            key = (bulan, str(tahun))
+            data[key] = df_final
 
         except Exception as e:
-            st.write(f"ERROR FILE {f.name}:", e)
+            st.write(f"❌ ERROR FILE {f.name}:", e)
             continue
 
     return data
@@ -8235,6 +8255,17 @@ def detect_header_row(file, max_scan=15):
 
     return 0
 
+def detect_format(df):
+    cols = [str(c).upper() for c in df.columns]
+
+    if any("NILAI AKHIR" in c for c in cols):
+        return "KPPN"
+
+    if df.shape[0] > 50:
+        return "SATKER"
+
+    return "UNKNOWN"
+
 # ============================================================
 #  Menu Admin
 # ============================================================
@@ -8644,7 +8675,7 @@ def page_admin():
                         save_file_to_github(
                             excel_bytes.getvalue(),
                             filename,
-                            folder="Data IKPA KPPN"
+                            folder="data_kppn"
                         )
                         
                         log_activity(
@@ -8660,6 +8691,7 @@ def page_admin():
 
                     except Exception as e:
                         st.error(f" Gagal menyimpan ke GitHub: {e}")
+                        
             
         # ============================================================
         # SUBMENU: UPLOAD DATA DIPA
