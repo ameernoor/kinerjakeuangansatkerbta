@@ -2787,22 +2787,22 @@ def process_excel_file_kkp(uploaded_file):
     return df.reset_index(drop=True)
 
 #DATA IKPA KPPN
-def get_all_kppn_files(repo, path="Data IKPA KPPN"):
+def get_all_kppn_files(repo, path="DATA IKPA KPPN"): 
     all_files = []
 
     try:
         contents = repo.get_contents(path)
-    except Exception:
+    except Exception as e:
+        st.write("❌ ERROR PATH:", e)
         return all_files
 
     for c in contents:
         if c.type == "dir":
-            all_files.extend(get_all_kppn_files(repo, c.path))  # 🔥 recursive
+            all_files.extend(get_all_kppn_files(repo, c.path))
         elif c.name.startswith("IKPA_KPPN_") and c.name.endswith(".xlsx"):
-            all_files.append(c.path)  # full path
+            all_files.append(c.path)
 
     return all_files
-
 
 # ============================
 #  BACA TEMPLATE FILE
@@ -9770,8 +9770,14 @@ def page_admin():
 
             g = Github(auth=Auth.Token(token))
             repo = g.get_repo(repo_name)
+            
+            # 🔥 DEBUG PATH
+            st.write("DEBUG PATH:", "DATA IKPA KPPN")
 
             files_kppn = get_all_kppn_files(repo)
+            
+            # 🔥 DEBUG JUMLAH FILE
+            st.write("Jumlah file ditemukan:", len(files_kppn))
 
         except Exception:
             files_kppn = []
@@ -10260,8 +10266,14 @@ def page_admin():
 
             g = Github(auth=Auth.Token(token))
             repo = g.get_repo(repo_name)
+            
+            # 🔥 DEBUG PATH
+            st.write("DEBUG PATH:", "DATA IKPA KPPN")
 
             files_kppn = get_all_kppn_files(repo)
+            
+            # 🔥 DEBUG JUMLAH FILE
+            st.write("Jumlah file ditemukan:", len(files_kppn))
 
         except Exception:
             files_kppn = []
