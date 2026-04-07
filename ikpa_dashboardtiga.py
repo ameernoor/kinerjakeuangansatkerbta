@@ -2007,6 +2007,53 @@ def process_excel_file_kppn(uploaded_file, year, detected_month=None):
         st.error(f"❌ Error memproses IKPA KPPN: {e}")
         return None, None, None
 
+def process_kppn_flat(df):
+    import pandas as pd
+
+    # ===============================
+    # 1. AMBIL HEADER BARIS KE-2
+    # ===============================
+    header2 = df.iloc[0]
+
+    new_cols = []
+    for col, sub in zip(df.columns, header2):
+        if pd.notna(sub):
+            new_cols.append(str(sub).strip())
+        else:
+            new_cols.append(str(col).strip())
+
+    df.columns = new_cols
+
+    # ===============================
+    # 2. BUANG BARIS HEADER
+    # ===============================
+    df = df.iloc[1:].reset_index(drop=True)
+
+    # ===============================
+    # 3. FILTER HANYA "Nilai"
+    # ===============================
+    df = df[df["Keterangan"].str.upper() == "NILAI"]
+
+    # ===============================
+    # 4. DROP KOLOM TIDAK PERLU
+    # ===============================
+    df = df.loc[:, ~df.columns.str.contains("Unnamed", case=False)]
+
+    # ===============================
+    # 5. CLEAN KOLOM
+    # ===============================
+    df.columns = (
+        df.columns
+        .str.strip()
+        .str.replace(r"\s+", " ", regex=True)
+    )
+
+    # ===============================
+    # 6. RESET INDEX
+    # ===============================
+    df = df.reset_index(drop=True)
+
+    return df
 
 # ============================================================
 # PARSER DIPA 
@@ -2514,6 +2561,7 @@ def load_data_ikpa_kppn_from_github():
 
             file_bytes.seek(0)
             df = pd.read_excel(file_bytes, header=header_row)
+            df = process_kppn_flat(df)
 
             df.columns = (
                 df.columns.astype(str)
