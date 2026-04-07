@@ -2787,7 +2787,7 @@ def process_excel_file_kkp(uploaded_file):
     return df.reset_index(drop=True)
 
 #DATA IKPA KPPN
-def get_all_kppn_files(repo, path="Data IKPA KPPN"): 
+def get_all_kppn_files(repo, path="Data IKPA KPPN"):
     all_files = []
 
     try:
@@ -2799,7 +2799,7 @@ def get_all_kppn_files(repo, path="Data IKPA KPPN"):
     for c in contents:
         if c.type == "dir":
             all_files.extend(get_all_kppn_files(repo, c.path))
-        elif c.name.startswith("IKPA_KPPN_") and c.name.endswith(".xlsx"):
+        elif c.name.lower().endswith(".xlsx"):  # 🔥 FIX DI SINI
             all_files.append(c.path)
 
     return all_files
