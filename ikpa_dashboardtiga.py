@@ -10252,58 +10252,60 @@ def page_admin():
                 )
          
         # ===========================
-        # Submenu Download Data IKPA KPPN
-        # ===========================
-        # ===========================
-        # 📥 Download Data IKPA KPPN
+        # 📥 Download Data IKPA KPPN (PROCESSED)
         # ===========================
         st.markdown("---")
         st.subheader("📥 Download Data IKPA KPPN")
 
-        try:
-            token = st.secrets["GITHUB_TOKEN"]
-            repo_name = st.secrets["GITHUB_REPO"]
+        import io
 
-            g = Github(auth=Auth.Token(token))
-            repo = g.get_repo(repo_name)
-            
-            # 🔥 DEBUG PATH
-            st.write("DEBUG PATH:", "Data IKPA KPPN")
+        # pastikan session ada
+        if "data_storage_kppn" not in st.session_state:
+            st.session_state.data_storage_kppn = {}
 
-            files_kppn = get_all_kppn_files(repo)
-            
-            # 🔥 DEBUG JUMLAH FILE
-            st.write("Jumlah file ditemukan:", len(files_kppn))
+        data_kppn = st.session_state.data_storage_kppn
 
-        except Exception:
-            files_kppn = []
-
-        if not files_kppn:
+        # ===============================
+        # JIKA BELUM ADA DATA
+        # ===============================
+        if not data_kppn:
             st.info("ℹ️ Belum ada data IKPA KPPN tersedia untuk diunduh.")
 
         else:
-            display_files = {f.split("/")[-1]: f for f in files_kppn}
+            # ===============================
+            # PILIH DATA
+            # ===============================
+            display_keys = {
+                f"{bulan} {tahun}": (bulan, tahun)
+                for (bulan, tahun) in data_kppn.keys()
+            }
 
-            selected_name = st.selectbox(
+            selected_label = st.selectbox(
                 "Pilih data IKPA KPPN",
-                sorted(display_files.keys(), reverse=True)
+                sorted(display_keys.keys(), reverse=True)
             )
 
-            selected_file = display_files[selected_name]
+            selected_key = display_keys[selected_label]
 
-            try:
-                file_content = repo.get_contents(selected_file)
-                file_bytes = file_content.decoded_content
+            df_download = data_kppn[selected_key]
 
-                st.download_button(
-                    label="📥 Download File IKPA KPPN",
-                    data=file_bytes,
-                    file_name=selected_name,
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                )
+            # ===============================
+            # CONVERT KE EXCEL
+            # ===============================
+            output = io.BytesIO()
 
-            except Exception as e:
-                st.error(f"❌ Gagal mengambil file: {e}")
+            with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+                df_download.to_excel(writer, index=False)
+
+            # ===============================
+            # DOWNLOAD BUTTON
+            # ===============================
+            st.download_button(
+                label="📥 Download File IKPA KPPN",
+                data=output.getvalue(),
+                file_name=f"IKPA_KPPN_{selected_key[0]}_{selected_key[1]}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            )
                 
         # ===========================
         # Submenu Download Data DIPA
