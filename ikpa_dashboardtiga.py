@@ -572,6 +572,17 @@ def render_table_pin_satker(df):
             gb.configure_column(col, cellRenderer=cell_popup_renderer)
 
     # =====================================================
+    # HILANGKAN LOGO AGGRID
+    # =====================================================
+    st.markdown("""
+    <style>
+    .ag-watermark {
+        display: none !important;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+
+    # =====================================================
     # KOLOM NOMOR
     # =====================================================
     gb.configure_column(
@@ -586,14 +597,14 @@ def render_table_pin_satker(df):
     )
 
     # =====================================================
-    # DEFAULT COLUMN (AUTO + BATAS LEBAR)
+    # DEFAULT COLUMN (AUTO + BATAS)
     # =====================================================
     gb.configure_default_column(
         resizable=True,
         sortable=True,
         filter=True,
-        minWidth=60,
-        maxWidth=120   # 🔥 biar nggak terlalu lebar
+        minWidth=70,
+        maxWidth=110
     )
 
     # =====================================================
@@ -613,7 +624,7 @@ def render_table_pin_satker(df):
             )
 
     # =====================================================
-    # KOLOM KHUSUS (TANPA WIDTH FIXED)
+    # KOLOM KHUSUS
     # =====================================================
     if "Uraian Satker-RINGKAS" in df.columns:
         gb.configure_column(
@@ -621,7 +632,7 @@ def render_table_pin_satker(df):
             headerName="Nama Satker",
             pinned="left",
             minWidth=150,
-            maxWidth=250   # 🔥 fleksibel tapi tetap rapi
+            maxWidth=250
         )
 
     if "Kode Satker" in df.columns:
@@ -645,22 +656,26 @@ def render_table_pin_satker(df):
     """)
 
     # =====================================================
-    # AUTO SIZE KOLOM (SESUAI ISI)
+    # GRID OPTIONS (AUTO FIT + STABIL)
     # =====================================================
     gb.configure_grid_options(
-        domLayout="normal",
+        domLayout="autoHeight",  # 🔥 scroll rapi
         alwaysShowHorizontalScroll=True,
+        suppressSizeToFit=True,  # 🔥 hindari konflik
         getRowStyle=zebra_dark,
         headerHeight=40,
 
         onFirstDataRendered=JsCode("""
             function(params) {
                 setTimeout(function() {
+
                     const allColumnIds = [];
                     params.columnApi.getAllColumns().forEach(function(col) {
                         allColumnIds.push(col.getId());
                     });
+
                     params.columnApi.autoSizeColumns(allColumnIds);
+
                 }, 200);
             }
         """)
@@ -672,8 +687,7 @@ def render_table_pin_satker(df):
     grid_response = AgGrid(
         df,
         gridOptions=gb.build(),
-        height=calc_grid_height(df),
-        width="100%",
+        width="100%",   # full container
         theme="streamlit",
         allow_unsafe_jscode=True,
         data_return_mode="FILTERED_AND_SORTED",
