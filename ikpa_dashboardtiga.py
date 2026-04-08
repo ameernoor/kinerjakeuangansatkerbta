@@ -64,51 +64,6 @@ def add_notification(msg):
         st.session_state.loading_notifications.append(msg)
 
 
-st.markdown("""
-<style>
-
-/* Hilangkan logo */
-.ag-watermark {
-    display: none !important;
-}
-
-/* Paksa grid ikut isi (INI YANG PALING PENTING) */
-.ag-root-wrapper {
-    display: inline-block !important;
-    width: fit-content !important;
-    margin-left: auto;
-    margin-right: auto;
-}
-
-/* Jangan full width */
-.ag-theme-streamlit {
-    display: inline-block !important;
-}
-
-/* Compact */
-.ag-theme-streamlit .ag-cell {
-    padding: 4px 6px !important;
-    font-size: 12px !important;
-}
-
-.ag-theme-streamlit .ag-header-cell {
-    padding: 4px 6px !important;
-    font-size: 12px !important;
-}
-
-.ag-theme-streamlit .ag-row {
-    height: 32px !important;
-}
-
-.ag-theme-streamlit .ag-header {
-    min-height: 35px !important;
-    max-height: 35px !important;
-}
-
-</style>
-""", unsafe_allow_html=True)
-
-
 def render_table_pin_satker(df):
     df = df.copy()
 
@@ -118,7 +73,7 @@ def render_table_pin_satker(df):
     df = df.loc[:, ~df.columns.duplicated()].copy()
     df.insert(0, "__rowNum__", range(1, len(df) + 1))
 
-    def calc_grid_height(df, row_height=32, header_height=35, max_height=500):
+    def calc_grid_height(df, row_height=45, header_height=40, max_height=600):
         return min(header_height + len(df) * row_height, max_height)
 
     gb = GridOptionsBuilder.from_dataframe(df)
@@ -633,8 +588,7 @@ def render_table_pin_satker(df):
         resizable=True,
         sortable=True,
         filter=True,
-        minWidth=60,
-        maxWidth=110
+        minWidth=80, 
     )
     
     # ===============================
@@ -658,14 +612,14 @@ def render_table_pin_satker(df):
             "Uraian Satker-RINGKAS",
             headerName="Nama Satker",
             pinned="left",
-            minWidth=80
+            width=180
         )
 
     if "Kode Satker" in df.columns:
         gb.configure_column(
             "Kode Satker",
             pinned="left",
-            maxWidth=120
+            width=80
         )
 
     zebra_dark = JsCode("""
@@ -680,19 +634,11 @@ def render_table_pin_satker(df):
     gb.configure_grid_options(
         domLayout="normal",
         alwaysShowHorizontalScroll=True,
-        suppressSizeToFit=True,
         getRowStyle=zebra_dark,
-        headerHeight=35,
-
-        onFirstDataRendered=JsCode("""
+        headerHeight=40,
+        onGridReady=JsCode("""
             function(params) {
-                setTimeout(function() {
-                    const allColumnIds = [];
-                    params.columnApi.getAllColumns().forEach(function(col) {
-                        allColumnIds.push(col.getId());
-                    });
-                    params.columnApi.autoSizeColumns(allColumnIds);
-                }, 200);
+                params.api.sizeColumnsToFit();
             }
         """)
     )
@@ -700,17 +646,16 @@ def render_table_pin_satker(df):
     # ===============================
     # GRID + EXPORT
     # ===============================
-
-    # ===== GRID DULU =====
     grid_response = AgGrid(
         df,
         gridOptions=gb.build(),
         height=calc_grid_height(df),
-        width=None,
+        width="100%",
         theme="streamlit",
         allow_unsafe_jscode=True,
         data_return_mode="FILTERED_AND_SORTED",
-        update_mode="MODEL_CHANGED"
+        update_mode="MODEL_CHANGED",
+
     )
 
     # ===== AMBIL DATA HASIL FILTER =====
