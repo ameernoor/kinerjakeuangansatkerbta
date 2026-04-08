@@ -64,6 +64,40 @@ def add_notification(msg):
         st.session_state.loading_notifications.append(msg)
 
 
+st.markdown("""
+<style>
+.ag-watermark { display: none !important; }
+
+.ag-root-wrapper {
+    width: fit-content !important;
+    margin-left: auto;
+    margin-right: auto;
+}
+
+.ag-theme-streamlit .ag-cell {
+    padding-top: 4px !important;
+    padding-bottom: 4px !important;
+    font-size: 12px !important;
+}
+
+.ag-theme-streamlit .ag-header-cell {
+    padding-top: 4px !important;
+    padding-bottom: 4px !important;
+    font-size: 12px !important;
+}
+
+.ag-theme-streamlit .ag-row {
+    height: 32px !important;
+}
+
+.ag-theme-streamlit .ag-header {
+    min-height: 35px !important;
+    max-height: 35px !important;
+}
+</style>
+""", unsafe_allow_html=True)
+
+
 def render_table_pin_satker(df):
     df = df.copy()
 
@@ -73,7 +107,7 @@ def render_table_pin_satker(df):
     df = df.loc[:, ~df.columns.duplicated()].copy()
     df.insert(0, "__rowNum__", range(1, len(df) + 1))
 
-    def calc_grid_height(df, row_height=45, header_height=40, max_height=600):
+    def calc_grid_height(df, row_height=32, header_height=35, max_height=500):
         return min(header_height + len(df) * row_height, max_height)
 
     gb = GridOptionsBuilder.from_dataframe(df)
@@ -588,7 +622,8 @@ def render_table_pin_satker(df):
         resizable=True,
         sortable=True,
         filter=True,
-        minWidth=80, 
+        minWidth=60,
+        maxWidth=110
     )
     
     # ===============================
@@ -612,14 +647,14 @@ def render_table_pin_satker(df):
             "Uraian Satker-RINGKAS",
             headerName="Nama Satker",
             pinned="left",
-            width=180
+            minWidth=80
         )
 
     if "Kode Satker" in df.columns:
         gb.configure_column(
             "Kode Satker",
             pinned="left",
-            width=80
+            maxWidth=120
         )
 
     zebra_dark = JsCode("""
@@ -634,8 +669,21 @@ def render_table_pin_satker(df):
     gb.configure_grid_options(
         domLayout="normal",
         alwaysShowHorizontalScroll=True,
+        suppressSizeToFit=True,
         getRowStyle=zebra_dark,
-        headerHeight=40,
+        headerHeight=35,
+
+        onFirstDataRendered=JsCode("""
+            function(params) {
+                setTimeout(function() {
+                    const allColumnIds = [];
+                    params.columnApi.getAllColumns().forEach(function(col) {
+                        allColumnIds.push(col.getId());
+                    });
+                    params.columnApi.autoSizeColumns(allColumnIds);
+                }, 200);
+            }
+        """)
     )
 
     # ===============================
@@ -647,7 +695,7 @@ def render_table_pin_satker(df):
         df,
         gridOptions=gb.build(),
         height=calc_grid_height(df),
-        width="100%",
+        width=None,
         theme="streamlit",
         allow_unsafe_jscode=True,
         data_return_mode="FILTERED_AND_SORTED",
