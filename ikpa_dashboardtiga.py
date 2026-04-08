@@ -659,9 +659,9 @@ def render_table_pin_satker(df):
     # GRID OPTIONS (AUTO FIT + STABIL)
     # =====================================================
     gb.configure_grid_options(
-        domLayout="autoHeight",  # 🔥 scroll rapi
+        domLayout="normal",  # 🔥 scroll aktif
         alwaysShowHorizontalScroll=True,
-        suppressSizeToFit=True,  # 🔥 hindari konflik
+        suppressSizeToFit=True,  # 🔥 penting!
         getRowStyle=zebra_dark,
         headerHeight=40,
 
@@ -681,13 +681,11 @@ def render_table_pin_satker(df):
         """)
     )
 
-    # =====================================================
-    # GRID
-    # =====================================================
     grid_response = AgGrid(
         df,
         gridOptions=gb.build(),
-        width="100%",   # full container
+        height=600,   # 🔥 scroll muncul
+        width="100%",
         theme="streamlit",
         allow_unsafe_jscode=True,
         data_return_mode="FILTERED_AND_SORTED",
