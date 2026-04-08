@@ -578,22 +578,27 @@ def render_table_pin_satker(df):
         "__rowNum__",
         headerName="No",
         pinned="left",
-        width=60,
+        minWidth=50,
+        maxWidth=70,
         sortable=False,
         filter=False,
         cellStyle={"textAlign": "center"}
     )
 
+    # =====================================================
+    # DEFAULT COLUMN (AUTO + BATAS LEBAR)
+    # =====================================================
     gb.configure_default_column(
         resizable=True,
         sortable=True,
         filter=True,
-        minWidth=80, 
+        minWidth=60,
+        maxWidth=120   # 🔥 biar nggak terlalu lebar
     )
-    
-    # ===============================
-    # KOLOM TEKS RATA KIRI
-    # ===============================
+
+    # =====================================================
+    # KOLOM TEKS
+    # =====================================================
     text_columns = [
         "Kode Satker",
         "Uraian Satker-RINGKAS",
@@ -607,21 +612,29 @@ def render_table_pin_satker(df):
                 cellStyle={"textAlign": "left"}
             )
 
+    # =====================================================
+    # KOLOM KHUSUS (TANPA WIDTH FIXED)
+    # =====================================================
     if "Uraian Satker-RINGKAS" in df.columns:
         gb.configure_column(
             "Uraian Satker-RINGKAS",
             headerName="Nama Satker",
             pinned="left",
-            width=180
+            minWidth=150,
+            maxWidth=250   # 🔥 fleksibel tapi tetap rapi
         )
 
     if "Kode Satker" in df.columns:
         gb.configure_column(
             "Kode Satker",
             pinned="left",
-            width=80
+            minWidth=80,
+            maxWidth=120
         )
 
+    # =====================================================
+    # ZEBRA STYLE
+    # =====================================================
     zebra_dark = JsCode("""
     function(params) {
         return {
@@ -631,6 +644,9 @@ def render_table_pin_satker(df):
     }
     """)
 
+    # =====================================================
+    # AUTO SIZE KOLOM (SESUAI ISI)
+    # =====================================================
     gb.configure_grid_options(
         domLayout="normal",
         alwaysShowHorizontalScroll=True,
@@ -639,18 +655,20 @@ def render_table_pin_satker(df):
 
         onFirstDataRendered=JsCode("""
             function(params) {
-                const allColumnIds = [];
-                params.columnApi.getAllColumns().forEach(function(col) {
-                    allColumnIds.push(col.getId());
-                });
-                params.columnApi.autoSizeColumns(allColumnIds);
+                setTimeout(function() {
+                    const allColumnIds = [];
+                    params.columnApi.getAllColumns().forEach(function(col) {
+                        allColumnIds.push(col.getId());
+                    });
+                    params.columnApi.autoSizeColumns(allColumnIds);
+                }, 200);
             }
         """)
     )
 
-    # ===============================
-    # GRID + EXPORT
-    # ===============================
+    # =====================================================
+    # GRID
+    # =====================================================
     grid_response = AgGrid(
         df,
         gridOptions=gb.build(),
