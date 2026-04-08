@@ -605,6 +605,25 @@ def render_table_pin_satker(df):
                 cellStyle={"textAlign": "right"}
             )
     
+    # =====================================================
+    # KOLOM KECIL (PERINGKAT & KODE BA)
+    # =====================================================
+    small_cols = [
+        "Peringkat",
+        "Kode BA",
+        "Kode_BA",   # jaga-jaga kalau beda nama
+        "BA"
+    ]
+
+    for col in small_cols:
+        if col in df.columns:
+            gb.configure_column(
+                col,
+                minWidth=50,
+                maxWidth=70,   # 🔥 kecil & rapat
+                cellStyle={"textAlign": "center"}
+            )
+    
     # ===============================
     # KOLOM TEKS RATA KIRI
     # ===============================
