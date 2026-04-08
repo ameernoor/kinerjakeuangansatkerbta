@@ -646,8 +646,6 @@ def render_table_pin_satker(df):
     # ===============================
     # GRID + EXPORT
     # ===============================
-
-    # ===== GRID DULU =====
     grid_response = AgGrid(
         df,
         gridOptions=gb.build(),
@@ -656,7 +654,9 @@ def render_table_pin_satker(df):
         theme="streamlit",
         allow_unsafe_jscode=True,
         data_return_mode="FILTERED_AND_SORTED",
-        update_mode="MODEL_CHANGED"
+        update_mode="MODEL_CHANGED",
+
+        fit_columns_on_grid_load=True 
     )
 
     # ===== AMBIL DATA HASIL FILTER =====
