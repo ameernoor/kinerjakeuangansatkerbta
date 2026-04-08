@@ -2472,7 +2472,8 @@ def load_data_from_github(_cache_buster: int = 0):
 
         try:
             decoded = base64.b64decode(file.content)
-            df = pd.read_excel(io.BytesIO(decoded))
+            from io import BytesIO
+            df = pd.read_excel(BytesIO(decoded))
 
             df = df.copy()
 
