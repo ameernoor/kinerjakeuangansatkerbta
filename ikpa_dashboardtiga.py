@@ -636,9 +636,14 @@ def render_table_pin_satker(df):
         alwaysShowHorizontalScroll=True,
         getRowStyle=zebra_dark,
         headerHeight=40,
-        onGridReady=JsCode("""
+
+        onFirstDataRendered=JsCode("""
             function(params) {
-                params.api.sizeColumnsToFit();
+                const allColumnIds = [];
+                params.columnApi.getAllColumns().forEach(function(col) {
+                    allColumnIds.push(col.getId());
+                });
+                params.columnApi.autoSizeColumns(allColumnIds);
             }
         """)
     )
@@ -655,8 +660,6 @@ def render_table_pin_satker(df):
         allow_unsafe_jscode=True,
         data_return_mode="FILTERED_AND_SORTED",
         update_mode="MODEL_CHANGED",
-
-        fit_columns_on_grid_load=True 
     )
 
     # ===== AMBIL DATA HASIL FILTER =====
