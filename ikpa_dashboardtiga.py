@@ -636,6 +636,11 @@ def render_table_pin_satker(df):
         alwaysShowHorizontalScroll=True,
         getRowStyle=zebra_dark,
         headerHeight=40,
+        onGridReady=JsCode("""
+            function(params) {
+                params.api.sizeColumnsToFit();
+            }
+        """)
     )
 
     # ===============================
