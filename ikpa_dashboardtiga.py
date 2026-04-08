@@ -619,8 +619,8 @@ def render_table_pin_satker(df):
         if col in df.columns:
             gb.configure_column(
                 col,
-                minWidth=50,
-                maxWidth=70,   # 🔥 kecil & rapat
+                minWidth=60,
+                maxWidth=80,   # 🔥 kecil & rapat
                 cellStyle={"textAlign": "center"}
             )
     
@@ -2407,13 +2407,8 @@ def save_file_to_github(content_bytes, filename, folder):
 # ============================
 #  LOAD DATA IKPA DARI GITHUB
 # ============================
-@st.cache_data(ttl=3600)
+@st.cache_data(ttl=300)
 def load_data_from_github(_cache_buster: int = 0):
-    """
-    Load IKPA Satker dari GitHub (/data).
-    HANYA file hasil proses (df_final) yang diterima.
-    Mengembalikan dict: {(BULAN, TAHUN): DataFrame}
-    """
 
     data_storage = {}
 
@@ -2426,8 +2421,23 @@ def load_data_from_github(_cache_buster: int = 0):
     g = Github(auth=Auth.Token(token))
     repo = g.get_repo(repo_name)
 
+    # ===============================
+    # 🔥 RECURSIVE FILE LOADER
+    # ===============================
+    def get_all_files(path="data"):
+        files = []
+        contents = repo.get_contents(path)
+
+        for content in contents:
+            if content.type == "dir":
+                files += get_all_files(content.path)
+            else:
+                files.append(content)
+
+        return files
+
     try:
-        contents = repo.get_contents("data")
+        contents = get_all_files("data")
     except Exception:
         return data_storage
 
@@ -2453,25 +2463,23 @@ def load_data_from_github(_cache_buster: int = 0):
     }
 
     for file in contents:
+
+        # DEBUG (opsional)
+        st.write("FILE:", file.name)
+
         if not file.name.endswith(".xlsx"):
             continue
 
         try:
             decoded = base64.b64decode(file.content)
             df = pd.read_excel(io.BytesIO(decoded))
-            
-            # ===============================
-            # 🔥 RESET HASIL LAMA (WAJIB)
-            # ===============================
+
             df = df.copy()
 
             for col in ["Uraian Satker-RINGKAS", "Uraian Satker Final", "Satker"]:
                 if col in df.columns:
                     df.drop(columns=[col], inplace=True)
 
-            # ===============================
-            # VALIDASI KOLOM WAJIB
-            # ===============================
             if not all(col in df.columns for col in REQUIRED_COLUMNS):
                 continue
 
@@ -2482,24 +2490,15 @@ def load_data_from_github(_cache_buster: int = 0):
             df["Bulan"] = month
             df["Tahun"] = year
 
-            # ===============================
-            # NORMALISASI KODE SATKER
-            # ===============================
             df["Kode Satker"] = (
                 df["Kode Satker"]
                 .astype(str)
                 .apply(normalize_kode_satker)
             )
 
-            # =====================================================
-            # 🔑 PAKSA URAIAN SATKER RINGKAS (FIX UTAMA)
-            # =====================================================
             df = apply_reference_short_names(df)
             df = create_satker_column(df)
 
-            # ===============================
-            # NORMALISASI NUMERIK
-            # ===============================
             numeric_cols = [
                 "Nilai Akhir (Nilai Total/Konversi Bobot)",
                 "Nilai Total", "Konversi Bobot",
@@ -2522,9 +2521,6 @@ def load_data_from_github(_cache_buster: int = 0):
             df["Period"] = f"{month} {year}"
             df["Period_Sort"] = f"{int(year):04d}-{month_num:02d}"
 
-            # ===============================
-            # RANKING DENSE
-            # ===============================
             nilai_col = "Nilai Akhir (Nilai Total/Konversi Bobot)"
             df = df.sort_values(nilai_col, ascending=False)
             df["Peringkat"] = (
@@ -2533,9 +2529,6 @@ def load_data_from_github(_cache_buster: int = 0):
                 .astype(int)
             )
 
-            # ===============================
-            # MERGE DIPA + JENIS SATKER
-            # ===============================
             df = merge_ikpa_with_dipa(df)
 
             if "Jenis Satker" in df.columns:
@@ -2545,10 +2538,11 @@ def load_data_from_github(_cache_buster: int = 0):
 
             data_storage[key] = df
 
-        except Exception:
+        except Exception as e:
             continue
 
     return data_storage
+
 
 #load data ikpa kppn
 def load_data_ikpa_kppn_from_github():
@@ -8532,8 +8526,9 @@ def page_admin():
                     
                     st.session_state["_just_uploaded"] = True
 
-                    # 🔥 WAJIB: proses ulang semua data (ambil dari GitHub)
+                    # WAJIB: proses ulang semua data (ambil dari GitHub)
                     reprocess_all_ikpa_satker()
+                    load_data_from_github.clear() 
 
                     # refresh UI
                     st.rerun()
