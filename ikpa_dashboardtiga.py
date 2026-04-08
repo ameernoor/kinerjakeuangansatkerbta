@@ -66,23 +66,33 @@ def add_notification(msg):
 
 st.markdown("""
 <style>
-.ag-watermark { display: none !important; }
 
+/* Hilangkan logo */
+.ag-watermark {
+    display: none !important;
+}
+
+/* Paksa grid ikut isi (INI YANG PALING PENTING) */
 .ag-root-wrapper {
+    display: inline-block !important;
     width: fit-content !important;
     margin-left: auto;
     margin-right: auto;
 }
 
+/* Jangan full width */
+.ag-theme-streamlit {
+    display: inline-block !important;
+}
+
+/* Compact */
 .ag-theme-streamlit .ag-cell {
-    padding-top: 4px !important;
-    padding-bottom: 4px !important;
+    padding: 4px 6px !important;
     font-size: 12px !important;
 }
 
 .ag-theme-streamlit .ag-header-cell {
-    padding-top: 4px !important;
-    padding-bottom: 4px !important;
+    padding: 4px 6px !important;
     font-size: 12px !important;
 }
 
@@ -94,6 +104,7 @@ st.markdown("""
     min-height: 35px !important;
     max-height: 35px !important;
 }
+
 </style>
 """, unsafe_allow_html=True)
 
