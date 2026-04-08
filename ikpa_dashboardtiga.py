@@ -591,6 +591,20 @@ def render_table_pin_satker(df):
         minWidth=80, 
     )
     
+    bulan_cols = [
+    "Jan","Feb","Mar","Apr","Mei","Jun",
+    "Jul","Agu","Sep","Okt","Nov","Des"
+    ]
+
+    for col in bulan_cols:
+        if col in df.columns:
+            gb.configure_column(
+                col,
+                minWidth=60,
+                maxWidth=80,   # 🔥 bikin kecil
+                cellStyle={"textAlign": "right"}
+            )
+    
     # ===============================
     # KOLOM TEKS RATA KIRI
     # ===============================
