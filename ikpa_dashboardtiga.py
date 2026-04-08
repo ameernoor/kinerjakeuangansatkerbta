@@ -611,7 +611,7 @@ def render_table_pin_satker(df):
     small_cols = [
         "Peringkat",
         "Kode BA",
-        "Kode_BA",   # jaga-jaga kalau beda nama
+        "Kode_BA",   
         "BA"
     ]
 
@@ -619,8 +619,8 @@ def render_table_pin_satker(df):
         if col in df.columns:
             gb.configure_column(
                 col,
-                minWidth=60,
-                maxWidth=80,   # 🔥 kecil & rapat
+                minWidth=100,
+                maxWidth=120, 
                 cellStyle={"textAlign": "center"}
             )
     
@@ -2384,24 +2384,45 @@ def update_template_referensi_github(df_updated, repo, existing_file, message):
 
 
 # Save any file (Excel/template) to your GitHub repo
-def save_file_to_github(content_bytes, filename, folder):
-    token = st.secrets["GITHUB_TOKEN"]
-    repo_name = st.secrets["GITHUB_REPO"]
-
-    g = Github(auth=Auth.Token(token))
-    repo = g.get_repo(repo_name)
-    
-
-    # 1️⃣ buat path full
-    path = f"{folder}/{filename}"
+def save_file_to_github(file_bytes, filename, folder="data"):
+    from github import Github
+    import streamlit as st
 
     try:
-        # 2️⃣ cek apakah file sudah ada
-        existing = repo.get_contents(path)
-        repo.update_file(existing.path, f"Update {filename}", content_bytes, existing.sha)
-    except Exception:
-        # 3️⃣ jika folder tidak ada → buat file pertama
-        repo.create_file(path, f"Create {filename}", content_bytes)
+        token = st.secrets["GITHUB_TOKEN"]
+        repo_name = st.secrets["GITHUB_REPO"]
+
+        g = Github(token)
+        repo = g.get_repo(repo_name)
+
+        path = f"{folder}/{filename}"
+
+        # 🔥 DEBUG
+        st.write("UPLOAD PATH:", path)
+
+        try:
+            file = repo.get_contents(path)
+
+            repo.update_file(
+                path,
+                f"update {filename}",
+                file_bytes,
+                file.sha
+            )
+
+            st.success(f"🔄 Updated: {filename}")
+
+        except Exception as e:
+            repo.create_file(
+                path,
+                f"create {filename}",
+                file_bytes
+            )
+
+            st.success(f"🆕 Created: {filename}")
+
+    except Exception as e:
+        st.error(f"❌ Gagal upload GitHub: {e}")
         
 
 # ============================
