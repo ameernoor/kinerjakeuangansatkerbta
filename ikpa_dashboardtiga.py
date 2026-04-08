@@ -572,44 +572,28 @@ def render_table_pin_satker(df):
             gb.configure_column(col, cellRenderer=cell_popup_renderer)
 
     # =====================================================
-    # HILANGKAN LOGO AGGRID
-    # =====================================================
-    st.markdown("""
-    <style>
-    .ag-watermark {
-        display: none !important;
-    }
-    </style>
-    """, unsafe_allow_html=True)
-
-    # =====================================================
     # KOLOM NOMOR
     # =====================================================
     gb.configure_column(
         "__rowNum__",
         headerName="No",
         pinned="left",
-        minWidth=50,
-        maxWidth=70,
+        width=60,
         sortable=False,
         filter=False,
         cellStyle={"textAlign": "center"}
     )
 
-    # =====================================================
-    # DEFAULT COLUMN (AUTO + BATAS)
-    # =====================================================
     gb.configure_default_column(
         resizable=True,
         sortable=True,
         filter=True,
-        minWidth=70,
-        maxWidth=110
+        minWidth=80, 
     )
-
-    # =====================================================
-    # KOLOM TEKS
-    # =====================================================
+    
+    # ===============================
+    # KOLOM TEKS RATA KIRI
+    # ===============================
     text_columns = [
         "Kode Satker",
         "Uraian Satker-RINGKAS",
@@ -623,29 +607,21 @@ def render_table_pin_satker(df):
                 cellStyle={"textAlign": "left"}
             )
 
-    # =====================================================
-    # KOLOM KHUSUS
-    # =====================================================
     if "Uraian Satker-RINGKAS" in df.columns:
         gb.configure_column(
             "Uraian Satker-RINGKAS",
             headerName="Nama Satker",
             pinned="left",
-            minWidth=150,
-            maxWidth=250
+            width=180
         )
 
     if "Kode Satker" in df.columns:
         gb.configure_column(
             "Kode Satker",
             pinned="left",
-            minWidth=80,
-            maxWidth=120
+            width=80
         )
 
-    # =====================================================
-    # ZEBRA STYLE
-    # =====================================================
     zebra_dark = JsCode("""
     function(params) {
         return {
@@ -655,41 +631,27 @@ def render_table_pin_satker(df):
     }
     """)
 
-    # =====================================================
-    # GRID OPTIONS (AUTO FIT + STABIL)
-    # =====================================================
     gb.configure_grid_options(
-        domLayout="normal",  # 🔥 scroll aktif
+        domLayout="normal",
         alwaysShowHorizontalScroll=True,
-        suppressSizeToFit=True,  # 🔥 penting!
         getRowStyle=zebra_dark,
         headerHeight=40,
-
-        onFirstDataRendered=JsCode("""
-            function(params) {
-                setTimeout(function() {
-
-                    const allColumnIds = [];
-                    params.columnApi.getAllColumns().forEach(function(col) {
-                        allColumnIds.push(col.getId());
-                    });
-
-                    params.columnApi.autoSizeColumns(allColumnIds);
-
-                }, 200);
-            }
-        """)
     )
 
+    # ===============================
+    # GRID + EXPORT
+    # ===============================
+
+    # ===== GRID DULU =====
     grid_response = AgGrid(
         df,
         gridOptions=gb.build(),
-        height=600,   # 🔥 scroll muncul
+        height=calc_grid_height(df),
         width="100%",
         theme="streamlit",
         allow_unsafe_jscode=True,
         data_return_mode="FILTERED_AND_SORTED",
-        update_mode="MODEL_CHANGED",
+        update_mode="MODEL_CHANGED"
     )
 
     # ===== AMBIL DATA HASIL FILTER =====
