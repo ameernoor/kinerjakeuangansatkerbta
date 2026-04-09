@@ -7066,6 +7066,12 @@ def page_dashboard():
         
 
 # HALAMAN 2: DASHBOARD INTERNAL KPPN (Protected)
+def find_column(df, keyword):
+    for col in df.columns:
+        if keyword.upper() in col.upper():
+            return col
+    return None
+
 def menu_ews_satker():
     st.subheader("🏛️ Early Warning System Kinerja Keuangan Satker")
 
@@ -7175,15 +7181,6 @@ def menu_ews_satker():
             step=1,
             key="ymax_internal"
         )
-
-    # ===============================
-    # HELPER AUTO DETECT KOLOM
-    # ===============================
-    def find_column(df, keyword):
-        for col in df.columns:
-            if keyword.upper() in col.upper():
-                return col
-        return None
 
 
     # ===============================
