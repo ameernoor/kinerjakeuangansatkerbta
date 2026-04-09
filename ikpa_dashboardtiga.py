@@ -1685,9 +1685,20 @@ def process_excel_file(uploaded_file, upload_year):
     # ===============================
     # 1️⃣ AMBIL BULAN (AMAN)
     # ===============================
-    try:
-        month_text = str(df_raw.iloc[1, 0])
+    month_text = ""
 
+    # 🔍 cari bulan di beberapa baris pertama
+    for i in range(5):
+        cell = str(df_raw.iloc[i, 0]).upper()
+
+        if "BULAN" in cell or any(m in cell for m in VALID_MONTHS.keys()):
+            month_text = cell
+            break
+
+    # fallback kalau tidak ketemu
+    if not month_text:
+        month_raw = "JULI"
+    else:
         month_raw = (
             month_text
             .split(":")[-1]
@@ -1695,9 +1706,6 @@ def process_excel_file(uploaded_file, upload_year):
             .upper()
             .split()[0]
         )
-
-    except Exception:
-        month_raw = "JULI"
 
     month = VALID_MONTHS.get(month_raw, "JULI")
 
