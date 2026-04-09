@@ -2135,7 +2135,7 @@ def process_kppn_flat(df):
     return df
 
 # ============================================================
-# PARSER DIPA 
+# PARSER DIPA (FINAL CLEAN VERSION)
 # ============================================================
 def parse_dipa(df_raw):
     import pandas as pd
@@ -2145,7 +2145,7 @@ def parse_dipa(df_raw):
     # ====== 1. Hapus baris kosong ======
     df = df_raw.dropna(how="all").reset_index(drop=True)
 
-    # ====== 2. Cari baris header yang BENAR ======
+    # ====== 2. Cari baris header ======
     header_row = None
     for i in range(min(15, len(df))):
         row_str = " ".join(df.iloc[i].astype(str).str.upper().tolist())
@@ -2158,14 +2158,13 @@ def parse_dipa(df_raw):
             break
 
     if header_row is None:
-        raise ValueError("Header DIPA tidak ditemukan (SPAN 2022–2023)")
-
+        raise ValueError("Header DIPA tidak ditemukan")
 
     # ====== 3. Set header ======
     df.columns = df.iloc[header_row]
     df = df.iloc[header_row + 1:].reset_index(drop=True)
 
-    # ====== 4. Normalisasi kolom ======
+    # ====== 4. Ambil kolom ======
     def get(names):
         for c in df.columns:
             cc = str(c).upper().replace(".", "").strip()
@@ -2184,23 +2183,19 @@ def parse_dipa(df_raw):
     col_tgl_dipa = get(["TANGGAL DIPA"])
     col_owner  = get(["OWNER"])
     col_stamp  = get(["STAMP"])
-    col_status = get(["STATUS", "HISTORY"])
 
     out = pd.DataFrame()
 
-    # NO
+    # ====== BASIC DATA ======
     out["NO"] = df[col_no] if col_no else range(1, len(df)+1)
 
-    # Kode Satker
     out["Kode Satker"] = df[col_satker].astype(str).str.extract(r"(\d{6})")[0]
 
-    # Nama Satker
     if col_nama:
         out["Satker"] = df[col_nama].astype(str)
     else:
         out["Satker"] = df[col_satker].astype(str).str.replace(r"^\d{6}\s*-?\s*", "", regex=True)
 
-    # Total Pagu
     out["Total Pagu"] = (
         df[col_pagu].astype(str)
         .str.replace(r"[^\d\-\.]", "", regex=True)
@@ -2208,38 +2203,33 @@ def parse_dipa(df_raw):
         .astype(float)
     ) if col_pagu else 0
 
-    # No DIPA
     out["No Dipa"] = df[col_dipa].astype(str)
-    
-    # ===============================
-    # 🔥 AMBIL TAHUN DARI SEMUA NO DIPA
-    # ===============================
+
+    # ======================================================
+    # 🔥 DETEKSI TAHUN FINAL (HANYA DARI NO DIPA)
+    # ======================================================
     tahun_series = out["No Dipa"].str.extract(r"/(20\d{2})")[0]
 
     if tahun_series.notna().any():
-        tahun_series = tahun_series.astype(int)
+        tahun_series = tahun_series.dropna().astype(int)
 
-        # ambil tahun yang paling sering muncul
-        tahun_final = int(tahun_series.mode()[0])
-
-        out["Tahun"] = tahun_final
+        if not tahun_series.empty:
+            tahun_final = int(tahun_series.mode()[0])
+        else:
+            tahun_final = datetime.now().year
     else:
-        # fallback lama
-        out["Tahun"] = (
-            out["Tanggal Posting Revisi"].dt.year
-            .fillna(datetime.now().year)
-            .astype(int)
-        )
+        tahun_final = datetime.now().year
 
-    # Kementerian (BA)
+    # 🔥 set ke semua baris
+    out["Tahun"] = tahun_final
+
+    # ====== DATA LAIN ======
     out["Kementerian"] = out["No Dipa"].str.extract(r"DIPA-(\d{3})")[0].fillna("")
 
-    # Kode Status History -> BXX
     out["Kode Status History"] = (
         "B" + out["No Dipa"].str.extract(r"DIPA-\d{3}\.(\d{2})")[0].fillna("00")
     )
 
-    # Revisi ke
     if col_rev:
         r = df[col_rev].astype(str).str.extract(r"(\d+)")[0].fillna(0).astype(int)
         out["Revisi ke-"] = r
@@ -2248,78 +2238,33 @@ def parse_dipa(df_raw):
         out["Revisi ke-"] = 0
         out["Jenis Revisi"] = "ANGKA_DASAR"
 
-    # Tanggal DIPA
     out["Tanggal Dipa"] = (
         pd.to_datetime(df[col_tgl_dipa], errors="coerce")
         if col_tgl_dipa else pd.NaT
     )
 
-    # Tanggal Posting Revisi -> format dd-mm-yyyy
     out["Tanggal Posting Revisi"] = (
         pd.to_datetime(df[col_tgl], format="%d-%m-%Y", errors="coerce")
         if col_tgl else pd.NaT
     )
 
-    # Tahun
-    # ======================================================
-    # DETEKSI TAHUN CERDAS 
-    # ======================================================
-    tahun_series = out["Tanggal Posting Revisi"].dt.year
-
-    # kalau semua kosong ATAU tahun tidak masuk akal (misal < 2024)
-    if tahun_series.isna().all() or tahun_series.mode()[0] < 2024:
-
-        detected_year = None
-
-        # 🔍 scan seluruh isi file (header + data)
-        for col in df.columns:
-            for val in df[col].astype(str):
-                val = val.upper().strip()
-
-                # cari pola tahun
-                match = re.search(r"(20\d{2})", val)
-                if match:
-                    year_candidate = int(match.group(1))
-
-                    # filter tahun masuk akal
-                    if 2024 <= year_candidate <= datetime.now().year + 2:
-                        detected_year = year_candidate
-                        break
-
-            if detected_year:
-                break
-
-        # fallback kalau tidak ketemu
-        if not detected_year:
-            detected_year = datetime.now().year
-
-        out["Tahun"] = detected_year
-
-    else:
-        out["Tahun"] = tahun_series.fillna(datetime.now().year).astype(int)
-
-    # Owner (default untuk 2022–2024)
     out["Owner"] = (
         df[col_owner].astype(str)
         if col_owner else "UNIT"
     )
 
-    # Digital Stamp (default untuk 2022–2024)
     out["Digital Stamp"] = (
         df[col_stamp].astype(str)
         if col_stamp else "0000000000000000"
     )
 
-    # Jenis Satker TIDAK ditentukan di parser
     out["Jenis Satker"] = None
 
+    # ====== CLEAN ======
     out = out.dropna(subset=["Kode Satker"])
     out["Kode Satker"] = out["Kode Satker"].astype(str).str.zfill(6)
 
-
-    # ======================================================
-    # 🔑 PERBAIKAN NAMA SATKER (KHUSUS SPAN 2022–2023)
-    # ======================================================
+    # ====== FIX NAMA SATKER ======
     ref = st.session_state.reference_df[
         ["Kode Satker", "Uraian Satker-SINGKAT"]
     ].copy()
@@ -2327,13 +2272,8 @@ def parse_dipa(df_raw):
     ref["Kode Satker"] = ref["Kode Satker"].astype(str).str.strip()
     out["Kode Satker"] = out["Kode Satker"].astype(str).str.strip()
 
-    out = out.merge(
-        ref,
-        on="Kode Satker",
-        how="left"
-    )
+    out = out.merge(ref, on="Kode Satker", how="left")
 
-    # isi Satker dari referensi JIKA kosong
     out["Satker"] = (
         out["Satker"]
         .replace(["", "nan", "None"], pd.NA)
@@ -2341,9 +2281,8 @@ def parse_dipa(df_raw):
     )
 
     out.drop(columns=["Uraian Satker-SINGKAT"], inplace=True)
- 
-    return out
 
+    return out
 
 # ============================================================
 # FUNGSI HELPER: Load Data DIPA dari GitHub
