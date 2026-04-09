@@ -2093,8 +2093,6 @@ def process_excel_file_kppn(uploaded_file, year, detected_month=None):
     
 
 def process_kppn_flat(df):
-    import pandas as pd
-
     # ===============================
     # 1. AMBIL HEADER BARIS KE-2
     # ===============================
@@ -2115,9 +2113,14 @@ def process_kppn_flat(df):
     df = df.iloc[1:].reset_index(drop=True)
 
     # ===============================
-    # 3. FILTER HANYA "Nilai"
+    # 🔥 3. FILTER HANYA "NILAI" (SAFE)
     # ===============================
-    df = df[df["Keterangan"].str.upper() == "NILAI"]
+    if "Keterangan" in df.columns:
+        df["Keterangan"] = df["Keterangan"].astype(str)
+        df = df[df["Keterangan"].str.upper().str.contains("NILAI", na=False)]
+    else:
+        # format baru → tidak ada kolom Keterangan
+        pass
 
     # ===============================
     # 4. DROP KOLOM TIDAK PERLU
@@ -2134,11 +2137,20 @@ def process_kppn_flat(df):
     )
 
     # ===============================
-    # 6. RESET INDEX
+    # 🔥 6. HAPUS BARIS KOSONG / ZERO
+    # ===============================
+    df = df.dropna(how="all")
+
+    # optional: buang baris yang semua angka = 0
+    df = df[~(df.fillna(0) == 0).all(axis=1)]
+
+    # ===============================
+    # 7. RESET INDEX
     # ===============================
     df = df.reset_index(drop=True)
 
     return df
+
 
 # ============================================================
 # PARSER DIPA (FINAL CLEAN VERSION)
