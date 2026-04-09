@@ -2316,7 +2316,6 @@ def load_DATA_DIPA_from_github():
 # HELPER EXPORT EXCEL
 # ===============================
 def to_excel_bytes(df):
-    import io
     from openpyxl.utils import get_column_letter
 
     output = io.BytesIO()
@@ -2383,24 +2382,40 @@ def update_template_referensi_github(df_updated, repo, existing_file, message):
 
 
 # Save any file (Excel/template) to your GitHub repo
+from github.GithubException import GithubException
+
 def save_file_to_github(content_bytes, filename, folder):
     token = st.secrets["GITHUB_TOKEN"]
     repo_name = st.secrets["GITHUB_REPO"]
 
     g = Github(auth=Auth.Token(token))
     repo = g.get_repo(repo_name)
-    
 
-    # 1️⃣ buat path full
     path = f"{folder}/{filename}"
 
     try:
-        # 2️⃣ cek apakah file sudah ada
         existing = repo.get_contents(path)
-        repo.update_file(existing.path, f"Update {filename}", content_bytes, existing.sha)
-    except Exception:
-        # 3️⃣ jika folder tidak ada → buat file pertama
-        repo.create_file(path, f"Create {filename}", content_bytes)
+
+        repo.update_file(
+            path,
+            f"Update {filename}",
+            content_bytes,
+            existing.sha
+        )
+
+        st.success(f"✅ UPDATE: {path}")
+
+    except GithubException as e:
+        if e.status == 404:
+            repo.create_file(
+                path,
+                f"Create {filename}",
+                content_bytes
+            )
+            st.success(f"✅ CREATE: {path}")
+        else:
+            st.error(f"❌ GitHub ERROR: {e}")
+            raise
         
 
 # ============================
@@ -8201,7 +8216,6 @@ def process_uploaded_dipa(uploaded_file, save_file_to_github):
     
 import streamlit as st
 import pandas as pd
-import io
 from github import Github, Auth
 import base64
 
@@ -10340,8 +10354,6 @@ def page_admin():
         # ===========================
         st.markdown("---")
         st.subheader("📥 Download Data IKPA KPPN")
-
-        import io
 
         # pastikan session ada
         if "data_storage_kppn" not in st.session_state:
