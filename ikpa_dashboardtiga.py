@@ -2011,102 +2011,84 @@ def reprocess_all_ikpa_satker():
 
 
 def process_excel_file_kppn(uploaded_file, year, detected_month=None):
-    try:
-        import pandas as pd
+    import pandas as pd
+
+    df_raw = pd.read_excel(uploaded_file, header=None)
+
+    # ===============================
+    # 🔍 DETEKSI HEADER
+    # ===============================
+    header_row = detect_header_row(df_raw)
+
+    # ambil data setelah header
+    df_data = df_raw.iloc[header_row+2:].reset_index(drop=True)
+
+    processed_rows = []
+    i = 0
+
+    while i + 2 < len(df_data):
+
+        nilai = df_data.iloc[i]
+        bobot = df_data.iloc[i + 1]
+        nilai_akhir = df_data.iloc[i + 2]
 
         # ===============================
-        # 1️⃣ BULAN (WAJIB DARI UI)
+        # VALIDASI BARIS UTAMA
         # ===============================
-        month = detected_month if detected_month and detected_month != "UNKNOWN" else "UNKNOWN"
+        kode = str(nilai[2]).strip()
+        nama = str(nilai[3]).strip()
 
-        # ===============================
-        # 2️⃣ BACA FILE (RAW DULU)
-        # ===============================
-        df_raw = pd.read_excel(uploaded_file, header=None)
+        if not kode.isdigit():
+            i += 1
+            continue
 
-        # 🔥 DETEKSI HEADER (PAKAI DF, BUKAN FILE)
-        header_row = detect_header_row(df_raw)
+        row = {
+            "Kode KPPN": kode,
+            "Nama KPPN": nama,
 
-        # ===============================
-        # 3️⃣ LOAD ULANG DENGAN HEADER
-        # ===============================
-        uploaded_file.seek(0)
-        df = pd.read_excel(uploaded_file, header=[header_row, header_row+1])
+            "Revisi DIPA": nilai[5],
+            "Deviasi Halaman III DIPA": nilai[6],
+            "Penyerapan Anggaran": nilai[8],
+            "Belanja Kontraktual": nilai[9],
+            "Penyelesaian Tagihan": nilai[10],
+            "Pengelolaan UP dan TUP": nilai[11],
+            "Capaian Output": nilai[13],
 
-        # ===============================
-        # FLATTEN MULTI HEADER
-        # ===============================
-        df.columns = [
-            " ".join([str(i).strip() for i in col if str(i) != "nan"]).strip()
-            for col in df.columns
-        ]
-        
-        # ===============================
-        #  HAPUS KOLOM KOSONG (UNNAMED)
-        # ===============================
-        df = df.dropna(axis=1, how="all")
+            "Nilai Total": nilai[15],
+            "Konversi Bobot": nilai[16],
+            "Dispensasi SPM (Pengurangan)": nilai[17],
+            "Nilai Akhir (Nilai Total/Konversi Bobot)": nilai[18],
+        }
 
-        #  HAPUS KOLOM DUPLIKAT
-        df = df.loc[:, ~df.columns.duplicated()]
+        processed_rows.append(row)
 
-        # ===============================
-        # 4️⃣ NORMALISASI NAMA KOLOM
-        # ===============================
-        df.columns = (
-            df.columns.astype(str)
-            .str.strip()
-            .str.replace(r"\s+", " ", regex=True)
-        )
+        i += 3  # lompat per blok
 
-        # ===============================
-        # 5️⃣ VALIDASI KOLOM WAJIB
-        # ===============================
-        nilai_col = "Nilai Akhir (Nilai Total/Konversi Bobot)"
-        if nilai_col not in df.columns:
-            raise ValueError(
-                "File IKPA KPPN tidak valid.\n"
-                "Kolom 'Nilai Akhir (Nilai Total/Konversi Bobot)' tidak ditemukan."
-            )
+    df = pd.DataFrame(processed_rows)
 
-        # ===============================
-        # 6️⃣ KONVERSI DESIMAL (KOMA → TITIK)
-        # ===============================
-        df = df.applymap(
-            lambda x: str(x).replace(",", ".") if isinstance(x, str) else x
-        )
+    # ===============================
+    # METADATA
+    # ===============================
+    df["Bulan"] = detected_month or "UNKNOWN"
+    df["Tahun"] = year
+    df["Source"] = "Upload"
 
-        # ===============================
-        # 7️⃣ CAST NUMERIK (AMAN)
-        # ===============================
-        NON_NUMERIC = ["Nama KPPN", "Bulan", "Tahun", "Source"]
+    # ===============================
+    # RANKING
+    # ===============================
+    nilai_col = "Nilai Akhir (Nilai Total/Konversi Bobot)"
 
-        for col in df.columns:
-            if col not in NON_NUMERIC:
-                df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0)
+    df[nilai_col] = pd.to_numeric(df[nilai_col], errors="coerce").fillna(0)
 
-        # ===============================
-        # 8️⃣ METADATA
-        # ===============================
-        df["Bulan"] = month
-        df["Tahun"] = year
-        df["Source"] = "Upload"
+    df = df.sort_values(nilai_col, ascending=False)
 
-        # ===============================
-        # 🔑 9️⃣ DENSE RANKING
-        # ===============================
-        df = df.sort_values(nilai_col, ascending=False)
+    df["Peringkat"] = (
+        df[nilai_col]
+        .rank(method="dense", ascending=False)
+        .astype(int)
+    )
 
-        df["Peringkat"] = (
-            df[nilai_col]
-            .rank(method="dense", ascending=False)
-            .astype(int)
-        )
-
-        return df, month, year
-
-    except Exception as e:
-        st.error(f"❌ Error memproses IKPA KPPN: {e}")
-        return None, None, None
+    return df, detected_month, year
     
     
 
