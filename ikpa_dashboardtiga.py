@@ -1687,7 +1687,15 @@ def process_excel_file(uploaded_file, upload_year):
     # ===============================
     try:
         month_text = str(df_raw.iloc[1, 0])
-        month_raw = month_text.split(":")[-1].strip().upper()
+
+        month_raw = (
+            month_text
+            .split(":")[-1]
+            .strip()
+            .upper()
+            .split()[0]
+        )
+
     except Exception:
         month_raw = "JULI"
 
