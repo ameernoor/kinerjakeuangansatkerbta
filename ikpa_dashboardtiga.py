@@ -8042,11 +8042,12 @@ def process_uploaded_dipa(uploaded_file, save_file_to_github):
 
         # 3️⃣ Validasi Tahun
         if "Tahun" in df_std.columns and not df_std["Tahun"].isna().all():
-            tahun_dipa = int(df_std["Tahun"].dropna().min())
+            tahun_dipa = int(df_std["Tahun"].dropna().mode()[0])
         else:
             # Ambil tahun dari Tanggal Posting Revisi (tahun anggaran = paling awal)
             tahun_dipa = int(df_std["Tanggal Posting Revisi"].dropna().dt.year.min())
             df_std["Tahun"] = tahun_dipa
+            tahun = tahun_dipa
         
         # =====================================================
         # 🔑 NORMALISASI METADATA DIPA (ANTI DATA ANEH)
