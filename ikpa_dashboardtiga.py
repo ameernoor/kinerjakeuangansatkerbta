@@ -2137,7 +2137,6 @@ def process_kppn_flat(df):
 # ============================================================
 # PARSER DIPA 
 # ============================================================
-#Parser Perbaikan DIPA
 def parse_dipa(df_raw):
     import pandas as pd
     import re
@@ -2242,11 +2241,42 @@ def parse_dipa(df_raw):
     )
 
     # Tahun
-    out["Tahun"] = (
-        out["Tanggal Posting Revisi"].dt.year
-            .fillna(datetime.now().year)
-            .astype(int)
-    )
+    # ======================================================
+    # DETEKSI TAHUN CERDAS 
+    # ======================================================
+    tahun_series = out["Tanggal Posting Revisi"].dt.year
+
+    # kalau semua kosong ATAU tahun tidak masuk akal (misal < 2024)
+    if tahun_series.isna().all() or tahun_series.mode()[0] < 2024:
+
+        detected_year = None
+
+        # 🔍 scan seluruh isi file (header + data)
+        for col in df.columns:
+            for val in df[col].astype(str):
+                val = val.upper().strip()
+
+                # cari pola tahun
+                match = re.search(r"(20\d{2})", val)
+                if match:
+                    year_candidate = int(match.group(1))
+
+                    # filter tahun masuk akal
+                    if 2024 <= year_candidate <= datetime.now().year + 2:
+                        detected_year = year_candidate
+                        break
+
+            if detected_year:
+                break
+
+        # fallback kalau tidak ketemu
+        if not detected_year:
+            detected_year = datetime.now().year
+
+        out["Tahun"] = detected_year
+
+    else:
+        out["Tahun"] = tahun_series.fillna(datetime.now().year).astype(int)
 
     # Owner (default untuk 2022–2024)
     out["Owner"] = (
