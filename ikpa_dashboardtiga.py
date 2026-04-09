@@ -7575,7 +7575,8 @@ def menu_highlights():
     # ===============================
     all_data = []
     for (bulan, tahun), df in st.session_state.data_storage_kppn.items():
-        df_copy = df.copy()
+        # 🔥 HAPUS KOLOM DUPLIKAT (WAJIB)
+        df_copy = df_copy.loc[:, ~df_copy.columns.duplicated()]
         df_copy["Periode"] = f"{bulan} {tahun}"
         df_copy["Tahun"] = int(tahun)
         df_copy["Bulan"] = bulan
