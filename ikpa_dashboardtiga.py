@@ -7447,10 +7447,18 @@ def menu_ews_satker():
     # ======================================================
     # 🎯 PILIH SATKER (RINGKAS, SEARCHABLE, TETAP KODE)
     # ======================================================
+    options_satker = list(satker_short_label_map.keys())
+
+    safe_default = [k for k in default_kode if k in options_satker]
+
+    # fallback kalau kosong
+    if not safe_default:
+        safe_default = options_satker[:5]
+
     selected_kode_satker = st.multiselect(
         label="Pilih Satker (Nama Ringkas)",
-        options=list(satker_short_label_map.keys()),
-        default=default_kode,
+        options=options_satker,
+        default=safe_default,
         format_func=lambda k: satker_short_label_map[k],
         placeholder="🔍 Ketik nama satker…",
         key="trend_satker_selector",
