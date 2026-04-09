@@ -7575,11 +7575,23 @@ def menu_highlights():
     # ===============================
     all_data = []
     for (bulan, tahun), df in st.session_state.data_storage_kppn.items():
-        # 🔥 HAPUS KOLOM DUPLIKAT (WAJIB)
+        
+        # 🔥 WAJIB: COPY DULU
+        df_copy = df.copy()
+
+        # 🔥 CLEAN KOLOM (ANTI ERROR)
         df_copy = df_copy.loc[:, ~df_copy.columns.duplicated()]
+        df_copy.columns = (
+            df_copy.columns.astype(str)
+            .str.strip()
+            .str.replace(r"\s+", " ", regex=True)
+        )
+
+        # metadata
         df_copy["Periode"] = f"{bulan} {tahun}"
         df_copy["Tahun"] = int(tahun)
         df_copy["Bulan"] = bulan
+
         all_data.append(df_copy)
 
     df_all = pd.concat(all_data, ignore_index=True)
