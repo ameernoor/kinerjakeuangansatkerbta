@@ -2210,6 +2210,26 @@ def parse_dipa(df_raw):
 
     # No DIPA
     out["No Dipa"] = df[col_dipa].astype(str)
+    
+    # ===============================
+    # 🔥 AMBIL TAHUN DARI SEMUA NO DIPA
+    # ===============================
+    tahun_series = out["No Dipa"].str.extract(r"/(20\d{2})")[0]
+
+    if tahun_series.notna().any():
+        tahun_series = tahun_series.astype(int)
+
+        # ambil tahun yang paling sering muncul
+        tahun_final = int(tahun_series.mode()[0])
+
+        out["Tahun"] = tahun_final
+    else:
+        # fallback lama
+        out["Tahun"] = (
+            out["Tanggal Posting Revisi"].dt.year
+            .fillna(datetime.now().year)
+            .astype(int)
+        )
 
     # Kementerian (BA)
     out["Kementerian"] = out["No Dipa"].str.extract(r"DIPA-(\d{3})")[0].fillna("")
