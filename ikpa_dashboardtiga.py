@@ -8371,8 +8371,24 @@ def push_to_github(file_bytes, repo_path, repo_name, token, commit_message):
         st.error(f"❌ Gagal push ke GitHub: {e}")
         
 # Deteksi IKPA KPPN
-def detect_header_row(df_raw, max_scan=15):
-    
+def detect_header_row(file_or_df, max_scan=15):
+    # ===============================
+    # 🔥 HANDLE DUA TIPE INPUT
+    # ===============================
+    if isinstance(file_or_df, pd.DataFrame):
+        df_raw = file_or_df.copy()
+    else:
+        # file (BytesIO / upload)
+        try:
+            file_or_df.seek(0)
+        except:
+            pass
+
+        df_raw = pd.read_excel(file_or_df, header=None, nrows=max_scan)
+
+    # ===============================
+    # 🔍 DETEKSI HEADER
+    # ===============================
     keywords = ["KODE", "KPPN", "SATKER", "NILAI"]
 
     for i in range(min(max_scan, len(df_raw))):
