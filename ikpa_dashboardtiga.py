@@ -2020,15 +2020,29 @@ def process_excel_file_kppn(uploaded_file, year, detected_month=None):
         month = detected_month if detected_month and detected_month != "UNKNOWN" else "UNKNOWN"
 
         # ===============================
-        # 2️⃣ BACA FILE (FORMAT RINGKAS)
+        # 2️⃣ BACA FILE (RAW DULU)
         # ===============================
-        header_row = detect_header_row(uploaded_file)
+        df_raw = pd.read_excel(uploaded_file, header=None)
 
+        # 🔥 DETEKSI HEADER (PAKAI DF, BUKAN FILE)
+        header_row = detect_header_row(df_raw)
+
+        # ===============================
+        # 3️⃣ LOAD ULANG DENGAN HEADER
+        # ===============================
         uploaded_file.seek(0)
         df = pd.read_excel(uploaded_file, header=header_row)
 
         # ===============================
-        # 3️⃣ NORMALISASI NAMA KOLOM
+        # 🔥 HAPUS KOLOM KOSONG (UNNAMED)
+        # ===============================
+        df = df.dropna(axis=1, how="all")
+
+        # 🔥 HAPUS KOLOM DUPLIKAT
+        df = df.loc[:, ~df.columns.duplicated()]
+
+        # ===============================
+        # 4️⃣ NORMALISASI NAMA KOLOM
         # ===============================
         df.columns = (
             df.columns.astype(str)
@@ -2037,7 +2051,7 @@ def process_excel_file_kppn(uploaded_file, year, detected_month=None):
         )
 
         # ===============================
-        # 4️⃣ VALIDASI KOLOM WAJIB
+        # 5️⃣ VALIDASI KOLOM WAJIB
         # ===============================
         nilai_col = "Nilai Akhir (Nilai Total/Konversi Bobot)"
         if nilai_col not in df.columns:
@@ -2047,14 +2061,14 @@ def process_excel_file_kppn(uploaded_file, year, detected_month=None):
             )
 
         # ===============================
-        # 5️⃣ KONVERSI DESIMAL (KOMA → TITIK)
+        # 6️⃣ KONVERSI DESIMAL (KOMA → TITIK)
         # ===============================
         df = df.applymap(
             lambda x: str(x).replace(",", ".") if isinstance(x, str) else x
         )
 
         # ===============================
-        # 6️⃣ CAST NUMERIK (AMAN)
+        # 7️⃣ CAST NUMERIK (AMAN)
         # ===============================
         NON_NUMERIC = ["Nama KPPN", "Bulan", "Tahun", "Source"]
 
@@ -2063,14 +2077,14 @@ def process_excel_file_kppn(uploaded_file, year, detected_month=None):
                 df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0)
 
         # ===============================
-        # 7️⃣ METADATA
+        # 8️⃣ METADATA
         # ===============================
         df["Bulan"] = month
         df["Tahun"] = year
         df["Source"] = "Upload"
 
         # ===============================
-        # 🔑 8️⃣ DENSE RANKING (FINAL & BENAR)
+        # 🔑 9️⃣ DENSE RANKING
         # ===============================
         df = df.sort_values(nilai_col, ascending=False)
 
@@ -2085,6 +2099,8 @@ def process_excel_file_kppn(uploaded_file, year, detected_month=None):
     except Exception as e:
         st.error(f"❌ Error memproses IKPA KPPN: {e}")
         return None, None, None
+    
+    
 
 def process_kppn_flat(df):
     import pandas as pd
@@ -8347,16 +8363,12 @@ def push_to_github(file_bytes, repo_path, repo_name, token, commit_message):
         st.error(f"❌ Gagal push ke GitHub: {e}")
         
 # Deteksi IKPA KPPN
-def detect_header_row(file, max_scan=15):
-    import pandas as pd
-
-    file.seek(0)
-    preview = pd.read_excel(file, header=None, nrows=max_scan)
-
+def detect_header_row(df_raw, max_scan=15):
+    
     keywords = ["KODE", "KPPN", "SATKER", "NILAI"]
 
-    for i in range(len(preview)):
-        row = preview.iloc[i].astype(str).str.upper()
+    for i in range(min(max_scan, len(df_raw))):
+        row = df_raw.iloc[i].astype(str).str.upper()
 
         score = sum(
             any(k in cell for cell in row)
@@ -8367,6 +8379,7 @@ def detect_header_row(file, max_scan=15):
             return i
 
     return 0
+
 
 def detect_format(df):
     cols = [str(c).upper() for c in df.columns]
