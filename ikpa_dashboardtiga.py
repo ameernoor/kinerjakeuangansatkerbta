@@ -1690,60 +1690,47 @@ def process_excel_file(uploaded_file, upload_year):
     # ===============================
     month_raw = None
 
-    MONTH_NUMBER_MAP = {
-        "01": "JANUARI",
-        "02": "FEBRUARI",
-        "03": "MARET",
-        "04": "APRIL",
-        "05": "MEI",
-        "06": "JUNI",
-        "07": "JULI",
-        "08": "AGUSTUS",
-        "09": "SEPTEMBER",
-        "10": "OKTOBER",
-        "11": "NOVEMBER",
-        "12": "DESEMBER"
-    }
+    for i in range(len(df_raw)):
+        cell = str(df_raw.iloc[i, 1]).strip().upper()
 
-    # ===============================
-    # 1️⃣ CEK HEADER (5 BARIS PERTAMA)
-    # ===============================
-    for i in range(5):
-        cell = str(df_raw.iloc[i, 0]).upper()
+        # 🔥 bersihkan karakter aneh
+        cell = cell.replace("\u00a0", "").strip()
 
-        if "BULAN" in cell or any(m in cell for m in VALID_MONTHS.keys()):
-            try:
-                month_candidate = (
-                    cell
-                    .split(":")[-1]
-                    .strip()
-                    .upper()
-                    .split()[0]
-                )
-                month_raw = VALID_MONTHS.get(month_candidate)
-                if month_raw:
-                    break
-            except:
-                pass
-
-    # ===============================
-    # 2️⃣ CEK KOLOM PERIODE (kolom ke-2)
-    # ===============================
-    if not month_raw:
-        for i in range(len(df_raw)):
-            cell = str(df_raw.iloc[i, 1]).strip().upper()
-
-            if cell in MONTH_NUMBER_MAP:
-                month_raw = MONTH_NUMBER_MAP[cell]
+        # =========================
+        # 1️⃣ CEK ANGKA (03 → MARET)
+        # =========================
+        match = re.match(r"^\d{2}$", cell)
+        if match:
+            MONTH_NUMBER_MAP = {
+                "01": "JANUARI",
+                "02": "FEBRUARI",
+                "03": "MARET",
+                "04": "APRIL",
+                "05": "MEI",
+                "06": "JUNI",
+                "07": "JULI",
+                "08": "AGUSTUS",
+                "09": "SEPTEMBER",
+                "10": "OKTOBER",
+                "11": "NOVEMBER",
+                "12": "DESEMBER"
+            }
+            month_raw = MONTH_NUMBER_MAP.get(cell)
+            if month_raw:
                 break
 
-            if cell in VALID_MONTHS:
-                month_raw = VALID_MONTHS[cell]
+        # =========================
+        # 2️⃣ CEK TEKS (FLEXIBLE)
+        # =========================
+        for key in VALID_MONTHS:
+            if key in cell:   # 🔥 bukan exact match lagi
+                month_raw = VALID_MONTHS[key]
                 break
 
-    # ===============================
-    # 3️⃣ FALLBACK
-    # ===============================
+        if month_raw:
+            break
+
+    # fallback
     if not month_raw:
         month_raw = "JULI"
 
