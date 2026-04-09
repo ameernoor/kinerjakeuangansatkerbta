@@ -2456,8 +2456,7 @@ def load_data_from_github(_cache_buster: int = 0):
             continue
 
         try:
-            decoded = base64.b64decode(file.content)
-            df = pd.read_excel(io.BytesIO(decoded))
+            df = pd.read_excel(io.BytesIO(file.decoded_content))
             
             # ===============================
             # 🔥 RESET HASIL LAMA (WAJIB)
