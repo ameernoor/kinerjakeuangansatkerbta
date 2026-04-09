@@ -8405,6 +8405,25 @@ def page_admin():
         # Upload Data IKPA Satker
         st.subheader("📤 Upload Data IKPA Satker")
 
+        # ===============================
+        # TEST GITHUB (TEMPORARY)
+        # ===============================
+        if st.button("TEST GITHUB"):
+            try:
+                from github import Github, Auth
+
+                token = st.secrets["GITHUB_TOKEN"]
+                repo_name = st.secrets["GITHUB_REPO"]
+
+                g = Github(auth=Auth.Token(token))
+                repo = g.get_repo(repo_name)
+
+                repo.create_file("data/test.txt", "test commit", "hello world")
+
+                st.success("✅ BERHASIL COMMIT KE GITHUB")
+            except Exception as e:
+                st.error(f"❌ GAGAL: {e}")
+
         upload_year = st.selectbox(
             "Pilih Tahun",
             list(range(2020, 2031)),
