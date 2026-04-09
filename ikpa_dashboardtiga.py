@@ -2383,43 +2383,24 @@ def update_template_referensi_github(df_updated, repo, existing_file, message):
 
 
 # Save any file (Excel/template) to your GitHub repo
-from github.GithubException import GithubException
-
 def save_file_to_github(content_bytes, filename, folder):
     token = st.secrets["GITHUB_TOKEN"]
     repo_name = st.secrets["GITHUB_REPO"]
 
     g = Github(auth=Auth.Token(token))
     repo = g.get_repo(repo_name)
+    
 
+    # 1️⃣ buat path full
     path = f"{folder}/{filename}"
 
     try:
+        # 2️⃣ cek apakah file sudah ada
         existing = repo.get_contents(path)
-
-        # ✅ UPDATE kalau file ada
-        repo.update_file(
-            path,
-            f"Update {filename}",
-            content_bytes,
-            existing.sha
-        )
-
-        st.success(f"UPDATE: {path}")
-
-    except GithubException as e:
-        if e.status == 404:
-            # ✅ CREATE kalau file belum ada
-            repo.create_file(
-                path,
-                f"Create {filename}",
-                content_bytes
-            )
-            st.success(f"CREATE: {path}")
-        else:
-            # ❌ error lain jangan disembunyikan
-            st.error(f"Gagal GitHub: {e}")
-            raise e
+        repo.update_file(existing.path, f"Update {filename}", content_bytes, existing.sha)
+    except Exception:
+        # 3️⃣ jika folder tidak ada → buat file pertama
+        repo.create_file(path, f"Create {filename}", content_bytes)
         
 
 # ============================
@@ -2475,7 +2456,8 @@ def load_data_from_github(_cache_buster: int = 0):
             continue
 
         try:
-            df = pd.read_excel(io.BytesIO(file.decoded_content))
+            decoded = base64.b64decode(file.content)
+            df = pd.read_excel(io.BytesIO(decoded))
             
             # ===============================
             # 🔥 RESET HASIL LAMA (WAJIB)
@@ -2566,6 +2548,7 @@ def load_data_from_github(_cache_buster: int = 0):
             continue
 
     return data_storage
+
 
 #load data ikpa kppn
 def load_data_ikpa_kppn_from_github():
