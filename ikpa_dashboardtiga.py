@@ -2069,8 +2069,37 @@ def process_excel_file_kppn(uploaded_file, year, detected_month=None):
     # ===============================
     # METADATA
     # ===============================
-    df["Bulan"] = detected_month or "UNKNOWN"
-    df["Tahun"] = year
+    # ===============================
+    # DETEKSI BULAN OTOMATIS (FIX)
+    # ===============================
+    if not detected_month or detected_month == "UNKNOWN":
+
+        MONTH_MAP = {
+            "01": "JANUARI", "02": "FEBRUARI", "03": "MARET",
+            "04": "APRIL", "05": "MEI", "06": "JUNI",
+            "07": "JULI", "08": "AGUSTUS", "09": "SEPTEMBER",
+            "10": "OKTOBER", "11": "NOVEMBER", "12": "DESEMBER"
+        }
+
+        detected_month = "UNKNOWN"
+
+        # 🔍 coba ambil dari kolom Periode
+        for idx in range(len(df_data)):
+            val = str(df_data.iloc[idx, 1]).strip()
+
+            if val in MONTH_MAP:
+                detected_month = MONTH_MAP[val]
+                break
+
+        # 🔥 fallback terakhir (biar tidak hilang dari dropdown)
+        if detected_month == "UNKNOWN":
+            detected_month = "MARET"
+
+    # ===============================
+    # METADATA FINAL
+    # ===============================
+    df["Bulan"] = detected_month.upper()
+    df["Tahun"] = str(year)
     df["Source"] = "Upload"
 
     # ===============================
