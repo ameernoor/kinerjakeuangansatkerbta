@@ -1685,29 +1685,69 @@ def process_excel_file(uploaded_file, upload_year):
     # ===============================
     # 1️⃣ AMBIL BULAN (AMAN)
     # ===============================
-    month_text = ""
+    # ===============================
+    # 🔥 DETEKSI BULAN (HEADER + KOLOM)
+    # ===============================
+    month_raw = None
 
-    # 🔍 cari bulan di beberapa baris pertama
+    MONTH_NUMBER_MAP = {
+        "01": "JANUARI",
+        "02": "FEBRUARI",
+        "03": "MARET",
+        "04": "APRIL",
+        "05": "MEI",
+        "06": "JUNI",
+        "07": "JULI",
+        "08": "AGUSTUS",
+        "09": "SEPTEMBER",
+        "10": "OKTOBER",
+        "11": "NOVEMBER",
+        "12": "DESEMBER"
+    }
+
+    # ===============================
+    # 1️⃣ CEK HEADER (5 BARIS PERTAMA)
+    # ===============================
     for i in range(5):
         cell = str(df_raw.iloc[i, 0]).upper()
 
         if "BULAN" in cell or any(m in cell for m in VALID_MONTHS.keys()):
-            month_text = cell
-            break
+            try:
+                month_candidate = (
+                    cell
+                    .split(":")[-1]
+                    .strip()
+                    .upper()
+                    .split()[0]
+                )
+                month_raw = VALID_MONTHS.get(month_candidate)
+                if month_raw:
+                    break
+            except:
+                pass
 
-    # fallback kalau tidak ketemu
-    if not month_text:
+    # ===============================
+    # 2️⃣ CEK KOLOM PERIODE (kolom ke-2)
+    # ===============================
+    if not month_raw:
+        for i in range(len(df_raw)):
+            cell = str(df_raw.iloc[i, 1]).strip().upper()
+
+            if cell in MONTH_NUMBER_MAP:
+                month_raw = MONTH_NUMBER_MAP[cell]
+                break
+
+            if cell in VALID_MONTHS:
+                month_raw = VALID_MONTHS[cell]
+                break
+
+    # ===============================
+    # 3️⃣ FALLBACK
+    # ===============================
+    if not month_raw:
         month_raw = "JULI"
-    else:
-        month_raw = (
-            month_text
-            .split(":")[-1]
-            .strip()
-            .upper()
-            .split()[0]
-        )
 
-    month = VALID_MONTHS.get(month_raw, "JULI")
+    month = month_raw
 
     # ===============================
     # 2️⃣ DATA MULAI BARIS KE-5
