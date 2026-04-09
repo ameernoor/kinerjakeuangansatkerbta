@@ -7065,7 +7065,7 @@ def page_dashboard():
                                     
         
 
-# HALAMAN 2: DASHBOARD INTERNAL KPPN (Protected)    
+# HALAMAN 2: DASHBOARD INTERNAL KPPN (Protected)
 def menu_ews_satker():
     st.subheader("🏛️ Early Warning System Kinerja Keuangan Satker")
 
@@ -7176,41 +7176,57 @@ def menu_ews_satker():
             key="ymax_internal"
         )
 
-    # 📊 Highlights Kinerja Satker yang Perlu Perhatian Khusus
+    # ===============================
+    # HELPER AUTO DETECT KOLOM
+    # ===============================
+    def find_column(df, keyword):
+        for col in df.columns:
+            if keyword.upper() in col.upper():
+                return col
+        return None
+
+
+    # ===============================
+    # DETECT KOLOM DINAMIS (WAJIB)
+    # ===============================
+    col_up = find_column(df_tmp, "Pengelolaan UP dan TUP")
+    col_out = find_column(df_tmp, "Capaian Output")
+
+    # 🔴 GUARD (BIAR TIDAK ERROR)
+    if not col_up or not col_out:
+        st.error("❌ Kolom 'Pengelolaan UP dan TUP' atau 'Capaian Output' tidak ditemukan di data")
+        return
+
+
+    # ===============================
+    # 🔧 HITUNG JUMLAH (FIX)
+    # ===============================
+    n_up = len(df_tmp[df_tmp[col_up] < 100])
+    n_out = len(df_tmp[df_tmp[col_out] < 100])
+
+
     # ===============================
     # 🔧 ADAPTIVE LAYOUT (INTERNAL)
     # ===============================
-    df_tmp = df_latest.copy()
-    df_tmp["Satker"] = df_tmp["Satker_Internal"]
-
-    n_up = len(df_tmp[df_tmp['Pengelolaan UP dan TUP'] < 100])
-
     if n_up >= 15:
         col1, col2 = st.columns([3.5, 1.2])
     elif n_up >= 8:
         col1, col2 = st.columns([3, 1.5])
     else:
         col1, col2 = st.columns([2.5, 1.5])
-        
-    # ===============================
-    # 🔧 SHARED HEIGHT (BIAR TIDAK TINGGI SEBELAH)
-    # ===============================
-    n_out = len(df_tmp[df_tmp['Capaian Output'] < 100])
 
+
+    # ===============================
+    # 🔧 HEIGHT SETTING
+    # ===============================
     BAR_HEIGHT = 38
     BASE_HEIGHT = 260
-    MAX_HEIGHT = 1200
-
-    # ===============================
-    # 🔧 SOFT SHARED HEIGHT (NORMAL)
-    # ===============================
-    MAX_VISIBLE_ITEMS = 10  # ⬅️ kunci utama
+    MAX_VISIBLE_ITEMS = 10
 
     effective_items = min(max(n_up, n_out), MAX_VISIBLE_ITEMS)
 
     shared_height = BASE_HEIGHT + (effective_items * BAR_HEIGHT)
     shared_height = min(max(shared_height, 380), 700)
-
 
 
     # ======================================================
@@ -7236,7 +7252,7 @@ def menu_ews_satker():
 
         fig_up = create_internal_problem_chart_vertical(
             df_latest_up,
-            column='Pengelolaan UP dan TUP',
+            column=col_up,  # 🔥 FIX DI SINI
             threshold=100,
             title="Pengelolaan UP dan TUP Belum Optimal (< 100)",
             comparison='less',
@@ -7244,7 +7260,6 @@ def menu_ews_satker():
             show_colorbar=True,
             fixed_height=shared_height
         )
-
 
         if fig_up:
             st.plotly_chart(fig_up, use_container_width=True)
@@ -7275,7 +7290,7 @@ def menu_ews_satker():
 
         fig_output = create_internal_problem_chart_vertical(
             df_latest_out,
-            column='Capaian Output',
+            column=col_out,  # 🔥 FIX DI SINI
             threshold=100,
             title="Capaian Output Belum Optimal (< 100)",
             comparison='less',
@@ -7284,15 +7299,11 @@ def menu_ews_satker():
             fixed_height=shared_height
         )
 
-
         if fig_output:
             st.plotly_chart(fig_output, use_container_width=True)
         else:
             st.success("✅ Semua satker sudah optimal untuk Capaian Output")
-
-
-    warnings = []
-
+        
     
     # ===============================
     # 📈 ANALISIS TREN
