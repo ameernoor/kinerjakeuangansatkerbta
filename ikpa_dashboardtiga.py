@@ -2031,14 +2031,22 @@ def process_excel_file_kppn(uploaded_file, year, detected_month=None):
         # 3️⃣ LOAD ULANG DENGAN HEADER
         # ===============================
         uploaded_file.seek(0)
-        df = pd.read_excel(uploaded_file, header=header_row)
+        df = pd.read_excel(uploaded_file, header=[header_row, header_row+1])
 
         # ===============================
-        # 🔥 HAPUS KOLOM KOSONG (UNNAMED)
+        # FLATTEN MULTI HEADER
+        # ===============================
+        df.columns = [
+            " ".join([str(i).strip() for i in col if str(i) != "nan"]).strip()
+            for col in df.columns
+        ]
+        
+        # ===============================
+        #  HAPUS KOLOM KOSONG (UNNAMED)
         # ===============================
         df = df.dropna(axis=1, how="all")
 
-        # 🔥 HAPUS KOLOM DUPLIKAT
+        #  HAPUS KOLOM DUPLIKAT
         df = df.loc[:, ~df.columns.duplicated()]
 
         # ===============================
