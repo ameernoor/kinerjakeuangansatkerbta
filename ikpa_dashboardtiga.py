@@ -1833,6 +1833,17 @@ VALID_MONTHS = {
     "DESEMBER": "DESEMBER",
 }
 
+# ===============================
+# DEBUG GLOBAL
+# ===============================
+st.subheader("DEBUG GLOBAL")
+
+st.write("DATA_DIPA_by_year keys:")
+st.write(st.session_state.get("DATA_DIPA_by_year", {}).keys())
+
+st.write("DATA IKPA keys:")
+st.write(st.session_state.get("data_storage", {}).keys())
+
 def post_process_ikpa_satker(df, source="Upload"):
     df = df.copy()
 
@@ -3488,6 +3499,13 @@ def create_satker_column(df):
 
 def merge_ikpa_with_dipa(df):
     df = df.copy()
+    
+    st.write("===== DEBUG MERGE =====")
+
+    if "Tahun" in df.columns:
+        st.write("Tahun IKPA:", df["Tahun"].unique())
+
+    st.write("Available DIPA years:", list(st.session_state.get("DATA_DIPA_by_year", {}).keys()))
 
     # ===============================
     # AMBIL TAHUN DARI DATA IKPA
@@ -3504,6 +3522,13 @@ def merge_ikpa_with_dipa(df):
     dipa_dict = st.session_state.get("DATA_DIPA_by_year", {})
     df_dipa = dipa_dict.get(tahun)
 
+    if df_dipa is not None:
+        st.write("DIPA ditemukan untuk tahun", tahun)
+        st.write("Jumlah DIPA:", len(df_dipa))
+        st.write(df_dipa.head())
+    else:
+        st.error(f"DIPA TIDAK ADA untuk tahun {tahun}")
+        
     # 🔥 HANYA WARNING SEKALI
     if df_dipa is None or df_dipa.empty:
         st.warning(f"⚠️ DIPA tahun {tahun} tidak ditemukan")
@@ -8936,6 +8961,12 @@ def page_admin():
                         # SIMPAN KE SESSION
                         # ===============================
                         st.session_state.DATA_DIPA_by_year[tahun_dipa] = df_clean.copy()
+                        
+                        # 🔥 DEBUG
+                        st.write("DEBUG: DIPA masuk ke session")
+                        st.write("Tahun:", tahun_dipa)
+                        st.write("Jumlah baris:", len(df_clean))
+                        st.write("Kolom:", df_clean.columns)
 
                         # ===============================
                         # SIMPAN KE GITHUB
