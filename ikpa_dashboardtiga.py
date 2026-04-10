@@ -3542,36 +3542,46 @@ def create_satker_column(df):
 
 def merge_ikpa_with_dipa(df):
     df = df.copy()
-    
+
     st.write("===== DEBUG MERGE =====")
 
-    if "Tahun" in df.columns:
-        st.write("Tahun IKPA:", df["Tahun"].unique())
-
-    st.write("Available DIPA years:", list(st.session_state.get("DATA_DIPA_by_year", {}).keys()))
-
     # ===============================
-    # AMBIL TAHUN DARI DATA IKPA
+    # VALIDASI AWAL
     # ===============================
-    if "Tahun" not in df.columns or df.empty:
+    if df.empty or "Tahun" not in df.columns:
+        st.warning("⚠️ Data IKPA kosong / tidak ada kolom Tahun")
         df["Total Pagu"] = 0
         return df
 
+    # ===============================
+    # NORMALISASI TAHUN (ANTI ERROR TYPE)
+    # ===============================
+    df["Tahun"] = pd.to_numeric(df["Tahun"], errors="coerce").fillna(0).astype(int)
+
     tahun = int(df["Tahun"].iloc[0])
 
-    # ===============================
-    # AMBIL DIPA SESUAI TAHUN SAJA
-    # ===============================
+    st.write("Tahun IKPA:", tahun)
+
     dipa_dict = st.session_state.get("DATA_DIPA_by_year", {})
+    st.write("Available DIPA years:", list(dipa_dict.keys()))
+
+    # ===============================
+    # AMBIL DIPA
+    # ===============================
     df_dipa = dipa_dict.get(tahun)
 
-    if df_dipa is not None:
-        st.write("DIPA ditemukan untuk tahun", tahun)
-        st.write("Jumlah DIPA:", len(df_dipa))
-        st.write(df_dipa.head())
-    else:
-        st.error(f"DIPA TIDAK ADA untuk tahun {tahun}")
-        
+    if df_dipa is None or df_dipa.empty:
+        st.error(f"❌ DIPA TIDAK ADA untuk tahun {tahun}")
+        df["Total Pagu"] = 0
+        return df
+
+    # ===============================
+    # DEBUG DIPA
+    # ===============================
+    st.success(f"✅ DIPA ditemukan untuk tahun {tahun}")
+    st.write("Jumlah DIPA:", len(df_dipa))
+    st.write(df_dipa.head())
+
     # ===============================
     # NORMALISASI KODE SATKER
     # ===============================
@@ -3579,6 +3589,7 @@ def merge_ikpa_with_dipa(df):
         df["Kode Satker"]
         .astype(str)
         .str.extract(r"(\d+)")[0]
+        .fillna("")
         .str.zfill(6)
     )
 
@@ -3586,6 +3597,7 @@ def merge_ikpa_with_dipa(df):
         df_dipa["Kode Satker"]
         .astype(str)
         .str.extract(r"(\d+)")[0]
+        .fillna("")
         .str.zfill(6)
     )
 
@@ -3598,7 +3610,19 @@ def merge_ikpa_with_dipa(df):
         how="left"
     )
 
-    df_merge["Total Pagu"] = df_merge["Total Pagu"].fillna(0)
+    # ===============================
+    # HANDLE NILAI KOSONG
+    # ===============================
+    df_merge["Total Pagu"] = pd.to_numeric(
+        df_merge["Total Pagu"],
+        errors="coerce"
+    ).fillna(0)
+
+    # ===============================
+    # DEBUG MATCH
+    # ===============================
+    match_count = (df_merge["Total Pagu"] > 0).sum()
+    st.write(f"✅ Jumlah satker match: {match_count} dari {len(df_merge)}")
 
     return df_merge
 
