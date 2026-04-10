@@ -2009,12 +2009,71 @@ def process_kppn_ringkas(uploaded_file, year, detected_month):
 
 
 # ===============================
-# REPROCESS ALL IKPA SATKER
+# REPROCESS ALL IKPA SATKER (FINAL)
 # ===============================
 def reprocess_all_ikpa_satker():
     with st.spinner("🔄 Memproses ulang seluruh IKPA Satker..."):
+
+        # ===============================
+        # LOAD DATA DARI GITHUB
+        # ===============================
         load_data_from_github()
-        st.session_state.ikpa_dipa_merged = False
+
+        # ===============================
+        # 🔥 PROSES SEMUA DATA (AUTO MULTI-YEAR)
+        # ===============================
+        for key in list(st.session_state.data_storage.keys()):
+            df = st.session_state.data_storage[key]
+
+            if df is None or df.empty:
+                continue
+
+            # ===============================
+            # 🔥 VALIDASI TAHUN
+            # ===============================
+            if "Tahun" not in df.columns:
+                continue
+
+            df["Tahun"] = pd.to_numeric(df["Tahun"], errors="coerce").fillna(0).astype(int)
+
+            # ===============================
+            # NORMALISASI BULAN & PERIOD
+            # ===============================
+            if "Bulan" in df.columns:
+                df["Bulan"] = df["Bulan"].astype(str).str.upper().str.strip()
+                df["Period"] = df["Bulan"] + " " + df["Tahun"].astype(str)
+
+            # ===============================
+            # NORMALISASI KODE SATKER
+            # ===============================
+            if "Kode Satker" in df.columns:
+                df["Kode Satker"] = (
+                    df["Kode Satker"]
+                    .astype(str)
+                    .str.extract(r"(\d+)")[0]
+                    .str.zfill(6)
+                )
+
+            # ===============================
+            # 🔥 MERGE SESUAI TAHUN MASING-MASING
+            # ===============================
+            try:
+                df = merge_ikpa_with_dipa(df)
+            except Exception as e:
+                st.warning(f"⚠️ Merge gagal untuk {key}: {e}")
+                df["Total Pagu"] = 0
+
+            # ===============================
+            # SIMPAN KEMBALI
+            # ===============================
+            st.session_state.data_storage[key] = df
+
+        # ===============================
+        # FLAG SELESAI
+        # ===============================
+        st.session_state.ikpa_dipa_merged = True
+
+        st.success("✅ Reprocess IKPA Satker selesai (multi-year siap digunakan)")
 
 
 def process_excel_file_kppn(uploaded_file, year, detected_month=None):
