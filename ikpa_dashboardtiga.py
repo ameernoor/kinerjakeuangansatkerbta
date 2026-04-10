@@ -2428,14 +2428,14 @@ def load_DATA_DIPA_from_github():
     try:
         g = Github(auth=Auth.Token(token))
         repo = g.get_repo(repo_name)
-    except:
-        st.error("❌ Gagal koneksi GitHub.")
+    except Exception as e:
+        st.error(f"❌ Gagal koneksi GitHub: {e}")
         return False
 
     try:
         files = repo.get_contents("DATA_DIPA")
-    except:
-        st.error("❌ Folder DATA_DIPA tidak ditemukan di GitHub.")
+    except Exception as e:
+        st.error(f"❌ Folder DATA_DIPA tidak ditemukan: {e}")
         return False
 
     pattern = re.compile(r"^DIPA[_-]?(\d{4})\.xlsx$", re.IGNORECASE)
@@ -2444,37 +2444,72 @@ def load_DATA_DIPA_from_github():
     loaded_years = []
 
     for f in files:
-        st.write("📂 File ditemukan:", f.name)
+
+        # 🔍 DEBUG FILE
+        st.write("📂 File:", f.name)
 
         match = pattern.match(f.name)
         if not match:
-            st.write("⛔ Skip (nama tidak cocok):", f.name)
+            st.write("⛔ Skip:", f.name)
             continue
 
         tahun = int(match.group(1))
 
         try:
+            # ===============================
+            # 🔥 FIX UTAMA
+            # ===============================
             raw = base64.b64decode(f.content)
+
+            # ❌ JANGAN pakai header=None
             df_raw = pd.read_excel(io.BytesIO(raw))
 
-            st.write(f"📊 RAW DIPA {tahun}:")
+            st.write(f"📊 RAW {tahun}:")
             st.write(df_raw.head())
 
+            # ===============================
+            # 🔥 PAKAI STANDARDIZE SAJA
+            # ===============================
             df_parsed = standardize_dipa(df_raw)
 
-            st.write(f"✅ PARSED DIPA {tahun}:")
-            st.write(df_parsed.head())
-            st.write("Jumlah baris:", len(df_parsed))
+            # VALIDASI WAJIB
+            if df_parsed is None or df_parsed.empty:
+                st.error(f"❌ DIPA {tahun} kosong setelah parsing")
+                continue
 
+            # SET TAHUN (PAKSA)
             df_parsed["Tahun"] = tahun
 
+            # NORMALISASI KODE SATKER (ANTI GAGAL MERGE)
+            df_parsed["Kode Satker"] = (
+                df_parsed["Kode Satker"]
+                .astype(str)
+                .str.extract(r"(\d+)")[0]
+                .fillna("")
+                .str.zfill(6)
+            )
+
+            st.write(f"✅ PARSED {tahun}:")
+            st.write(df_parsed.head())
+            st.write("Jumlah:", len(df_parsed))
+
+            # SIMPAN
             st.session_state.DATA_DIPA_by_year[tahun] = df_parsed
             loaded_years.append(str(tahun))
 
         except Exception as e:
             st.error(f"❌ ERROR parsing {tahun}: {e}")
 
+    # ===============================
+    # FINAL RESULT
+    # ===============================
+    if loaded_years:
+        st.success("✅ DIPA berhasil dimuat: " + ", ".join(loaded_years))
+    else:
+        st.error("❌ SEMUA DIPA GAGAL DIMUAT")
+
     return True
+
 
 # ===============================
 # HELPER EXPORT EXCEL
@@ -11053,12 +11088,29 @@ def main():
     if st.session_state.data_storage_kppn and not st.session_state.get("_kppn_loaded_notif"):
         add_notification("Data IKPA KPPN berhasil dimuat dari GitHub")
         st.session_state["_kppn_loaded_notif"] = True
+        
+    # ===============================
+    # INIT DIPA (WAJIB)
+    # ===============================
+    if "DATA_DIPA_by_year" not in st.session_state:
+        st.session_state.DATA_DIPA_by_year = {}
+
+    if "DIPA_LOADED" not in st.session_state:
+        st.session_state.DIPA_LOADED = False
 
     # ============================================================
     # 3️⃣ AUTO LOAD DATA DIPA (HASIL PROCESSING STREAMLIT)
     # ============================================================
-    if not st.session_state.DATA_DIPA_by_year:
-            load_DATA_DIPA_from_github()
+    # ===============================
+    # AUTO LOAD DIPA (FIX FINAL)
+    # ===============================
+    if not st.session_state.DIPA_LOADED:
+        st.write("🔄 Loading DIPA dari GitHub...")
+        load_DATA_DIPA_from_github()
+        st.session_state.DIPA_LOADED = True
+
+        st.write("DEBUG DIPA LOADED:")
+        st.write(st.session_state.DATA_DIPA_by_year.keys())
 
     # ============================================================
     # 4️⃣ FINALISASI DATA DIPA (AMAN)
