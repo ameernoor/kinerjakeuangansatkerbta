@@ -2456,6 +2456,9 @@ def load_DATA_DIPA_from_github():
 
     pattern = re.compile(r"^DIPA[_-]?(\d{4})\.xlsx$", re.IGNORECASE)
 
+    # 🔥 FIX PENTING (WAJIB ADA)
+    loaded_years = []
+
     if "DATA_DIPA_by_year" not in st.session_state:
         st.session_state.DATA_DIPA_by_year = {}
 
@@ -2473,30 +2476,27 @@ def load_DATA_DIPA_from_github():
 
         try:
             # ===============================
-            # FIX UTAMA
+            # LOAD FILE
             # ===============================
             raw = base64.b64decode(f.content)
-
-            # ❌ JANGAN pakai header=None
             df_raw = pd.read_excel(io.BytesIO(raw))
 
             st.write(f"📊 RAW {tahun}:")
             st.write(df_raw.head())
 
             # ===============================
-            # 🔥 PAKAI STANDARDIZE SAJA
+            # STANDARDIZE
             # ===============================
             df_parsed = standardize_dipa(df_raw)
 
-            # VALIDASI WAJIB
             if df_parsed is None or df_parsed.empty:
                 st.error(f"❌ DIPA {tahun} kosong setelah parsing")
                 continue
 
-            # SET TAHUN (PAKSA)
+            # SET TAHUN
             df_parsed["Tahun"] = tahun
 
-            # NORMALISASI KODE SATKER (ANTI GAGAL MERGE)
+            # NORMALISASI KODE SATKER
             df_parsed["Kode Satker"] = (
                 df_parsed["Kode Satker"]
                 .astype(str)
