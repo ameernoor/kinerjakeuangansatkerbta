@@ -2444,33 +2444,35 @@ def load_DATA_DIPA_from_github():
     loaded_years = []
 
     for f in files:
+        st.write("📂 File ditemukan:", f.name)
+
         match = pattern.match(f.name)
         if not match:
+            st.write("⛔ Skip (nama tidak cocok):", f.name)
             continue
 
         tahun = int(match.group(1))
 
         try:
             raw = base64.b64decode(f.content)
-            df_raw = pd.read_excel(io.BytesIO(raw), header=None)
+            df_raw = pd.read_excel(io.BytesIO(raw))
 
-            # GUNAKAN PARSER BARU
-            df_parsed = parse_dipa(df_raw)
+            st.write(f"📊 RAW DIPA {tahun}:")
+            st.write(df_raw.head())
 
-            # Set tahun
+            df_parsed = standardize_dipa(df_raw)
+
+            st.write(f"✅ PARSED DIPA {tahun}:")
+            st.write(df_parsed.head())
+            st.write("Jumlah baris:", len(df_parsed))
+
             df_parsed["Tahun"] = tahun
 
-            # Simpan
             st.session_state.DATA_DIPA_by_year[tahun] = df_parsed
             loaded_years.append(str(tahun))
 
         except Exception as e:
-            st.warning(f"⚠️ DIPA {tahun} gagal diproses: {e}")
-
-    if loaded_years:
-        add_notification("DIPA berhasil dimuat: " + ", ".join(loaded_years))
-    else:
-        st.error("❌ Tidak ada data DIPA yang dapat diproses.")
+            st.error(f"❌ ERROR parsing {tahun}: {e}")
 
     return True
 
