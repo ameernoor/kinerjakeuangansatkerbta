@@ -8896,6 +8896,15 @@ def page_admin():
         # ============================================================
         st.markdown("---")
         st.subheader("📤 Upload Data DIPA")
+        
+        # ===============================
+        # PILIH TAHUN DIPA
+        # ===============================
+        selected_year_dipa = st.selectbox(
+            "📅 Pilih Tahun DIPA",
+            list(range(2022, 2031)),  # 2022 - 2030
+            index=3  # default 2025 (opsional)
+        )
 
         st.caption(
             "Sistem dapat memproses Data DIPA yang bersumber dari :\n"
@@ -8913,35 +8922,50 @@ def page_admin():
         if uploaded_dipa_file is not None:
             if st.button("🔄 Proses Data DIPA", type="primary"):
                 with st.spinner("Memproses data DIPA..."):
-                    
-                    # ====================================================
-                    # RESET STATE DIPA (WAJIB, AMAN, KHUSUS DIPA)
-                    # ====================================================
-                    st.session_state.DATA_DIPA_by_year = {}
+
+                    # ===============================
+                    # INIT STORAGE (JANGAN RESET!)
+                    # ===============================
+                    if "DATA_DIPA_by_year" not in st.session_state:
+                        st.session_state.DATA_DIPA_by_year = {}
+
                     st.session_state.ikpa_dipa_merged = False
                     st.session_state["_just_uploaded_dipa"] = True
 
-                    # clear cache agar tidak pakai data lama
                     st.cache_data.clear()
-                    
+
                     try:
-                        # 1️⃣ Proses file raw DIPA → dibersihkan → revisi terbaru
-                        df_clean, tahun_dipa, status_msg = process_uploaded_dipa(uploaded_dipa_file, save_file_to_github)
+                        # ===============================
+                        # PROSES FILE
+                        # ===============================
+                        df_clean, _, status_msg = process_uploaded_dipa(
+                            uploaded_dipa_file,
+                            save_file_to_github
+                        )
 
                         if df_clean is None:
                             st.error(f"❌ Gagal memproses DIPA: {status_msg}")
                             st.stop()
 
-                        # 2️⃣ Pastikan kolom Kode Satker distandardkan
-                        df_clean["Kode Satker"] = df_clean["Kode Satker"].astype(str).apply(normalize_kode_satker)
+                        # ===============================
+                        # NORMALISASI
+                        # ===============================
+                        df_clean["Kode Satker"] = (
+                            df_clean["Kode Satker"]
+                            .astype(str)
+                            .apply(normalize_kode_satker)
+                        )
 
-                        # 3️⃣ Simpan ke session_state per tahun
-                        if "DATA_DIPA_by_year" not in st.session_state:
-                            st.session_state.DATA_DIPA_by_year = {}
+                        # ===============================
+                        # 🔥 PAKAI TAHUN DARI SELECTBOX
+                        # ===============================
+                        tahun_dipa = selected_year_dipa
 
                         st.session_state.DATA_DIPA_by_year[int(tahun_dipa)] = df_clean.copy()
 
-                        # 4️⃣ Simpan ke GitHub dalam folder `DATA_DIPA`
+                        # ===============================
+                        # SIMPAN KE GITHUB
+                        # ===============================
                         excel_bytes = io.BytesIO()
                         with pd.ExcelWriter(excel_bytes, engine='openpyxl') as writer:
                             df_clean.to_excel(writer, index=False, sheet_name=f"DIPA_{tahun_dipa}")
@@ -8950,18 +8974,22 @@ def page_admin():
 
                         save_file_to_github(
                             excel_bytes.getvalue(),
-                            f"DIPA_{tahun_dipa}.xlsx",  
+                            f"DIPA_{tahun_dipa}.xlsx",
                             folder="DATA_DIPA"
                         )
 
+                        # ===============================
+                        # LOG
+                        # ===============================
                         log_activity(
                             menu="Upload Data",
                             action="Upload Data DIPA",
-                            detail=f"Tahun {tahun} | {len(df_dipa)} satker"
+                            detail=f"Tahun {tahun_dipa} | {len(df_clean)} satker"
                         )
 
-
-                        # 6️⃣ Tampilkan hasil preview
+                        # ===============================
+                        # OUTPUT
+                        # ===============================
                         st.success(f"✅ Data DIPA tahun {tahun_dipa} berhasil diproses & disimpan.")
                         st.dataframe(df_clean.head(10), use_container_width=True)
 
