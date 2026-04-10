@@ -3544,6 +3544,10 @@ def merge_ikpa_with_dipa(df):
     df = df.copy()
 
     st.write("===== DEBUG MERGE =====")
+    if not st.session_state.get("DATA_DIPA_by_year"):
+        st.error("💥 DIPA HILANG DARI SESSION")
+        df["Total Pagu"] = 0
+        return df
 
     # ===============================
     # VALIDASI AWAL
@@ -11124,29 +11128,33 @@ def main():
     if "DATA_DIPA_by_year" not in st.session_state:
         st.session_state.DATA_DIPA_by_year = {}
 
-    if "DIPA_LOADED" not in st.session_state:
-        st.session_state.DIPA_LOADED = False
+    if "_DIPA_LOCKED" not in st.session_state:
+        st.session_state._DIPA_LOCKED = False
 
-    # ============================================================
-    # 3️⃣ AUTO LOAD DATA DIPA (HASIL PROCESSING STREAMLIT)
-    # ============================================================
     # ===============================
-    # AUTO LOAD DIPA (FIX FINAL)
+    # LOAD DIPA (HANYA SEKALI)
     # ===============================
-    if not st.session_state.DIPA_LOADED:
+    if not st.session_state._DIPA_LOCKED:
+
         st.write("🔄 Loading DIPA dari GitHub...")
+
         load_DATA_DIPA_from_github()
-        st.session_state.DIPA_LOADED = True
+
+        # 🔥 LOCK AGAR TIDAK KE-RESET
+        st.session_state._DIPA_LOCKED = True
 
         st.write("DEBUG DIPA LOADED:")
         st.write(st.session_state.DATA_DIPA_by_year.keys())
 
-    # ============================================================
-    # 4️⃣ FINALISASI DATA DIPA (AMAN)
-    # ============================================================
+
+    # ===============================
+    # FINALISASI DIPA (AMAN)
+    # ===============================
     if st.session_state.DATA_DIPA_by_year:
         for tahun, df in st.session_state.DATA_DIPA_by_year.items():
+
             df = df.copy()
+
             if "Uraian Satker" in df.columns:
                 df["Uraian Satker-RINGKAS"] = (
                     df["Uraian Satker"]
@@ -11156,6 +11164,7 @@ def main():
                 )
             else:
                 df["Uraian Satker-RINGKAS"] = "-"
+
             st.session_state.DATA_DIPA_by_year[tahun] = df
 
     # ============================================================
