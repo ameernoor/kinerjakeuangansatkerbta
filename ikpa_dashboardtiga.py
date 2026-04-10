@@ -3529,12 +3529,6 @@ def merge_ikpa_with_dipa(df):
     else:
         st.error(f"DIPA TIDAK ADA untuk tahun {tahun}")
         
-    # 🔥 HANYA WARNING SEKALI
-    if df_dipa is None or df_dipa.empty:
-        st.warning(f"⚠️ DIPA tahun {tahun} tidak ditemukan")
-        df["Total Pagu"] = 0
-        return df
-
     # ===============================
     # NORMALISASI KODE SATKER
     # ===============================
