@@ -1686,67 +1686,62 @@ def process_excel_file(uploaded_file, upload_year):
     df_raw = pd.read_excel(uploaded_file, header=None)
 
     # ===============================
-    # 🔥 DETEKSI BULAN OTOMATIS
+    # DETEKSI BULAN
     # ===============================
     month = "JULI"
-
     for i in range(len(df_raw)):
         row_text = " ".join(df_raw.iloc[i].astype(str)).upper()
-
         for key, val in VALID_MONTHS.items():
             if key in row_text:
                 month = val
                 break
-
         if month != "JULI":
             break
 
     # ===============================
-    # 🔥 AMBIL DATA
+    # AMBIL DATA
     # ===============================
     df_data = df_raw.iloc[4:].reset_index(drop=True)
 
     processed_rows = []
+    i = 0
 
-    for i in range(len(df_data)):
+    while i < len(df_data) - 3:
 
-        row = df_data.iloc[i]
+        row_nilai = df_data.iloc[i]
+        row_bobot = df_data.iloc[i+1]
+        row_nilai_akhir = df_data.iloc[i+2]
+        row_aspek = df_data.iloc[i+3]
 
         # ===============================
-        # 🔥 DETEKSI SATKER
+        # VALIDASI SATKER
         # ===============================
-        kode_satker = normalize_kode_satker(row[3])
-        uraian_satker = str(row[4]).strip()
+        kode_satker = normalize_kode_satker(row_nilai[3])
+        uraian_satker = str(row_nilai[4]).strip()
 
         if (
             not kode_satker
             or len(kode_satker) != 6
             or uraian_satker.upper() in ["NILAI", "BOBOT", "NILAI AKHIR"]
         ):
+            i += 1
             continue
 
         # ===============================
-        # 🔥 AMBIL SEMUA ANGKA DI BARIS
+        # AMBIL NILAI IKPA (FIX AKURAT)
         # ===============================
-        nilai_candidates = []
-
-        for val in row:
+        nilai_final = 0
+        for val in row_nilai_akhir:
             try:
-                val_clean = str(val).replace(",", ".").strip()
-                val_float = float(val_clean)
-
-                if 0 <= val_float <= 100:
-                    nilai_candidates.append(val_float)
+                val_float = float(str(val).replace(",", "."))
+                if 50 <= val_float <= 100:
+                    nilai_final = val_float
+                    break
             except:
                 continue
 
         # ===============================
-        # 🔥 NILAI IKPA = TERBESAR
-        # ===============================
-        nilai_final = max(nilai_candidates) if nilai_candidates else 0
-
-        # ===============================
-        # 🔥 AMBIL ANGKA LAIN (FLEKSIBEL)
+        # HELPER
         # ===============================
         def safe_num(val):
             try:
@@ -1754,27 +1749,31 @@ def process_excel_file(uploaded_file, upload_year):
             except:
                 return None
 
+        # ===============================
+        # BUILD ROW (FORMAT SAMA SEPERTI FILE LAMA)
+        # ===============================
         row_data = {
-            "No": row[0],
-            "Kode KPPN": str(row[1]).strip("'"),
-            "Kode BA": str(row[2]).strip("'"),
+            "No": row_nilai[0],
+            "Kode KPPN": str(row_nilai[1]).strip("'"),
+            "Kode BA": str(row_nilai[2]).strip("'"),
             "Kode Satker": kode_satker,
             "Uraian Satker": uraian_satker,
 
-            # indikator fleksibel
-            "Revisi DIPA": safe_num(row[6]),
-            "Deviasi Halaman III DIPA": safe_num(row[7]),
-            "Penyerapan Anggaran": safe_num(row[8]),
-            "Belanja Kontraktual": safe_num(row[9]),
-            "Penyelesaian Tagihan": safe_num(row[10]),
-            "Pengelolaan UP dan TUP": safe_num(row[11]),
-            "Capaian Output": safe_num(row[12]),
+            # indikator
+            "Revisi DIPA": safe_num(row_nilai[6]),
+            "Deviasi Halaman III DIPA": safe_num(row_nilai[7]),
+            "Penyerapan Anggaran": safe_num(row_nilai[8]),
+            "Belanja Kontraktual": safe_num(row_nilai[9]),
+            "Penyelesaian Tagihan": safe_num(row_nilai[10]),
+            "Pengelolaan UP dan TUP": safe_num(row_nilai[11]),
+            "Capaian Output": safe_num(row_nilai[12]),
 
-            "Nilai Total": safe_num(row[13]),
-            "Konversi Bobot": safe_num(row[14]),
-            "Dispensasi SPM (Pengurang)": safe_num(row[15]),
+            # total
+            "Nilai Total": safe_num(row_nilai[13]),
+            "Konversi Bobot": safe_num(row_nilai[14]),
+            "Dispensasi SPM (Pengurang)": safe_num(row_nilai[15]),
 
-            # 🔥 INI YANG PALING PENTING
+            # 🔥 FINAL IKPA
             "Nilai Akhir (Nilai Total/Konversi Bobot)": nilai_final,
 
             "Bulan": month,
@@ -1782,6 +1781,8 @@ def process_excel_file(uploaded_file, upload_year):
         }
 
         processed_rows.append(row_data)
+
+        i += 4  # 🔥 lompat blok
 
     df_final = pd.DataFrame(processed_rows)
 
@@ -2424,8 +2425,6 @@ def load_DATA_DIPA_from_github():
 
     for f in files:
 
-        # 🔍 DEBUG FILE
-        st.write("📂 File:", f.name)
 
         match = pattern.match(f.name)
         if not match:
@@ -3549,12 +3548,6 @@ def merge_ikpa_with_dipa(df):
         df["Total Pagu"] = 0
         return df
 
-    # ===============================
-    # DEBUG DIPA
-    # ===============================
-    st.success(f"✅ DIPA ditemukan untuk tahun {tahun}")
-    st.write("Jumlah DIPA:", len(df_dipa))
-    st.write(df_dipa.head())
 
     # ===============================
     # NORMALISASI KODE SATKER
@@ -3592,11 +3585,6 @@ def merge_ikpa_with_dipa(df):
         errors="coerce"
     ).fillna(0)
 
-    # ===============================
-    # DEBUG MATCH
-    # ===============================
-    match_count = (df_merge["Total Pagu"] > 0).sum()
-    st.write(f"✅ Jumlah satker match: {match_count} dari {len(df_merge)}")
 
     return df_merge
 
@@ -9006,11 +8994,7 @@ def page_admin():
                         # ===============================
                         st.session_state.DATA_DIPA_by_year[tahun_dipa] = df_clean.copy()
                         
-                        # 🔥 DEBUG
-                        st.write("DEBUG: DIPA masuk ke session")
-                        st.write("Tahun:", tahun_dipa)
-                        st.write("Jumlah baris:", len(df_clean))
-                        st.write("Kolom:", df_clean.columns)
+                    
 
                         # ===============================
                         # SIMPAN KE GITHUB
@@ -11112,8 +11096,6 @@ def main():
 
         st.session_state["_DIPA_LOADED"] = True
 
-        st.write("DEBUG DIPA AWAL:")
-        st.write(st.session_state.DATA_DIPA_by_year.keys())
 
 
     # ===============================
