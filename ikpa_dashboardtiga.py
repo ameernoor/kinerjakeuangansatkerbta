@@ -3421,40 +3421,55 @@ def create_satker_column(df):
 
 
 def merge_ikpa_with_dipa(df):
-    """
-    Merge IKPA Satker dengan DIPA berdasarkan Kode Satker + Tahun
-    """
     df = df.copy()
 
-    if "Kode Satker" not in df.columns or "Tahun" not in df.columns:
+    # ===============================
+    # AMBIL TAHUN DARI IKPA
+    # ===============================
+    if "Tahun" not in df.columns:
         df["Total Pagu"] = 0
         return df
 
     tahun = int(df["Tahun"].iloc[0])
 
-    dipa_map = st.session_state.get("DATA_DIPA_by_year", {})
-    df_dipa = dipa_map.get(tahun)
+    # ===============================
+    # AMBIL DIPA SESUAI TAHUN
+    # ===============================
+    dipa_dict = st.session_state.get("DATA_DIPA_by_year", {})
+    df_dipa = dipa_dict.get(tahun, pd.DataFrame())
 
-    if df_dipa is None or df_dipa.empty:
+    if df_dipa.empty:
+        st.warning(f"⚠️ DIPA tahun {tahun} tidak ditemukan")
         df["Total Pagu"] = 0
         return df
 
-    df_dipa_small = (
-        df_dipa[["Kode Satker", "Total Pagu"]]
-        .drop_duplicates("Kode Satker")
-    )
+    # ===============================
+    # NORMALISASI KODE SATKER
+    # ===============================
+    df["Kode Satker"] = df["Kode Satker"].astype(str).str.zfill(6)
+    df_dipa["Kode Satker"] = df_dipa["Kode Satker"].astype(str).str.zfill(6)
 
-    df = df.merge(
-        df_dipa_small,
+    # ===============================
+    # DEBUG (PENTING)
+    # ===============================
+    st.write("DEBUG IKPA:", df["Kode Satker"].head())
+    st.write("DEBUG DIPA:", df_dipa["Kode Satker"].head())
+
+    # ===============================
+    # MERGE
+    # ===============================
+    df_merge = df.merge(
+        df_dipa[["Kode Satker", "Total Pagu"]],
         on="Kode Satker",
         how="left"
     )
 
-    df["Total Pagu"] = pd.to_numeric(
-        df["Total Pagu"], errors="coerce"
-    ).fillna(0)
+    # ===============================
+    # HANDLE NULL
+    # ===============================
+    df_merge["Total Pagu"] = df_merge["Total Pagu"].fillna(0)
 
-    return df
+    return df_merge
 
 
 def classify_jenis_satker(df):
