@@ -1698,26 +1698,18 @@ def process_excel_file(uploaded_file, upload_year):
         if month != "JULI":
             break
 
-    # ===============================
-    # AMBIL DATA
-    # ===============================
-    df_data = df_raw.iloc[4:].reset_index(drop=True)
-
     processed_rows = []
+
     i = 0
+    while i < len(df_raw):
 
-    while i < len(df_data) - 3:
-
-        row_nilai = df_data.iloc[i]
-        row_bobot = df_data.iloc[i+1]
-        row_nilai_akhir = df_data.iloc[i+2]
-        row_aspek = df_data.iloc[i+3]
+        row = df_raw.iloc[i]
 
         # ===============================
-        # VALIDASI SATKER
+        # DETEKSI SATKER (ANCHOR UTAMA)
         # ===============================
-        kode_satker = normalize_kode_satker(row_nilai[3])
-        uraian_satker = str(row_nilai[4]).strip()
+        kode_satker = normalize_kode_satker(row[3])
+        uraian_satker = str(row[4]).strip()
 
         if (
             not kode_satker
@@ -1728,20 +1720,30 @@ def process_excel_file(uploaded_file, upload_year):
             continue
 
         # ===============================
-        # AMBIL NILAI IKPA (FIX AKURAT)
+        # AMBIL BLOK BARIS (FLEKSIBEL)
         # ===============================
-        nilai_final = 0
-        for val in row_nilai_akhir:
-            try:
-                val_float = float(str(val).replace(",", "."))
-                if 50 <= val_float <= 100:
-                    nilai_final = val_float
-                    break
-            except:
-                continue
+        block = df_raw.iloc[i:i+5]  # ambil 5 baris ke depan (aman semua format)
 
         # ===============================
-        # HELPER
+        # AMBIL NILAI IKPA (PALING AKURAT)
+        # ===============================
+        nilai_final = 0
+
+        for _, r in block.iterrows():
+            for val in r:
+                try:
+                    val_float = float(str(val).replace(",", "."))
+                    if 50 <= val_float <= 100:
+                        nilai_final = val_float
+                except:
+                    continue
+
+        # ambil nilai terakhir (biasanya IKPA)
+        # bukan max → tapi terakhir valid
+        # ini kunci biar tidak 100 semua
+
+        # ===============================
+        # HELPER NUMERIK
         # ===============================
         def safe_num(val):
             try:
@@ -1750,8 +1752,10 @@ def process_excel_file(uploaded_file, upload_year):
                 return None
 
         # ===============================
-        # BUILD ROW (FORMAT SAMA SEPERTI FILE LAMA)
+        # AMBIL DATA INDIKATOR (BARIS PERTAMA)
         # ===============================
+        row_nilai = row
+
         row_data = {
             "No": row_nilai[0],
             "Kode KPPN": str(row_nilai[1]).strip("'"),
@@ -1759,7 +1763,6 @@ def process_excel_file(uploaded_file, upload_year):
             "Kode Satker": kode_satker,
             "Uraian Satker": uraian_satker,
 
-            # indikator
             "Revisi DIPA": safe_num(row_nilai[6]),
             "Deviasi Halaman III DIPA": safe_num(row_nilai[7]),
             "Penyerapan Anggaran": safe_num(row_nilai[8]),
@@ -1768,12 +1771,10 @@ def process_excel_file(uploaded_file, upload_year):
             "Pengelolaan UP dan TUP": safe_num(row_nilai[11]),
             "Capaian Output": safe_num(row_nilai[12]),
 
-            # total
             "Nilai Total": safe_num(row_nilai[13]),
             "Konversi Bobot": safe_num(row_nilai[14]),
             "Dispensasi SPM (Pengurang)": safe_num(row_nilai[15]),
 
-            # 🔥 FINAL IKPA
             "Nilai Akhir (Nilai Total/Konversi Bobot)": nilai_final,
 
             "Bulan": month,
@@ -1782,7 +1783,10 @@ def process_excel_file(uploaded_file, upload_year):
 
         processed_rows.append(row_data)
 
-        i += 4  # 🔥 lompat blok
+        # ===============================
+        # LOMPAT DINAMIS
+        # ===============================
+        i += 3  # tidak paksa 4 → biar fleksibel semua format
 
     df_final = pd.DataFrame(processed_rows)
 
@@ -2440,8 +2444,6 @@ def load_DATA_DIPA_from_github():
             raw = base64.b64decode(f.content)
             df_raw = pd.read_excel(io.BytesIO(raw))
 
-            st.write(f"📊 RAW {tahun}:")
-            st.write(df_raw.head())
 
             # ===============================
             # STANDARDIZE
@@ -2464,9 +2466,7 @@ def load_DATA_DIPA_from_github():
                 .str.zfill(6)
             )
 
-            st.write(f"✅ PARSED {tahun}:")
-            st.write(df_parsed.head())
-            st.write("Jumlah:", len(df_parsed))
+
 
             # SIMPAN
             st.session_state.DATA_DIPA_by_year[tahun] = df_parsed
@@ -3536,7 +3536,7 @@ def merge_ikpa_with_dipa(df):
     st.write("Tahun IKPA:", tahun)
 
     dipa_dict = st.session_state.get("DATA_DIPA_by_year", {})
-    st.write("Available DIPA years:", list(dipa_dict.keys()))
+
 
     # ===============================
     # AMBIL DIPA
@@ -11089,8 +11089,6 @@ def main():
     # LOAD DIPA (HANYA SEKALI)
     # ===============================
     if not st.session_state.get("_DIPA_LOADED", False):
-
-        st.write("🔄 Loading DIPA dari GitHub (INIT AWAL)...")
 
         load_DATA_DIPA_from_github()
 
