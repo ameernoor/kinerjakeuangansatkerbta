@@ -1837,7 +1837,27 @@ def post_process_ikpa_satker(df, source="Upload"):
     df = df.copy()
 
     # =========================
-    # 1. NORMALISASI NUMERIK
+    # 🔥 0. FIX KRITIS (TAHUN & BULAN)
+    # =========================
+    if "Tahun" in df.columns:
+        df["Tahun"] = pd.to_numeric(df["Tahun"], errors="coerce").fillna(0).astype(int)
+
+    if "Bulan" in df.columns:
+        df["Bulan"] = df["Bulan"].astype(str).str.upper().str.strip()
+
+    # =========================
+    # 🔥 1. NORMALISASI KODE SATKER (WAJIB)
+    # =========================
+    if "Kode Satker" in df.columns:
+        df["Kode Satker"] = (
+            df["Kode Satker"]
+            .astype(str)
+            .str.extract(r"(\d+)")[0]
+            .str.zfill(6)
+        )
+
+    # =========================
+    # 2. NORMALISASI NUMERIK
     # =========================
     non_numeric = ["Uraian Satker", "Bulan", "Tahun"]
 
@@ -1846,27 +1866,10 @@ def post_process_ikpa_satker(df, source="Upload"):
             df[col] = (
                 df[col]
                 .astype(str)
+                .str.replace(".", "", regex=False)
                 .str.replace(",", ".", regex=False)
             )
-            df[col] = (
-                df[col]
-                .astype(str)
-                .str.replace(".", "", regex=False)   # hapus pemisah ribuan
-                .str.replace(",", ".", regex=False)  # koma jadi titik
-            )
-
             df[col] = pd.to_numeric(df[col], errors="coerce")
-
-    # =========================
-    # 🔤 2. NORMALISASI BULAN (FIX UTAMA)
-    # =========================
-    if "Bulan" in df.columns:
-        df["Kode Satker"] = (
-        df["Kode Satker"]
-        .astype(str)
-        .str.extract(r"(\d+)")[0]
-        .str.zfill(6)
-    )
 
     # =========================
     # 3. RANKING (DENSE)
@@ -1878,11 +1881,12 @@ def post_process_ikpa_satker(df, source="Upload"):
     df["Peringkat"] = (
         df[nilai_col]
         .rank(method="dense", ascending=False)
+        .fillna(0)
         .astype(int)
     )
 
     # =========================
-    # 4. METADATA PERIOD
+    # 4. METADATA PERIOD (FIX)
     # =========================
     df["Source"] = source
     df["Period"] = df["Bulan"] + " " + df["Tahun"].astype(str)
@@ -1896,15 +1900,16 @@ def post_process_ikpa_satker(df, source="Upload"):
     df["Period_Sort"] = (
         df["Tahun"].astype(int).astype(str)
         + "-"
-        + df["Bulan"].map(MONTH_ORDER).astype(int).astype(str).str.zfill(2)
+        + df["Bulan"].map(MONTH_ORDER).fillna(0).astype(int).astype(str).str.zfill(2)
     )
 
     # =========================
-    # 5. MERGE DIPA → PAGU
+    # 🔥 5. MERGE DIPA (AMAN)
     # =========================
     try:
         df = merge_ikpa_with_dipa(df)
-    except Exception:
+    except Exception as e:
+        st.warning(f"⚠️ Merge DIPA gagal: {e}")
         df["Total Pagu"] = 0
 
     # =========================
@@ -1914,9 +1919,9 @@ def post_process_ikpa_satker(df, source="Upload"):
         df = classify_jenis_satker(df)
     except Exception:
         df["Jenis Satker"] = "SEDANG"
-        
+
     # =========================
-    # 🔒 FINALISASI STRUKTUR KOLOM
+    # 🔒 FINALISASI KOLOM
     # =========================
     FINAL_COLUMNS = [
         "No","Kode KPPN","Kode BA","Kode Satker","Uraian Satker",
@@ -1937,8 +1942,10 @@ def post_process_ikpa_satker(df, source="Upload"):
     ]
 
     df = df[[c for c in FINAL_COLUMNS if c in df.columns]]
-    
-    # 🔒 PAKSA RINGKAS DI AKHIR (INI KUNCI)
+
+    # =========================
+    # 🔒 FINAL TOUCH
+    # =========================
     df = apply_reference_short_names(df)
     df = create_satker_column(df)
 
