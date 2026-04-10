@@ -8896,14 +8896,14 @@ def page_admin():
         # ============================================================
         st.markdown("---")
         st.subheader("📤 Upload Data DIPA")
-        
+
         # ===============================
         # PILIH TAHUN DIPA
         # ===============================
         selected_year_dipa = st.selectbox(
             "📅 Pilih Tahun DIPA",
             list(range(2022, 2031)),  # 2022 - 2030
-            index=3  # default 2025 (opsional)
+            index=3
         )
 
         st.caption(
@@ -8911,13 +8911,13 @@ def page_admin():
             "1. Aplikasi OM-SPAN → menu Penganggaran → Informasi Revisi DIPA\n"
             "2. Aplikasi MyIntress → menu Anggaran → Download Data Detil"
         )
-        
+
         uploaded_dipa_file = st.file_uploader(
             "Pilih file Excel DIPA (mentah dari SAS/SMART/Kemenkeu)",
             type=['xlsx', 'xls'],
             key="upload_dipa"
         )
-        
+
         # Tombol proses DIPA
         if uploaded_dipa_file is not None:
             if st.button("🔄 Proses Data DIPA", type="primary"):
@@ -8948,7 +8948,7 @@ def page_admin():
                             st.stop()
 
                         # ===============================
-                        # NORMALISASI
+                        # NORMALISASI KODE SATKER
                         # ===============================
                         df_clean["Kode Satker"] = (
                             df_clean["Kode Satker"]
@@ -8957,18 +8957,28 @@ def page_admin():
                         )
 
                         # ===============================
-                        # 🔥 PAKAI TAHUN DARI SELECTBOX
+                        # 🔥 FIX UTAMA: PAKSA TAHUN DARI UI
                         # ===============================
-                        tahun_dipa = selected_year_dipa
+                        tahun_dipa = int(selected_year_dipa)
 
-                        st.session_state.DATA_DIPA_by_year[int(tahun_dipa)] = df_clean.copy()
+                        # 🔒 KUNCI TAHUN DI DATA (ANTI BALIK KE FILE)
+                        df_clean["Tahun"] = tahun_dipa
+
+                        # ===============================
+                        # SIMPAN KE SESSION
+                        # ===============================
+                        st.session_state.DATA_DIPA_by_year[tahun_dipa] = df_clean.copy()
 
                         # ===============================
                         # SIMPAN KE GITHUB
                         # ===============================
                         excel_bytes = io.BytesIO()
                         with pd.ExcelWriter(excel_bytes, engine='openpyxl') as writer:
-                            df_clean.to_excel(writer, index=False, sheet_name=f"DIPA_{tahun_dipa}")
+                            df_clean.to_excel(
+                                writer,
+                                index=False,
+                                sheet_name=f"DIPA_{tahun_dipa}"
+                            )
 
                         excel_bytes.seek(0)
 
