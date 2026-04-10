@@ -1883,8 +1883,8 @@ def post_process_ikpa_satker(df, source="Upload"):
             df[col] = (
                 df[col]
                 .astype(str)
-                .str.replace(".", "", regex=False)
-                .str.replace(",", ".", regex=False)
+                .str.replace(",", ".", regex=False)  # 🔥 FIX UTAMA
+                .str.replace(" ", "")
             )
             df[col] = pd.to_numeric(df[col], errors="coerce")
 
