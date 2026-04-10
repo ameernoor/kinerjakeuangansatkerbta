@@ -11071,15 +11071,20 @@ def main():
                 })
 
     # ============================================================
-    # 🔄 REPROCESS IKPA SETELAH REFERENCE SIAP (1x)
+    # LOAD IKPA (STABIL & SEKALI SAJA)
     # ============================================================
-    if st.session_state.get("_force_fix_ringkas", True):
-        load_data_from_github.clear()
-        st.session_state.data_storage = load_data_from_github(
-            _cache_buster=int(time.time())
-        )
-        st.session_state.ikpa_dipa_merged = False
-        st.session_state["_force_fix_ringkas"] = False
+    if "data_storage" not in st.session_state:
+        st.session_state.data_storage = {}
+
+    if not st.session_state.data_storage:
+        st.write("🔄 Loading IKPA dari GitHub...")
+
+        st.session_state.data_storage = load_data_from_github()
+
+        if st.session_state.data_storage:
+            st.success("✅ IKPA berhasil dimuat")
+        else:
+            st.error("❌ IKPA GAGAL DIMUAT")
 
 
     # ============================================================
