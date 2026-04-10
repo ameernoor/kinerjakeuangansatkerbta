@@ -1068,7 +1068,13 @@ def standardize_dipa(df_raw):
 
     # KODE SATKER
     if col_kode:
-        out["Kode Satker"] = df[col_kode].astype(str).str.extract(r"(\d{6})")[0]
+        out["Kode Satker"] = (
+        df[col_kode]
+        .astype(str)
+        .str.extract(r"(\d+)")[0]   # ambil semua angka
+        .fillna("")
+        .str.zfill(6)               # paksa 6 digit
+    )
     else:
         out["Kode Satker"] = None
 
@@ -3532,8 +3538,19 @@ def merge_ikpa_with_dipa(df):
     # ===============================
     # NORMALISASI KODE SATKER
     # ===============================
-    df["Kode Satker"] = df["Kode Satker"].astype(str).str.zfill(6)
-    df_dipa["Kode Satker"] = df_dipa["Kode Satker"].astype(str).str.zfill(6)
+    df["Kode Satker"] = (
+        df["Kode Satker"]
+        .astype(str)
+        .str.extract(r"(\d+)")[0]
+        .str.zfill(6)
+    )
+
+    df_dipa["Kode Satker"] = (
+        df_dipa["Kode Satker"]
+        .astype(str)
+        .str.extract(r"(\d+)")[0]
+        .str.zfill(6)
+    )
 
     # ===============================
     # MERGE
