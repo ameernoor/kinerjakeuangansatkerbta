@@ -2440,8 +2440,8 @@ def load_DATA_DIPA_from_github():
 
     pattern = re.compile(r"^DIPA[_-]?(\d{4})\.xlsx$", re.IGNORECASE)
 
-    st.session_state.DATA_DIPA_by_year = {}
-    loaded_years = []
+    if "DATA_DIPA_by_year" not in st.session_state:
+        st.session_state.DATA_DIPA_by_year = {}
 
     for f in files:
 
@@ -2457,7 +2457,7 @@ def load_DATA_DIPA_from_github():
 
         try:
             # ===============================
-            # 🔥 FIX UTAMA
+            # FIX UTAMA
             # ===============================
             raw = base64.b64decode(f.content)
 
