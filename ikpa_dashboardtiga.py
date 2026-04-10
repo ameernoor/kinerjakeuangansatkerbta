@@ -1682,68 +1682,32 @@ def process_excel_digipay(uploaded_file, upload_year):
 # PARSER IKPA SATKER (INI KUNCI)
 # ===============================
 def process_excel_file(uploaded_file, upload_year):
-    """
-    PARSER IKPA SATKER — SATU-SATUNYA YANG BOLEH MEMBACA EXCEL MENTAH
-    (Sudah difilter baris invalid & bulan dinormalisasi)
-    """
+    
     df_raw = pd.read_excel(uploaded_file, header=None)
 
     # ===============================
-    # 1️⃣ AMBIL BULAN (AMAN)
-    # ===============================
-    # ===============================
-    # 🔥 DETEKSI BULAN (HEADER + KOLOM)
+    # 🔥 DETEKSI BULAN OTOMATIS
     # ===============================
     month_raw = None
 
     for i in range(len(df_raw)):
-        cell = str(df_raw.iloc[i, 1]).strip().upper()
+        row_text = " ".join(df_raw.iloc[i].astype(str)).upper()
 
-        # 🔥 bersihkan karakter aneh
-        cell = cell.replace("\u00a0", "").strip()
-
-        # =========================
-        # 1️⃣ CEK ANGKA (03 → MARET)
-        # =========================
-        match = re.match(r"^\d{2}$", cell)
-        if match:
-            MONTH_NUMBER_MAP = {
-                "01": "JANUARI",
-                "02": "FEBRUARI",
-                "03": "MARET",
-                "04": "APRIL",
-                "05": "MEI",
-                "06": "JUNI",
-                "07": "JULI",
-                "08": "AGUSTUS",
-                "09": "SEPTEMBER",
-                "10": "OKTOBER",
-                "11": "NOVEMBER",
-                "12": "DESEMBER"
-            }
-            month_raw = MONTH_NUMBER_MAP.get(cell)
-            if month_raw:
-                break
-
-        # =========================
-        # 2️⃣ CEK TEKS (FLEXIBLE)
-        # =========================
-        for key in VALID_MONTHS:
-            if key in cell:   # 🔥 bukan exact match lagi
-                month_raw = VALID_MONTHS[key]
+        for key, val in VALID_MONTHS.items():
+            if key in row_text:
+                month_raw = val
                 break
 
         if month_raw:
             break
 
-    # fallback
     if not month_raw:
         month_raw = "JULI"
 
     month = month_raw
 
     # ===============================
-    # 2️⃣ DATA MULAI BARIS KE-5
+    # 🔥 AMBIL DATA UTAMA
     # ===============================
     df_data = df_raw.iloc[4:].reset_index(drop=True)
     df_data.columns = range(len(df_data.columns))
@@ -1751,68 +1715,92 @@ def process_excel_file(uploaded_file, upload_year):
     processed_rows = []
     i = 0
 
-    while i + 3 < len(df_data):
+    while i < len(df_data) - 3:
 
-        nilai = df_data.iloc[i]
-        bobot = df_data.iloc[i + 1]
-        nilai_akhir = df_data.iloc[i + 2]
-        nilai_aspek = df_data.iloc[i + 3]
+        row_nilai = df_data.iloc[i]
+        row_bobot = df_data.iloc[i + 1]
+        row_nilai_akhir = df_data.iloc[i + 2]
+        row_aspek = df_data.iloc[i + 3]
 
         # ===============================
-        # 🔴 FILTER AWAL (CEGAH NILAI/BOBOT)
+        # 🔥 VALIDASI SATKER
         # ===============================
-        kode_satker = (
-            str(nilai[3])
-            .replace("\u00a0", "")   # hapus NBSP (spasi tak terlihat dari Excel)
-            .strip()                # hapus spasi kiri/kanan
-        )
-
+        kode_satker = str(row_nilai[3]).replace("\u00a0", "").strip()
         kode_satker = normalize_kode_satker(kode_satker)
 
-        uraian_satker = str(nilai[4]).strip()
+        uraian_satker = str(row_nilai[4]).strip()
 
         if (
             not kode_satker.isdigit()
             or len(kode_satker) != 6
-            or kode_satker == "000000"
             or uraian_satker.upper() in ["NILAI", "BOBOT", "NILAI AKHIR"]
         ):
-            i += 4
+            i += 1
             continue
 
-        row = {
-            "No": nilai[0],
-            "Kode KPPN": str(nilai[1]).strip("'"),
-            "Kode BA": str(nilai[2]).strip("'"),
+        # ===============================
+        # 🔥 AMBIL NILAI AKHIR (DINAMIS)
+        # ===============================
+        nilai_final = None
+
+        for val in row_nilai_akhir:
+            try:
+                val_clean = str(val).replace(",", ".").strip()
+                val_float = float(val_clean)
+                if 0 <= val_float <= 100:
+                    nilai_final = val_float
+                    break
+            except:
+                continue
+
+        # fallback kalau gagal
+        if nilai_final is None:
+            nilai_final = 0
+
+        # ===============================
+        # 🔥 AMBIL NILAI ASPEK (AMAN)
+        # ===============================
+        def safe_get(row, idx):
+            try:
+                return row[idx]
+            except:
+                return None
+
+        row_data = {
+            "No": safe_get(row_nilai, 0),
+            "Kode KPPN": str(safe_get(row_nilai, 1)).strip("'"),
+            "Kode BA": str(safe_get(row_nilai, 2)).strip("'"),
             "Kode Satker": kode_satker,
             "Uraian Satker": uraian_satker,
 
-            "Kualitas Perencanaan Anggaran": nilai_aspek[6],
-            "Kualitas Pelaksanaan Anggaran": nilai_aspek[8],
-            "Kualitas Hasil Pelaksanaan Anggaran": nilai_aspek[12],
+            "Kualitas Perencanaan Anggaran": safe_get(row_aspek, 6),
+            "Kualitas Pelaksanaan Anggaran": safe_get(row_aspek, 8),
+            "Kualitas Hasil Pelaksanaan Anggaran": safe_get(row_aspek, 12),
 
-            "Revisi DIPA": nilai[6],
-            "Deviasi Halaman III DIPA": nilai[7],
-            "Penyerapan Anggaran": nilai[8],
-            "Belanja Kontraktual": nilai[9],
-            "Penyelesaian Tagihan": nilai[10],
-            "Pengelolaan UP dan TUP": nilai[11],
-            "Capaian Output": nilai[12],
+            "Revisi DIPA": safe_get(row_nilai, 6),
+            "Deviasi Halaman III DIPA": safe_get(row_nilai, 7),
+            "Penyerapan Anggaran": safe_get(row_nilai, 8),
+            "Belanja Kontraktual": safe_get(row_nilai, 9),
+            "Penyelesaian Tagihan": safe_get(row_nilai, 10),
+            "Pengelolaan UP dan TUP": safe_get(row_nilai, 11),
+            "Capaian Output": safe_get(row_nilai, 12),
 
-            "Nilai Total": nilai[13],
-            "Konversi Bobot": nilai[14],
-            "Dispensasi SPM (Pengurang)": nilai[15],
-            "Nilai Akhir (Nilai Total/Konversi Bobot)": nilai[16],
+            "Nilai Total": safe_get(row_nilai, 13),
+            "Konversi Bobot": safe_get(row_nilai, 14),
+            "Dispensasi SPM (Pengurang)": safe_get(row_nilai, 15),
+
+            "Nilai Akhir (Nilai Total/Konversi Bobot)": nilai_final,
 
             "Bulan": month,
             "Tahun": upload_year
         }
 
-        processed_rows.append(row)
-        i += 4
+        processed_rows.append(row_data)
+
+        i += 4  # lompat blok
 
     # ===============================
-    # 3️⃣ DATAFRAME FINAL
+    # 🔥 DATAFRAME FINAL
     # ===============================
     df_final = pd.DataFrame(processed_rows)
 
@@ -1839,16 +1827,7 @@ VALID_MONTHS = {
     "DESEMBER": "DESEMBER",
 }
 
-# ===============================
-# DEBUG GLOBAL
-# ===============================
-st.subheader("DEBUG GLOBAL")
 
-st.write("DATA_DIPA_by_year keys:")
-st.write(st.session_state.get("DATA_DIPA_by_year", {}).keys())
-
-st.write("DATA IKPA keys:")
-st.write(st.session_state.get("data_storage", {}).keys())
 
 def post_process_ikpa_satker(df, source="Upload"):
     df = df.copy()
