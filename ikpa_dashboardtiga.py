@@ -11134,16 +11134,15 @@ def main():
     # ===============================
     # LOAD DIPA (HANYA SEKALI)
     # ===============================
-    if not st.session_state._DIPA_LOCKED:
+    if not st.session_state.get("_DIPA_LOADED", False):
 
-        st.write("🔄 Loading DIPA dari GitHub...")
+        st.write("🔄 Loading DIPA dari GitHub (INIT AWAL)...")
 
         load_DATA_DIPA_from_github()
 
-        # 🔥 LOCK AGAR TIDAK KE-RESET
-        st.session_state._DIPA_LOCKED = True
+        st.session_state["_DIPA_LOADED"] = True
 
-        st.write("DEBUG DIPA LOADED:")
+        st.write("DEBUG DIPA AWAL:")
         st.write(st.session_state.DATA_DIPA_by_year.keys())
 
 
