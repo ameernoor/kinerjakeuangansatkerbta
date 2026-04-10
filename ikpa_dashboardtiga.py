@@ -1688,107 +1688,93 @@ def process_excel_file(uploaded_file, upload_year):
     # ===============================
     # 🔥 DETEKSI BULAN OTOMATIS
     # ===============================
-    month_raw = None
+    month = "JULI"
 
     for i in range(len(df_raw)):
         row_text = " ".join(df_raw.iloc[i].astype(str)).upper()
 
         for key, val in VALID_MONTHS.items():
             if key in row_text:
-                month_raw = val
+                month = val
                 break
 
-        if month_raw:
+        if month != "JULI":
             break
 
-    if not month_raw:
-        month_raw = "JULI"
-
-    month = month_raw
-
     # ===============================
-    # 🔥 AMBIL DATA UTAMA
+    # 🔥 AMBIL DATA
     # ===============================
     df_data = df_raw.iloc[4:].reset_index(drop=True)
-    df_data.columns = range(len(df_data.columns))
 
     processed_rows = []
-    i = 0
 
-    while i < len(df_data) - 3:
+    for i in range(len(df_data)):
 
-        row_nilai = df_data.iloc[i]
-        row_bobot = df_data.iloc[i + 1]
-        row_nilai_akhir = df_data.iloc[i + 2]
-        row_aspek = df_data.iloc[i + 3]
+        row = df_data.iloc[i]
 
         # ===============================
-        # 🔥 VALIDASI SATKER
+        # 🔥 DETEKSI SATKER
         # ===============================
-        kode_satker = str(row_nilai[3]).replace("\u00a0", "").strip()
-        kode_satker = normalize_kode_satker(kode_satker)
-
-        uraian_satker = str(row_nilai[4]).strip()
+        kode_satker = normalize_kode_satker(row[3])
+        uraian_satker = str(row[4]).strip()
 
         if (
-            not kode_satker.isdigit()
+            not kode_satker
             or len(kode_satker) != 6
             or uraian_satker.upper() in ["NILAI", "BOBOT", "NILAI AKHIR"]
         ):
-            i += 1
             continue
 
         # ===============================
-        # 🔥 AMBIL NILAI AKHIR (DINAMIS)
+        # 🔥 AMBIL SEMUA ANGKA DI BARIS
         # ===============================
-        nilai_final = None
+        nilai_candidates = []
 
-        for val in row_nilai_akhir:
+        for val in row:
             try:
                 val_clean = str(val).replace(",", ".").strip()
                 val_float = float(val_clean)
+
                 if 0 <= val_float <= 100:
-                    nilai_final = val_float
-                    break
+                    nilai_candidates.append(val_float)
             except:
                 continue
 
-        # fallback kalau gagal
-        if nilai_final is None:
-            nilai_final = 0
+        # ===============================
+        # 🔥 NILAI IKPA = TERBESAR
+        # ===============================
+        nilai_final = max(nilai_candidates) if nilai_candidates else 0
 
         # ===============================
-        # 🔥 AMBIL NILAI ASPEK (AMAN)
+        # 🔥 AMBIL ANGKA LAIN (FLEKSIBEL)
         # ===============================
-        def safe_get(row, idx):
+        def safe_num(val):
             try:
-                return row[idx]
+                return float(str(val).replace(",", "."))
             except:
                 return None
 
         row_data = {
-            "No": safe_get(row_nilai, 0),
-            "Kode KPPN": str(safe_get(row_nilai, 1)).strip("'"),
-            "Kode BA": str(safe_get(row_nilai, 2)).strip("'"),
+            "No": row[0],
+            "Kode KPPN": str(row[1]).strip("'"),
+            "Kode BA": str(row[2]).strip("'"),
             "Kode Satker": kode_satker,
             "Uraian Satker": uraian_satker,
 
-            "Kualitas Perencanaan Anggaran": safe_get(row_aspek, 6),
-            "Kualitas Pelaksanaan Anggaran": safe_get(row_aspek, 8),
-            "Kualitas Hasil Pelaksanaan Anggaran": safe_get(row_aspek, 12),
+            # indikator fleksibel
+            "Revisi DIPA": safe_num(row[6]),
+            "Deviasi Halaman III DIPA": safe_num(row[7]),
+            "Penyerapan Anggaran": safe_num(row[8]),
+            "Belanja Kontraktual": safe_num(row[9]),
+            "Penyelesaian Tagihan": safe_num(row[10]),
+            "Pengelolaan UP dan TUP": safe_num(row[11]),
+            "Capaian Output": safe_num(row[12]),
 
-            "Revisi DIPA": safe_get(row_nilai, 6),
-            "Deviasi Halaman III DIPA": safe_get(row_nilai, 7),
-            "Penyerapan Anggaran": safe_get(row_nilai, 8),
-            "Belanja Kontraktual": safe_get(row_nilai, 9),
-            "Penyelesaian Tagihan": safe_get(row_nilai, 10),
-            "Pengelolaan UP dan TUP": safe_get(row_nilai, 11),
-            "Capaian Output": safe_get(row_nilai, 12),
+            "Nilai Total": safe_num(row[13]),
+            "Konversi Bobot": safe_num(row[14]),
+            "Dispensasi SPM (Pengurang)": safe_num(row[15]),
 
-            "Nilai Total": safe_get(row_nilai, 13),
-            "Konversi Bobot": safe_get(row_nilai, 14),
-            "Dispensasi SPM (Pengurang)": safe_get(row_nilai, 15),
-
+            # 🔥 INI YANG PALING PENTING
             "Nilai Akhir (Nilai Total/Konversi Bobot)": nilai_final,
 
             "Bulan": month,
@@ -1797,11 +1783,6 @@ def process_excel_file(uploaded_file, upload_year):
 
         processed_rows.append(row_data)
 
-        i += 4  # lompat blok
-
-    # ===============================
-    # 🔥 DATAFRAME FINAL
-    # ===============================
     df_final = pd.DataFrame(processed_rows)
 
     return df_final, month, upload_year
@@ -3537,12 +3518,6 @@ def create_satker_column(df):
 
 def merge_ikpa_with_dipa(df):
     df = df.copy()
-
-    st.write("===== DEBUG MERGE =====")
-    if not st.session_state.get("DATA_DIPA_by_year"):
-        st.error("💥 DIPA HILANG DARI SESSION")
-        df["Total Pagu"] = 0
-        return df
 
     # ===============================
     # VALIDASI AWAL
