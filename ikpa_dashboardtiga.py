@@ -3424,21 +3424,22 @@ def merge_ikpa_with_dipa(df):
     df = df.copy()
 
     # ===============================
-    # AMBIL TAHUN DARI IKPA
+    # AMBIL TAHUN DARI DATA IKPA
     # ===============================
-    if "Tahun" not in df.columns:
+    if "Tahun" not in df.columns or df.empty:
         df["Total Pagu"] = 0
         return df
 
     tahun = int(df["Tahun"].iloc[0])
 
     # ===============================
-    # AMBIL DIPA SESUAI TAHUN
+    # AMBIL DIPA SESUAI TAHUN SAJA
     # ===============================
     dipa_dict = st.session_state.get("DATA_DIPA_by_year", {})
-    df_dipa = dipa_dict.get(tahun, pd.DataFrame())
+    df_dipa = dipa_dict.get(tahun)
 
-    if df_dipa.empty:
+    # 🔥 HANYA WARNING SEKALI
+    if df_dipa is None or df_dipa.empty:
         st.warning(f"⚠️ DIPA tahun {tahun} tidak ditemukan")
         df["Total Pagu"] = 0
         return df
@@ -3450,12 +3451,6 @@ def merge_ikpa_with_dipa(df):
     df_dipa["Kode Satker"] = df_dipa["Kode Satker"].astype(str).str.zfill(6)
 
     # ===============================
-    # DEBUG (PENTING)
-    # ===============================
-    st.write("DEBUG IKPA:", df["Kode Satker"].head())
-    st.write("DEBUG DIPA:", df_dipa["Kode Satker"].head())
-
-    # ===============================
     # MERGE
     # ===============================
     df_merge = df.merge(
@@ -3464,9 +3459,6 @@ def merge_ikpa_with_dipa(df):
         how="left"
     )
 
-    # ===============================
-    # HANDLE NULL
-    # ===============================
     df_merge["Total Pagu"] = df_merge["Total Pagu"].fillna(0)
 
     return df_merge
