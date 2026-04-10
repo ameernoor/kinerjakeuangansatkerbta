@@ -8935,8 +8935,6 @@ def page_admin():
                     st.session_state.ikpa_dipa_merged = False
                     st.session_state["_just_uploaded_dipa"] = True
 
-                    st.cache_data.clear()
-
                     try:
                         # ===============================
                         # PROSES FILE
@@ -8961,7 +8959,7 @@ def page_admin():
                         )
 
                         # ===============================
-                        # 🔥 FIX UTAMA: PAKSA TAHUN DARI UI
+                        # FIX UTAMA: PAKSA TAHUN DARI UI
                         # ===============================
                         tahun_dipa = int(selected_year_dipa)
 
