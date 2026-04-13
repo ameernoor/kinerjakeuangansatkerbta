@@ -2694,7 +2694,7 @@ def save_file_to_github(content_bytes, filename, folder):
 # ============================
 #  LOAD DATA IKPA DARI GITHUB
 # ============================
-@st.cache_data(ttl=0)  
+@st.cache_data(ttl=0)
 def load_data_from_github(_cache_buster: int = 0):
 
     data_storage = {}
@@ -2742,19 +2742,40 @@ def load_data_from_github(_cache_buster: int = 0):
             decoded = base64.b64decode(file.content)
 
             # ===============================
-            # 🔥 FIX HEADER IKPA 2026
+            # 🔥 AUTO DETEKSI HEADER SUPER KUAT
             # ===============================
             df_raw = pd.read_excel(io.BytesIO(decoded), header=None)
 
-            for i in range(10):
+            header_row = None
+
+            for i in range(20):
                 row = df_raw.iloc[i].astype(str).str.upper()
-                if row.str.contains("KODE SATKER").any():
-                    df_raw.columns = df_raw.iloc[i]
-                    df_raw = df_raw[i+1:]
+
+                if (
+                    row.str.contains("KODE").any() and
+                    row.str.contains("SATKER").any()
+                ) or (
+                    row.str.contains("URAIAN").any()
+                ):
+                    header_row = i
                     break
 
-            df = df_raw.reset_index(drop=True)
+            if header_row is not None:
+                df_raw.columns = df_raw.iloc[header_row]
+                df = df_raw[header_row + 1:].copy()
+            else:
+                df = df_raw.copy()
+                df.columns = df.iloc[0]
+                df = df[1:]
+
+            df = df.reset_index(drop=True)
             df.columns = [str(c).strip() for c in df.columns]
+
+            # ===============================
+            # 🔥 BUANG BARIS SAMPAH
+            # ===============================
+            if "Kode Satker" in df.columns:
+                df = df[df["Kode Satker"].notna()]
 
             # ===============================
             # 🔥 RESET KOLOM TAMBAHAN
@@ -2764,10 +2785,9 @@ def load_data_from_github(_cache_buster: int = 0):
                     df.drop(columns=[col], inplace=True)
 
             # ===============================
-            # 🔥 VALIDASI LEBIH FLEXIBLE
+            # 🔥 VALIDASI FLEXIBLE
             # ===============================
             missing = [col for col in REQUIRED_COLUMNS if col not in df.columns]
-
             if len(missing) > 5:
                 continue
 
@@ -2784,11 +2804,13 @@ def load_data_from_github(_cache_buster: int = 0):
             df["Kode Satker"] = (
                 df["Kode Satker"]
                 .astype(str)
-                .apply(normalize_kode_satker)
+                .str.extract(r"(\d+)")[0]
+                .fillna("")
+                .str.zfill(6)
             )
 
             # ===============================
-            # 🔥 FIX NAMA SATKER
+            # FIX NAMA SATKER
             # ===============================
             df = apply_reference_short_names(df)
             df = create_satker_column(df)
@@ -2796,24 +2818,14 @@ def load_data_from_github(_cache_buster: int = 0):
             # ===============================
             # NORMALISASI NUMERIK
             # ===============================
-            numeric_cols = [
-                "Nilai Akhir (Nilai Total/Konversi Bobot)",
-                "Nilai Total", "Konversi Bobot",
-                "Revisi DIPA", "Deviasi Halaman III DIPA",
-                "Penyerapan Anggaran", "Belanja Kontraktual",
-                "Penyelesaian Tagihan", "Pengelolaan UP dan TUP",
-                "Capaian Output",
-                "Kualitas Perencanaan Anggaran",
-                "Kualitas Pelaksanaan Anggaran",
-                "Kualitas Hasil Pelaksanaan Anggaran",
-            ]
-
-            for col in numeric_cols:
-                if col in df.columns:
+            for col in df.columns:
+                if col not in ["Kode Satker", "Uraian Satker", "Bulan", "Tahun"]:
                     df[col] = df[col].apply(clean_numeric)
 
+            # ===============================
+            # PERIOD
+            # ===============================
             month_num = MONTH_ORDER.get(month, 0)
-
             df["Source"] = "GitHub"
             df["Period"] = f"{month} {year}"
             df["Period_Sort"] = f"{int(year):04d}-{month_num:02d}"
@@ -2830,7 +2842,7 @@ def load_data_from_github(_cache_buster: int = 0):
             )
 
             # ===============================
-            # 🔥 MERGE DIPA
+            # MERGE DIPA
             # ===============================
             df = merge_ikpa_with_dipa(df)
 
@@ -2841,7 +2853,7 @@ def load_data_from_github(_cache_buster: int = 0):
 
             data_storage[key] = df
 
-        except Exception:
+        except Exception as e:
             continue
 
     return data_storage
