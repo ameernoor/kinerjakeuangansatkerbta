@@ -3590,24 +3590,22 @@ def merge_ikpa_with_dipa(df):
     df = df.copy()
 
     # ===============================
-    # VALIDASI AWAL
+    # VALIDASI
     # ===============================
     if df.empty or "Tahun" not in df.columns:
-        st.warning("⚠️ Data IKPA kosong / tidak ada kolom Tahun")
         df["Total Pagu"] = 0
         return df
 
     # ===============================
-    # NORMALISASI TAHUN (ANTI ERROR TYPE)
+    # NORMALISASI TAHUN
     # ===============================
     df["Tahun"] = pd.to_numeric(df["Tahun"], errors="coerce").fillna(0).astype(int)
 
-    tahun = int(df["Tahun"].iloc[0])
-
-    st.write("Tahun IKPA:", tahun)
+    # 🔥 ambil tahun unik (lebih aman)
+    tahun_list = df["Tahun"].unique()
+    tahun = int(tahun_list[0])
 
     dipa_dict = st.session_state.get("DATA_DIPA_by_year", {})
-
 
     # ===============================
     # AMBIL DIPA
@@ -3615,10 +3613,11 @@ def merge_ikpa_with_dipa(df):
     df_dipa = dipa_dict.get(tahun)
 
     if df_dipa is None or df_dipa.empty:
-        st.error(f"❌ DIPA TIDAK ADA untuk tahun {tahun}")
+        # tidak usah error, langsung isi 0
         df["Total Pagu"] = 0
         return df
 
+    df_dipa = df_dipa.copy()
 
     # ===============================
     # NORMALISASI KODE SATKER
@@ -3640,6 +3639,11 @@ def merge_ikpa_with_dipa(df):
     )
 
     # ===============================
+    # 🔥 CLEAN PAGU (ANTI NAN)
+    # ===============================
+    df_dipa["Total Pagu"] = df_dipa["Total Pagu"].apply(clean_numeric)
+
+    # ===============================
     # MERGE
     # ===============================
     df_merge = df.merge(
@@ -3651,11 +3655,7 @@ def merge_ikpa_with_dipa(df):
     # ===============================
     # HANDLE NILAI KOSONG
     # ===============================
-    df_merge["Total Pagu"] = pd.to_numeric(
-        df_merge["Total Pagu"],
-        errors="coerce"
-    ).fillna(0)
-
+    df_merge["Total Pagu"] = df_merge["Total Pagu"].fillna(0)
 
     return df_merge
 
