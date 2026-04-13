@@ -864,6 +864,80 @@ if "_reference_loaded" not in st.session_state:
     st.session_state.reference_df = load_reference_satker()
     st.session_state["_reference_loaded"] = True
 
+# ===============================
+# 🔥 CLEAN NUMERIC (ANTI NAN)
+# ===============================
+def clean_numeric(val):
+    if pd.isna(val):
+        return 0
+    val = str(val)
+    val = val.replace(".", "")   # hapus ribuan
+    val = val.replace(",", ".")  # desimal
+    val = re.sub(r"[^\d\.\-]", "", val)
+
+    try:
+        return float(val)
+    except:
+        return 0
+
+
+# ===============================
+# 🔥 ENRICH NAMA SATKER
+# ===============================
+def enrich_nama_satker(df):
+    ref = st.session_state.get("reference_df", pd.DataFrame())
+
+    if ref.empty:
+        return df
+
+    ref_map = dict(zip(
+        ref["Kode Satker"].astype(str),
+        ref["Uraian Satker-SINGKAT"]
+    ))
+
+    df["Satker"] = df["Kode Satker"].map(ref_map).fillna(df.get("Satker", ""))
+
+    return df
+
+
+# ===============================
+# 🔥 AUTO PROCESS DIPA (UNIVERSAL)
+# ===============================
+def auto_process_dipa(df_raw):
+
+    # 1️⃣ DETEKSI OMSPAN
+    if is_omspan_dipa(df_raw):
+        df = adapt_dipa_omspan(df_raw)
+
+    else:
+        # 2️⃣ FIX HEADER
+        df_fixed = fix_dipa_header(df_raw)
+
+        # 3️⃣ STANDARDIZE
+        df = standardize_dipa(df_fixed)
+
+    # 4️⃣ BERSIHKAN ANGKA
+    for col in df.columns:
+        if any(x in col.upper() for x in ["PAGU", "REVISI"]):
+            df[col] = df[col].apply(clean_numeric)
+
+    # 5️⃣ ISI NAMA SATKER
+    df = enrich_nama_satker(df)
+
+    # 6️⃣ DROP DATA INVALID
+    df = df.dropna(subset=["Kode Satker"])
+    df = df[df["Kode Satker"] != "000000"]
+
+    # 7️⃣ FINAL CLEAN
+    df = df.fillna({
+        "Total Pagu": 0,
+        "Revisi ke-": 0,
+        "Jenis Revisi": "UNKNOWN",
+        "Satker": "TIDAK DIKETAHUI"
+    })
+
+    return df.reset_index(drop=True)
+
 
 def clean_invalid_satker_rows(df):
     df = df.copy()
@@ -1026,17 +1100,14 @@ def adapt_dipa_omspan(df_raw):
 
     return out.dropna(subset=["Kode Satker"])
 
-# -------------------------
-# standardize_dipa
-# -------------------------
 def standardize_dipa(df_raw):
-
+    
     df = df_raw.copy()
     df.columns = [str(c).strip() for c in df.columns]
 
-    # =============
-    # 1) NORMALISASI NAMA KOLOM
-    # =============
+    # =============================
+    # 1) NORMALISASI KOLOM
+    # =============================
     def find_col(possible_names):
         for c in df.columns:
             c_norm = re.sub(r'[^A-Z]', '', c.upper())
@@ -1046,7 +1117,6 @@ def standardize_dipa(df_raw):
                     return c
         return None
 
-    # Cari kolom penting
     col_kode = find_col(["Kode Satker", "Satker"])
     col_nama = find_col(["Nama Satker", "Uraian Satker", "Satker"])
     col_pagu = find_col(["Total Pagu", "Pagu Belanja", "Jumlah"])
@@ -1061,58 +1131,64 @@ def standardize_dipa(df_raw):
     col_status_history = find_col(["Kode Status History"])
     col_jenis_revisi = find_col(["Jenis Revisi"])
 
-    # =============
-    # 2) BUILD OUTPUT
-    # =============
     out = pd.DataFrame()
 
-    # KODE SATKER
+    # =============================
+    # 🔥 KODE SATKER
+    # =============================
     if col_kode:
         out["Kode Satker"] = (
-        df[col_kode]
-        .astype(str)
-        .str.extract(r"(\d+)")[0]   # ambil semua angka
-        .fillna("")
-        .str.zfill(6)               # paksa 6 digit
-    )
+            df[col_kode]
+            .astype(str)
+            .str.extract(r"(\d+)")[0]
+            .fillna("")
+            .str.zfill(6)
+        )
     else:
-        out["Kode Satker"] = None
+        out["Kode Satker"] = ""
 
-    # NAMA
+    # =============================
+    # 🔥 NAMA SATKER (AMAN)
+    # =============================
     if col_nama:
-        out["Satker"] = df[col_nama].astype(str).str.replace(r"^\d{6}\s*-?\s*", "", regex=True)
+        out["Satker"] = (
+            df[col_nama]
+            .astype(str)
+            .str.replace(r"^\d{6}\s*-?\s*", "", regex=True)
+            .str.strip()
+        )
     else:
         out["Satker"] = ""
 
-    # PAGU
+    # =============================
+    # 🔥 PAGU (ANTI NAN)
+    # =============================
     if col_pagu:
-        out["Total Pagu"] = (
-            df[col_pagu]
-            .astype(str)
-            .str.replace(r"[^\d\.-]", "", regex=True)
-            .astype(float)
-            .fillna(0)
-            .astype(int)
-        )
+        out["Total Pagu"] = df[col_pagu].apply(clean_numeric)
     else:
         out["Total Pagu"] = 0
 
-    # TANGGAL POSTING REVISI
+    # =============================
+    # TANGGAL
+    # =============================
     if col_tanggal_revisi:
         out["Tanggal Posting Revisi"] = pd.to_datetime(df[col_tanggal_revisi], errors="coerce")
     else:
         out["Tanggal Posting Revisi"] = pd.NaT
 
-    # TAHUN
     out["Tahun"] = out["Tanggal Posting Revisi"].dt.year.fillna(datetime.now().year).astype(int)
 
+    # =============================
     # NO
+    # =============================
     if col_no:
         out["NO"] = df[col_no]
     else:
         out["NO"] = range(1, len(df) + 1)
 
+    # =============================
     # KEMENTERIAN
+    # =============================
     if col_kementerian:
         out["Kementerian"] = df[col_kementerian].astype(str)
     else:
@@ -1121,56 +1197,50 @@ def standardize_dipa(df_raw):
         else:
             out["Kementerian"] = ""
 
+    # =============================
     # REVISI KE
+    # =============================
     if col_revisi_ke:
-        out["Revisi ke-"] = (
-            df[col_revisi_ke]
-            .astype(str)
-            .str.extract(r"(\d+)")
-            .fillna(0)
-            .astype(int)
-        )
+        out["Revisi ke-"] = df[col_revisi_ke].apply(clean_numeric).astype(int)
     else:
         out["Revisi ke-"] = 0
 
-    # NO DIPA
+    # =============================
+    # LAINNYA
+    # =============================
     out["No Dipa"] = df[col_dipa].astype(str) if col_dipa else ""
-
-    # TANGGAL DIPA
     out["Tanggal Dipa"] = pd.to_datetime(df[col_tanggal_dipa], errors="coerce") if col_tanggal_dipa else pd.NaT
-
-    # OWNER
     out["Owner"] = df[col_owner].astype(str) if col_owner else ""
-
-    # DIGITAL STAMP
     out["Digital Stamp"] = df[col_stamp].astype(str) if col_stamp else ""
-
-    # Jenis Satker (nanti dihitung di luar)
     out["Jenis Satker"] = ""
 
-    # KODE STATUS HISTORY
     if col_status_history:
         out["Kode Status History"] = df[col_status_history].astype(str)
     else:
         out["Kode Status History"] = ""
 
-    # JENIS REVISI
     if col_jenis_revisi:
         out["Jenis Revisi"] = df[col_jenis_revisi].astype(str)
     else:
         out["Jenis Revisi"] = ""
 
-    # =============
-    # 3) FINAL CLEANUP
-    # =============
+    # =============================
+    # 🔥 CLEAN FINAL
+    # =============================
     out = out.dropna(subset=["Kode Satker"])
+    out = out[out["Kode Satker"] != "000000"]
+
     out["Kode Satker"] = out["Kode Satker"].astype(str).str.zfill(6)
 
-    # =============
-    # 4) SUSUN URUTAN KOLOM
-    # =============
+    # 🔥 inject nama satker dari referensi (PENTING)
+    out = enrich_nama_satker(out)
+
+    # =============================
+    # FINAL ORDER
+    # =============================
     final_order = [
         "Kode Satker",
+        "Satker",
         "Tanggal Posting Revisi",
         "Total Pagu",
         "Jenis Satker",
@@ -1189,6 +1259,7 @@ def standardize_dipa(df_raw):
     out = out[existing_cols]
 
     return out
+
 
 #Normalisasi kode BA
 def normalize_kode_ba(x):
@@ -1819,7 +1890,7 @@ def post_process_ikpa_satker(df, source="Upload"):
     df = df.copy()
 
     # =========================
-    # 🔥 0. FIX KRITIS (TAHUN & BULAN)
+    # 🔥 0. FIX TAHUN & BULAN
     # =========================
     if "Tahun" in df.columns:
         df["Tahun"] = pd.to_numeric(df["Tahun"], errors="coerce").fillna(0).astype(int)
@@ -1828,52 +1899,41 @@ def post_process_ikpa_satker(df, source="Upload"):
         df["Bulan"] = df["Bulan"].astype(str).str.upper().str.strip()
 
     # =========================
-    # 1. NORMALISASI KODE SATKER (WAJIB)
+    # 🔥 1. NORMALISASI KODE SATKER
     # =========================
     if "Kode Satker" in df.columns:
         df["Kode Satker"] = (
             df["Kode Satker"]
             .astype(str)
             .str.extract(r"(\d+)")[0]
+            .fillna("")
             .str.zfill(6)
         )
 
     # =========================
-    # 2. NORMALISASI NUMERIK (AMAN)
+    # 🔥 2. NORMALISASI NUMERIK (ANTI NAN)
     # =========================
     non_numeric = [
         "Uraian Satker",
         "Bulan",
         "Tahun",
-        "Nilai Akhir (Nilai Total/Konversi Bobot)"  
+        "Nilai Akhir (Nilai Total/Konversi Bobot)"
     ]
 
     for col in df.columns:
         if col not in non_numeric:
-            df[col] = (
-                df[col]
-                .astype(str)
-                .str.replace(",", ".", regex=False)
-                .str.replace(" ", "")
-            )
-            df[col] = pd.to_numeric(df[col], errors="coerce")
+            df[col] = df[col].apply(clean_numeric)
 
     # =========================
-    # 3. FIX KHUSUS NILAI IKPA (KUNCI CHART)
+    # 🔥 3. FIX NILAI IKPA
     # =========================
     nilai_col = "Nilai Akhir (Nilai Total/Konversi Bobot)"
 
     if nilai_col in df.columns:
-        df[nilai_col] = (
-            df[nilai_col]
-            .astype(str)
-            .str.replace(",", ".", regex=False)
-            .str.replace(" ", "")
-        )
-        df[nilai_col] = pd.to_numeric(df[nilai_col], errors="coerce").fillna(0)
+        df[nilai_col] = df[nilai_col].apply(clean_numeric)
 
     # =========================
-    # 🔥 4. RANKING (ANTI KOSONG)
+    # 🔥 4. RANKING
     # =========================
     df = df.sort_values(nilai_col, ascending=False)
 
@@ -1885,7 +1945,7 @@ def post_process_ikpa_satker(df, source="Upload"):
     )
 
     # =========================
-    # 🔥 5. METADATA PERIOD
+    # 🔥 5. METADATA
     # =========================
     df["Source"] = source
     df["Period"] = df["Bulan"] + " " + df["Tahun"].astype(str)
@@ -1903,7 +1963,7 @@ def post_process_ikpa_satker(df, source="Upload"):
     )
 
     # =========================
-    # 🔥 6. MERGE DIPA (AMAN)
+    # 🔥 6. MERGE DIPA
     # =========================
     try:
         df = merge_ikpa_with_dipa(df)
@@ -1912,7 +1972,7 @@ def post_process_ikpa_satker(df, source="Upload"):
         df["Total Pagu"] = 0
 
     # =========================
-    # 🔥 7. KLASIFIKASI SATKER
+    # 🔥 7. KLASIFIKASI
     # =========================
     try:
         df = classify_jenis_satker(df)
@@ -1920,7 +1980,12 @@ def post_process_ikpa_satker(df, source="Upload"):
         df["Jenis Satker"] = "SEDANG"
 
     # =========================
-    # 🔥 8. FINALISASI KOLOM
+    # 🔥 8. FIX NAMA SATKER (WAJIB BANGET)
+    # =========================
+    df = enrich_nama_satker(df)
+
+    # =========================
+    # 🔥 9. FINAL KOLOM
     # =========================
     FINAL_COLUMNS = [
         "No","Kode KPPN","Kode BA","Kode Satker","Uraian Satker",
@@ -1943,8 +2008,13 @@ def post_process_ikpa_satker(df, source="Upload"):
     df = df[[c for c in FINAL_COLUMNS if c in df.columns]]
 
     # =========================
-    # 🔥 9. FINAL TOUCH
+    # 🔥 10. FINAL TOUCH
     # =========================
+    df = df.fillna({
+        "Satker": "TIDAK DIKETAHUI",
+        "Total Pagu": 0
+    })
+
     df = apply_reference_short_names(df)
     df = create_satker_column(df)
 
@@ -2448,7 +2518,7 @@ def load_DATA_DIPA_from_github():
             # ===============================
             # STANDARDIZE
             # ===============================
-            df_parsed = standardize_dipa(df_raw)
+            df_parsed = auto_process_dipa(df_raw)
 
             if df_parsed is None or df_parsed.empty:
                 st.error(f"❌ DIPA {tahun} kosong setelah parsing")
@@ -2456,6 +2526,7 @@ def load_DATA_DIPA_from_github():
 
             # SET TAHUN
             df_parsed["Tahun"] = tahun
+            df_parsed = enrich_nama_satker(df_parsed)
 
             # NORMALISASI KODE SATKER
             df_parsed["Kode Satker"] = (
