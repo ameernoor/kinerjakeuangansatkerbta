@@ -880,6 +880,22 @@ def clean_numeric(val):
     except:
         return 0
 
+def safe_upper(val):
+    if pd.isna(val):
+        return ""
+    return str(val).upper().strip()
+
+
+MONTH_MAP = {
+    "1": "JANUARI", "2": "FEBRUARI", "3": "MARET",
+    "4": "APRIL", "5": "MEI", "6": "JUNI",
+    "7": "JULI", "8": "AGUSTUS", "9": "SEPTEMBER",
+    "10": "OKTOBER", "11": "NOVEMBER", "12": "DESEMBER"
+}
+
+def normalize_month(val):
+    val = str(val).strip()
+    return MONTH_MAP.get(val, safe_upper(val))
 
 # ===============================
 # 🔥 ENRICH NAMA SATKER
@@ -1536,11 +1552,12 @@ def extract_kode_from_satker_field(s, width=6):
 def register_ikpa_satker(df_final, month, year, source="Manual"):
     
     # ===============================
-    # 🔥 NORMALISASI (INI KUNCI FIX)
+    # 🔥 NORMALISASI
     # ===============================
-    month = str(month).upper().strip()
+    month = normalize_month(month)
     year = str(year)
 
+    # 🔥 FIX: KEY WAJIB ADA
     key = (month, year)
 
     df = df_final.copy()
@@ -1557,7 +1574,7 @@ def register_ikpa_satker(df_final, month, year, source="Manual"):
     df["Period_Sort"] = f"{int(year):04d}-{MONTH_ORDER.get(month, 0):02d}"
 
     # ===============================
-    # 🔥 FIX NUMERIC (ANTI NAN)
+    # 🔥 FIX NUMERIC
     # ===============================
     nilai_col = "Nilai Akhir (Nilai Total/Konversi Bobot)"
 
@@ -1565,9 +1582,6 @@ def register_ikpa_satker(df_final, month, year, source="Manual"):
 
         df[nilai_col] = df[nilai_col].apply(clean_numeric)
 
-        # ===============================
-        # 🔥 SORT + RANK
-        # ===============================
         df = df.sort_values(nilai_col, ascending=False)
 
         df["Peringkat"] = (
@@ -1577,10 +1591,9 @@ def register_ikpa_satker(df_final, month, year, source="Manual"):
         )
 
     # ===============================
-    # 🔥 SIMPAN KE STORAGE
+    # 🔥 SIMPAN
     # ===============================
     st.session_state.data_storage[key] = df
-    
     
 
 def find_header_row_by_keywords(uploaded_file, keywords, max_rows=15):
@@ -1820,7 +1833,7 @@ def post_process_ikpa_satker(df, source="Upload"):
         df["Tahun"] = pd.to_numeric(df["Tahun"], errors="coerce").fillna(0).astype(int)
 
     if "Bulan" in df.columns:
-        df["Bulan"] = df["Bulan"].astype(str).str.upper().str.strip()
+        df["Bulan"] = df["Bulan"].apply(normalize_month)
 
     # =========================
     # 🔥 1. NORMALISASI KODE SATKER
@@ -2667,13 +2680,18 @@ def load_data_from_github(_cache_buster: int = 0):
             df = df.reset_index(drop=True)
             df.columns = [str(c).strip() for c in df.columns]
             
-            month = str(df["Bulan"].iloc[0]).upper().strip() if "Bulan" in df.columns else "MARET"
+            # 🔥 FORCE STRING UNTUK KOLOM TEXT
+            for col in ["Bulan", "Uraian Satker"]:
+                if col in df.columns:
+                    df[col] = df[col].astype(str)
+            
+            month = normalize_month(df["Bulan"].iloc[0]) if "Bulan" in df.columns else "MARET"
             year = str(df["Tahun"].iloc[0]) if "Tahun" in df.columns else "2026"
             key = (month, year)
 
             df = standardize_ikpa_format(df)
 
-            df["Bulan"] = month
+            df["Bulan"] = df["Bulan"].apply(normalize_month)
             df["Tahun"] = year
             
 
