@@ -3559,83 +3559,50 @@ def create_satker_column(df):
 
 
 def merge_ikpa_with_dipa(df):
+    
     df = df.copy()
 
-    # ===============================
-    # VALIDASI
-    # ===============================
-    if df.empty or "Tahun" not in df.columns:
+    year = str(df["Tahun"].iloc[0])
+
+    # =========================
+    # CEK DIPA ADA
+    # =========================
+    if year not in st.session_state.DATA_DIPA_by_year:
         df["Total Pagu"] = 0
         return df
 
-    # ===============================
-    # NORMALISASI TAHUN
-    # ===============================
-    df["Tahun"] = pd.to_numeric(df["Tahun"], errors="coerce").fillna(0).astype(int)
+    dipa_df = st.session_state.DATA_DIPA_by_year[year].copy()
 
-    tahun_list = df["Tahun"].unique()
-    tahun = int(tahun_list[0])
-
-    dipa_dict = st.session_state.get("DATA_DIPA_by_year", {})
-
-    # ===============================
-    # AMBIL DIPA
-    # ===============================
-    df_dipa = dipa_dict.get(tahun)
-
-    if df_dipa is None or df_dipa.empty:
-        df["Total Pagu"] = 0
-        return df
-
-    df_dipa = df_dipa.copy()
-
-    # ===============================
-    # 🔥 SAFETY KOLOM PAGU (WAJIB)
-    # ===============================
-    if "Total Pagu" not in df_dipa.columns:
-        # tidak usah error, langsung isi 0
-        df["Total Pagu"] = 0
-        return df
-
-    # ===============================
-    # NORMALISASI KODE SATKER
-    # ===============================
+    # =========================
+    # 🔥 NORMALISASI KODE SATKER
+    # =========================
     df["Kode Satker"] = (
         df["Kode Satker"]
         .astype(str)
-        .str.extract(r"(\d+)")[0]
+        .str.extract(r"(\d{6})")[0]
         .fillna("")
-        .str.zfill(6)
     )
 
-    df_dipa["Kode Satker"] = (
-        df_dipa["Kode Satker"]
+    dipa_df["Kode Satker"] = (
+        dipa_df["Kode Satker"]
         .astype(str)
-        .str.extract(r"(\d+)")[0]
+        .str.extract(r"(\d{6})")[0]
         .fillna("")
-        .str.zfill(6)
     )
 
-    # ===============================
-    # 🔥 CLEAN PAGU (AMAN)
-    # ===============================
-    df_dipa["Total Pagu"] = df_dipa["Total Pagu"].apply(clean_numeric)
-
-    # ===============================
+    # =========================
     # MERGE
-    # ===============================
-    df_merge = df.merge(
-        df_dipa[["Kode Satker", "Total Pagu"]],
+    # =========================
+    df = df.merge(
+        dipa_df[["Kode Satker", "Total Pagu"]],
         on="Kode Satker",
         how="left"
     )
 
-    # ===============================
-    # HANDLE NILAI KOSONG
-    # ===============================
-    df_merge["Total Pagu"] = df_merge["Total Pagu"].fillna(0)
+    # 🔥 ANTI NULL
+    df["Total Pagu"] = df["Total Pagu"].fillna(0)
 
-    return df_merge
+    return df
 
 
 def classify_jenis_satker(df):
@@ -3657,14 +3624,20 @@ def classify_jenis_satker(df):
         df["Jenis Satker"] = "SEDANG"
         return df
 
-    p40 = df["Total Pagu"].quantile(0.40)
-    p70 = df["Total Pagu"].quantile(0.70)
+    # =========================
+    # ANTI ERROR CUT
+    # =========================
+    if df["Total Pagu"].nunique() <= 1:
+        df["Jenis Satker"] = "SEDANG"
+    else:
+        p40 = df["Total Pagu"].quantile(0.40)
+        p70 = df["Total Pagu"].quantile(0.70)
 
-    df["Jenis Satker"] = pd.cut(
-        df["Total Pagu"],
-        bins=[-float("inf"), p40, p70, float("inf")],
-        labels=["KECIL", "SEDANG", "BESAR"]
-    )
+        df["Jenis Satker"] = pd.cut(
+            df["Total Pagu"],
+            bins=[-float("inf"), p40, p70, float("inf")],
+            labels=["KECIL", "SEDANG", "BESAR"]
+        )
 
     df["Jenis Satker"] = df["Jenis Satker"].astype(str)
 
@@ -4734,6 +4707,9 @@ def page_dashboard():
             # ===============================
             # GUNAKAN JENIS SATKER DARI LOADER
             # ===============================
+            if "Jenis Satker" not in df.columns:
+                df["Jenis Satker"] = "SEDANG"
+
             df['Jenis Satker'] = df['Jenis Satker'].astype(str)
 
             df_kecil  = df[df['Jenis Satker'] == 'KECIL']
@@ -10721,16 +10697,28 @@ def page_admin():
                     ascending=[True, False]
                 ).drop_duplicates(subset="Kode Satker", keep="first")
 
-            # Klasifikasi Satker
-            if "Total Pagu" in df.columns:
-                p40 = df["Total Pagu"].quantile(0.40)
-                p70 = df["Total Pagu"].quantile(0.70)
 
-                df["Jenis Satker"] = pd.cut(
-                    df["Total Pagu"],
-                    bins=[-float("inf"), p40, p70, float("inf")],
-                    labels=["Satker Kecil", "Satker Sedang", "Satker Besar"]
-                )
+            # =========================
+            # AMAN TOTAL PAGU
+            # =========================
+            if "Total Pagu" in df.columns:
+
+                df["Total Pagu"] = pd.to_numeric(df["Total Pagu"], errors="coerce").fillna(0)
+
+                # =========================
+                # ANTI ERROR CUT
+                # =========================
+                if df["Total Pagu"].nunique() <= 1:
+                    df["Jenis Satker"] = "Satker Sedang"
+                else:
+                    p40 = df["Total Pagu"].quantile(0.40)
+                    p70 = df["Total Pagu"].quantile(0.70)
+
+                    df["Jenis Satker"] = pd.cut(
+                        df["Total Pagu"],
+                        bins=[-float("inf"), p40, p70, float("inf")],
+                        labels=["Satker Kecil", "Satker Sedang", "Satker Besar"]
+                    )
 
 
             # Preview
