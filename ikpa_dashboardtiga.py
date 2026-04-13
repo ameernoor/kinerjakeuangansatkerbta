@@ -1133,59 +1133,86 @@ def standardize_ikpa_format(df):
     df = df.copy()
     df.columns = [str(c).strip() for c in df.columns]
 
-    def find_col(keywords):
-        for c in df.columns:
-            c_str = str(c).upper()
-            for k in keywords:
-                if k in c_str:
-                    return c
-        return None
+    # =========================
+    # 🔥 STEP 1: PASTIKAN ADA KOLOM KETERANGAN
+    # =========================
+    ket_col = None
+    for c in df.columns:
+        if "KETERANGAN" in str(c).upper():
+            ket_col = c
+            break
 
+    # =========================
+    # 🔥 STEP 2: AMBIL HANYA BARIS "NILAI"
+    # =========================
+    if ket_col:
+        df = df[df[ket_col].astype(str).str.upper().str.contains("NILAI", na=False)]
+
+    # =========================
+    # 🔥 STEP 3: DETEKSI KODE SATKER (VALID 6 DIGIT)
+    # =========================
+    kode_satker_col = None
+
+    for c in df.columns:
+        sample = df[c].astype(str)
+        ratio = sample.str.match(r"^\d{6}$").mean()
+
+        if ratio > 0.5:
+            kode_satker_col = c
+            break
+
+    # fallback posisi (biasanya kolom ke-5)
+    if kode_satker_col is None and len(df.columns) >= 5:
+        kode_satker_col = df.columns[4]
+
+    # =========================
+    # 🔥 STEP 4: NAMA SATKER (SEBELAHNYA)
+    # =========================
+    idx = list(df.columns).index(kode_satker_col)
+
+    nama_satker_col = None
+    if idx + 1 < len(df.columns):
+        nama_satker_col = df.columns[idx + 1]
+
+    # =========================
+    # 🔥 BUILD OUTPUT
+    # =========================
     out = pd.DataFrame()
 
-    # =========================
-    # 🔥 KODE SATKER (SUPER FLEXIBLE)
-    # =========================
-    col_kode = find_col(["KODE SATKER", "SATKER", "KODE"])
+    out["Kode Satker"] = df[kode_satker_col]
 
-    if col_kode:
-        out["Kode Satker"] = df[col_kode]
-    else:
-        # 🔥 fallback cari kolom angka 6 digit
-        for c in df.columns:
-            if df[c].astype(str).str.match(r"\d{6}").any():
-                out["Kode Satker"] = df[c]
-                break
-        else:
-            out["Kode Satker"] = ""
-
-    # =========================
-    # 🔥 NAMA SATKER
-    # =========================
-    col_nama = find_col(["URAIAN", "NAMA", "SATKER"])
-
-    if col_nama:
-        out["Uraian Satker"] = df[col_nama]
+    if nama_satker_col:
+        out["Uraian Satker"] = df[nama_satker_col]
     else:
         out["Uraian Satker"] = ""
 
     # =========================
-    # 🔥 KOLOM LAIN (AMAN)
+    # 🔥 COPY KOLOM LAIN
     # =========================
     for col in df.columns:
         if col not in out.columns:
             out[col] = df[col]
 
     # =========================
-    # 🔥 FIX FINAL KODE SATKER
+    # 🔥 CLEAN KODE SATKER
     # =========================
     out["Kode Satker"] = (
         out["Kode Satker"]
         .astype(str)
-        .str.extract(r"(\d+)")[0]
+        .str.extract(r"(\d{6})")[0]
         .fillna("")
-        .str.zfill(6)
     )
+
+    # =========================
+    # 🔥 BUANG BARIS SAMPAH
+    # =========================
+    out = out[out["Kode Satker"] != ""]
+    out = out[out["Kode Satker"] != "000000"]
+
+    # =========================
+    # 🔥 RESET INDEX
+    # =========================
+    out = out.reset_index(drop=True)
 
     return out
 
