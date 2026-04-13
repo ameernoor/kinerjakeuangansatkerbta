@@ -8476,6 +8476,7 @@ def get_latest_dipa(dipa_df):
         latest_dipa = dipa_df.drop_duplicates(subset='Kode Satker', keep='first')
     return latest_dipa
 
+
 def merge_ikpa_dipa_auto():
     
     if st.session_state.get("ikpa_dipa_merged", False):
@@ -8496,37 +8497,61 @@ def merge_ikpa_dipa_auto():
         df_final = df_ikpa.copy()
         dipa_latest = get_latest_dipa(dipa)
 
-        # NORMALISASI KODE SATKER
-        df_final["Kode Satker"] = df_final["Kode Satker"].astype(str).str.zfill(6)
-        dipa_latest["Kode Satker"] = dipa_latest["Kode Satker"].astype(str).str.zfill(6)
+        # ===============================
+        # 🔥 NORMALISASI SUPER KUAT
+        # ===============================
+        df_final["Kode Satker"] = (
+            df_final["Kode Satker"]
+            .astype(str)
+            .str.extract(r"(\d+)")[0]
+            .fillna("")
+            .str.zfill(6)
+        )
 
-        # 🔴 AMBIL TOTAL PAGU SAJA (TANPA JENIS SATKER)
-        dipa_selected = dipa_latest[['Kode Satker', 'Total Pagu']]
+        dipa_latest["Kode Satker"] = (
+            dipa_latest["Kode Satker"]
+            .astype(str)
+            .str.extract(r"(\d+)")[0]
+            .fillna("")
+            .str.zfill(6)
+        )
 
-        # HAPUS TOTAL PAGU & JENIS SATKER LAMA
+        # 🔥 TAMBAHAN KUNCI FIX
+        df_final["Kode Clean"] = df_final["Kode Satker"].str.lstrip("0")
+        dipa_latest["Kode Clean"] = dipa_latest["Kode Satker"].str.lstrip("0")
+
+        # ===============================
+        # AMBIL PAGU
+        # ===============================
+        dipa_selected = dipa_latest[['Kode Clean', 'Total Pagu']]
+
+        # HAPUS LAMA
         df_final = df_final.drop(columns=['Total Pagu', 'Jenis Satker'], errors='ignore')
 
-        # MERGE
+        # ===============================
+        # 🔥 MERGE PAKAI KODE CLEAN
+        # ===============================
         df_merged = pd.merge(
             df_final,
             dipa_selected,
-            on='Kode Satker',
+            on='Kode Clean',
             how='left'
         )
 
-        # AMANKAN TOTAL PAGU
-        df_merged["Total Pagu"] = pd.to_numeric(
-            df_merged["Total Pagu"],
-            errors="coerce"
-        ).fillna(0)
+        # ===============================
+        # HANDLE NILAI
+        # ===============================
+        df_merged["Total Pagu"] = df_merged["Total Pagu"].apply(clean_numeric).fillna(0)
 
-        # 🔑 KLASIFIKASI SETELAH MERGE (INI YANG HILANG)
+        # ===============================
+        # 🔥 KLASIFIKASI (WAJIB)
+        # ===============================
         df_merged = classify_jenis_satker(df_merged)
 
         st.session_state.data_storage[(bulan, tahun)] = df_merged
 
     st.session_state.ikpa_dipa_merged = True
-
+    
 
 # ============================================================
 # 🔹 Fungsi convert DataFrame ke Excel bytes
