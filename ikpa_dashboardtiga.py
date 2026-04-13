@@ -1100,181 +1100,67 @@ def adapt_dipa_omspan(df_raw):
 
     return out.dropna(subset=["Kode Satker"])
 
-def standardize_dipa(df_raw):
+def standardize_ikpa_format(df):
     
-    df = df_raw.copy()
+    df = df.copy()
     df.columns = [str(c).strip() for c in df.columns]
 
-    # =============================
-    # 1) NORMALISASI KOLOM
-    # =============================
-    def find_col(possible_names):
+    def find_col(keywords):
         for c in df.columns:
-            c_norm = re.sub(r'[^A-Z]', '', c.upper())
-            for p in possible_names:
-                p_norm = re.sub(r'[^A-Z]', '', p.upper())
-                if p_norm in c_norm:
+            c_norm = c.upper()
+            for k in keywords:
+                if k in c_norm:
                     return c
         return None
 
-    col_kode = find_col(["Kode Satker", "Satker"])
-    col_nama = find_col(["Nama Satker", "Uraian Satker", "Satker"])
-
-    # 🔥 FIX BESAR DI SINI (SUPPORT SEMUA FORMAT)
-    col_pagu = find_col([
-        "Total Pagu",
-        "Pagu Belanja",
-        "Jumlah",
-        "Pagu",
-        "Nilai",
-        "Jumlah Pagu",
-        "Pagu Total",
-        "Pagu Anggaran"
-    ])
-
-    col_tanggal_revisi = find_col(["Tanggal Posting Revisi", "Tanggal Revisi"])
-    col_revisi_ke = find_col(["Revisi Terakhir", "Revisi ke"])
-    col_no = find_col(["No"])
-    col_kementerian = find_col(["Kementerian", "BA", "K/L"])
-    col_dipa = find_col(["No Dipa", "Nomor DIPA"])
-    col_tanggal_dipa = find_col(["Tanggal Dipa"])
-    col_owner = find_col(["Owner"])
-    col_stamp = find_col(["Digital Stamp"])
-    col_status_history = find_col(["Kode Status History"])
-    col_jenis_revisi = find_col(["Jenis Revisi"])
+    # =========================
+    # MAP KOLOM WAJIB
+    # =========================
+    col_map = {
+        "Kode Satker": find_col(["KODE SATKER"]),
+        "Uraian Satker": find_col(["URAIAN SATKER", "NAMA SATKER"]),
+        "Kode BA": find_col(["BA"]),
+        "Kode KPPN": find_col(["KPPN"]),
+        "Nilai Akhir (Nilai Total/Konversi Bobot)": find_col(["NILAI AKHIR"]),
+        "Nilai Total": find_col(["NILAI TOTAL"]),
+        "Konversi Bobot": find_col(["KONVERSI"]),
+        "Revisi DIPA": find_col(["REVISI"]),
+        "Deviasi Halaman III DIPA": find_col(["DEVIASI"]),
+        "Penyerapan Anggaran": find_col(["PENYERAPAN"]),
+        "Belanja Kontraktual": find_col(["KONTRAKTUAL"]),
+        "Penyelesaian Tagihan": find_col(["TAGIHAN"]),
+        "Pengelolaan UP dan TUP": find_col(["UP", "TUP"]),
+        "Capaian Output": find_col(["OUTPUT"]),
+    }
 
     out = pd.DataFrame()
 
-    # =============================
-    # KODE SATKER
-    # =============================
-    if col_kode:
-        out["Kode Satker"] = (
-            df[col_kode]
-            .astype(str)
-            .str.extract(r"(\d+)")[0]
-            .fillna("")
-            .str.zfill(6)
-        )
-    else:
-        out["Kode Satker"] = ""
-
-    # =============================
-    # NAMA SATKER
-    # =============================
-    if col_nama:
-        out["Satker"] = (
-            df[col_nama]
-            .astype(str)
-            .str.replace(r"^\d{6}\s*-?\s*", "", regex=True)
-            .str.strip()
-        )
-    else:
-        out["Satker"] = ""
-
-    # =============================
-    # 🔥 PAGU (ANTI GAGAL TOTAL)
-    # =============================
-    if col_pagu:
-        out["Total Pagu"] = df[col_pagu].apply(clean_numeric)
-    else:
-        # 🔥 fallback: cari kolom numerik
-        numeric_cols = df.select_dtypes(include=["number"]).columns
-
-        if len(numeric_cols) > 0:
-            out["Total Pagu"] = df[numeric_cols[0]].apply(clean_numeric)
+    for target, source in col_map.items():
+        if source:
+            out[target] = df[source]
         else:
-            out["Total Pagu"] = 0
+            out[target] = 0
 
-    # =============================
-    # TANGGAL
-    # =============================
-    if col_tanggal_revisi:
-        out["Tanggal Posting Revisi"] = pd.to_datetime(df[col_tanggal_revisi], errors="coerce")
-    else:
-        out["Tanggal Posting Revisi"] = pd.NaT
+    # =========================
+    # FIX KODE SATKER
+    # =========================
+    out["Kode Satker"] = (
+        out["Kode Satker"]
+        .astype(str)
+        .str.extract(r"(\d+)")[0]
+        .fillna("")
+        .str.zfill(6)
+    )
 
-    out["Tahun"] = out["Tanggal Posting Revisi"].dt.year.fillna(datetime.now().year).astype(int)
+    # =========================
+    # FIX NAMA SATKER
+    # =========================
+    out["Uraian Satker"] = out["Uraian Satker"].astype(str)
 
-    # =============================
-    # NO
-    # =============================
-    if col_no:
-        out["NO"] = df[col_no]
-    else:
-        out["NO"] = range(1, len(df) + 1)
-
-    # =============================
-    # KEMENTERIAN
-    # =============================
-    if col_kementerian:
-        out["Kementerian"] = df[col_kementerian].astype(str)
-    else:
-        if col_dipa:
-            out["Kementerian"] = df[col_dipa].astype(str).str.extract(r"DIPA-(\d{3})")[0]
-        else:
-            out["Kementerian"] = ""
-
-    # =============================
-    # REVISI KE
-    # =============================
-    if col_revisi_ke:
-        out["Revisi ke-"] = df[col_revisi_ke].apply(clean_numeric).astype(int)
-    else:
-        out["Revisi ke-"] = 0
-
-    # =============================
-    # LAINNYA
-    # =============================
-    out["No Dipa"] = df[col_dipa].astype(str) if col_dipa else ""
-    out["Tanggal Dipa"] = pd.to_datetime(df[col_tanggal_dipa], errors="coerce") if col_tanggal_dipa else pd.NaT
-    out["Owner"] = df[col_owner].astype(str) if col_owner else ""
-    out["Digital Stamp"] = df[col_stamp].astype(str) if col_stamp else ""
-    out["Jenis Satker"] = ""
-
-    if col_status_history:
-        out["Kode Status History"] = df[col_status_history].astype(str)
-    else:
-        out["Kode Status History"] = ""
-
-    if col_jenis_revisi:
-        out["Jenis Revisi"] = df[col_jenis_revisi].astype(str)
-    else:
-        out["Jenis Revisi"] = ""
-
-    # =============================
-    # CLEAN FINAL
-    # =============================
-    out = out.dropna(subset=["Kode Satker"])
-    out = out[out["Kode Satker"] != "000000"]
-
-    out["Kode Satker"] = out["Kode Satker"].astype(str).str.zfill(6)
-
-    # 🔥 WAJIB: inject nama satker
-    out = enrich_nama_satker(out)
-
-    # =============================
-    # FINAL ORDER
-    # =============================
-    final_order = [
-        "Kode Satker",
-        "Satker",
-        "Tanggal Posting Revisi",
-        "Total Pagu",
-        "Jenis Satker",
-        "NO",
-        "Kementerian",
-        "Kode Status History",
-        "Jenis Revisi",
-        "Revisi ke-",
-        "No Dipa",
-        "Tanggal Dipa",
-        "Owner",
-        "Digital Stamp",
-    ]
-
-    existing_cols = [c for c in final_order if c in out.columns]
-    out = out[existing_cols]
+    # =========================
+    # TAMBAHAN KOLOM WAJIB
+    # =========================
+    out["No"] = range(1, len(out)+1)
 
     return out
 
@@ -2770,6 +2656,16 @@ def load_data_from_github(_cache_buster: int = 0):
 
             df = df.reset_index(drop=True)
             df.columns = [str(c).strip() for c in df.columns]
+            
+            month = str(df["Bulan"].iloc[0]).upper().strip() if "Bulan" in df.columns else "MARET"
+            year = str(df["Tahun"].iloc[0]) if "Tahun" in df.columns else "2026"
+            key = (month, year)
+
+            df = standardize_ikpa_format(df)
+
+            df["Bulan"] = month
+            df["Tahun"] = year
+            
 
             # ===============================
             # 🔥 BUANG BARIS SAMPAH
@@ -2790,10 +2686,6 @@ def load_data_from_github(_cache_buster: int = 0):
             missing = [col for col in REQUIRED_COLUMNS if col not in df.columns]
             if len(missing) > 5:
                 continue
-
-            month = str(df["Bulan"].iloc[0]).upper().strip()
-            year = str(df["Tahun"].iloc[0])
-            key = (month, year)
 
             df["Bulan"] = month
             df["Tahun"] = year
