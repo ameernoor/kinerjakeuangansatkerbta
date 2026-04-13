@@ -1737,88 +1737,99 @@ def process_excel_file(uploaded_file, upload_year):
     
     df_raw = pd.read_excel(uploaded_file, header=None)
 
+    # =========================
+    # 🔥 CARI HEADER OTOMATIS
+    # =========================
+    header_row = None
+
+    for i in range(20):
+        row = df_raw.iloc[i].astype(str).str.upper()
+
+        if "REVISI" in " ".join(row.values) and "PENYERAPAN" in " ".join(row.values):
+            header_row = i
+            break
+
+    if header_row is None:
+        raise ValueError("Header IKPA tidak ditemukan")
+
+    # =========================
+    # 🔥 SET HEADER
+    # =========================
+    df = df_raw.iloc[header_row+1:].copy()
+    df.columns = df_raw.iloc[header_row]
+    df = df.reset_index(drop=True)
+
+    # =========================
+    # 🔥 NORMALISASI KOLOM
+    # =========================
+    df.columns = [str(c).strip() for c in df.columns]
+
+    # =========================
+    # 🔥 DETEKSI KOLOM PENTING
+    # =========================
+    def find_col(keyword):
+        for c in df.columns:
+            if keyword in str(c).upper():
+                return c
+        return None
+
+    col_kode = find_col("SATKER")
+    col_nama = df.columns[df.columns.get_loc(col_kode) + 1]
+
+    col_revisi = find_col("REVISI")
+    col_deviasi = find_col("DEVIASI")
+    col_serap = find_col("PENYERAPAN")
+    col_kontrak = find_col("KONTRAK")
+    col_tagihan = find_col("TAGIHAN")
+    col_up = find_col("UP")
+    col_output = find_col("OUTPUT")
+    col_total = find_col("NILAI TOTAL")
+    col_konversi = find_col("KONVERSI")
+    col_disp = find_col("DISPENSASI")
+    col_akhir = find_col("NILAI AKHIR")
+
+    # =========================
+    # 🔥 BUILD DATA
+    # =========================
     processed_rows = []
 
-    i = 0
-    while i < len(df_raw):
+    for _, row in df.iterrows():
 
-        row = df_raw.iloc[i]
+        kode_satker = normalize_kode_satker(row[col_kode])
 
-        # ===============================
-        # DETEKSI SATKER
-        # ===============================
-        kode_satker = normalize_kode_satker(row[4])
-        uraian_satker = str(row[5]).strip()
-
-        if not kode_satker or len(kode_satker) != 6:
-            i += 1
+        if not kode_satker:
             continue
 
-        # ===============================
-        # AMBIL 3 BARIS (NILAI, BOBOT, NILAI AKHIR)
-        # ===============================
-        row_nilai = df_raw.iloc[i]
-
-        row_akhir = None
-        if i + 2 < len(df_raw):
-            row_akhir = df_raw.iloc[i + 2]
-
-        # ===============================
-        # AMBIL NILAI IKPA (BARIS NILAI AKHIR)
-        # ===============================
-        nilai_final = 0
-
-        if row_akhir is not None:
-            label = str(row_akhir[6]).upper()
-
-            if "AKHIR" in label:
-                try:
-                    nilai_final = float(str(row_akhir.iloc[-1]).replace(",", "."))
-                except:
-                    nilai_final = 0
-
-        # ===============================
-        # HELPER
-        # ===============================
-        def safe_num(val):
+        def safe(x):
             try:
-                return float(str(val).replace(",", "."))
+                return float(str(x).replace(",", "."))
             except:
                 return 0
 
-        # ===============================
-        # BUILD DATA
-        # ===============================
-        row_data = {
+        processed_rows.append({
             "Kode Satker": kode_satker,
-            "Uraian Satker": uraian_satker,
+            "Uraian Satker": str(row[col_nama]).strip(),
 
-            "Revisi DIPA": safe_num(row_nilai[7]),
-            "Deviasi Halaman III DIPA": safe_num(row_nilai[8]),
-            "Penyerapan Anggaran": safe_num(row_nilai[10]),
-            "Belanja Kontraktual": safe_num(row_nilai[11]),
-            "Penyelesaian Tagihan": safe_num(row_nilai[12]),
-            "Pengelolaan UP dan TUP": safe_num(row_nilai[13]),
-            "Capaian Output": safe_num(row_nilai[15]),
+            "Revisi DIPA": safe(row[col_revisi]),
+            "Deviasi Halaman III DIPA": safe(row[col_deviasi]),
+            "Penyerapan Anggaran": safe(row[col_serap]),
+            "Belanja Kontraktual": safe(row[col_kontrak]),
+            "Penyelesaian Tagihan": safe(row[col_tagihan]),
+            "Pengelolaan UP dan TUP": safe(row[col_up]),
+            "Capaian Output": safe(row[col_output]),
 
-            "Nilai Total": safe_num(row_nilai[17]),
-            "Konversi Bobot": safe_num(row_nilai[18]),
-            "Dispensasi SPM (Pengurang)": safe_num(row_nilai[19]),
+            "Nilai Total": safe(row[col_total]),
+            "Konversi Bobot": safe(row[col_konversi]),
+            "Dispensasi SPM (Pengurang)": safe(row[col_disp]),
 
-            "Nilai Akhir (Nilai Total/Konversi Bobot)": nilai_final,
+            "Nilai Akhir (Nilai Total/Konversi Bobot)": safe(row[col_akhir]),
 
             "Bulan": "MARET",
             "Tahun": upload_year
-        }
-
-        processed_rows.append(row_data)
-
-        # 🔥 lompat 3 baris
-        i += 3
+        })
 
     df_final = pd.DataFrame(processed_rows)
 
-    # 🔥 WAJIB: RETURN 3 NILAI
     return df_final, "MARET", upload_year
 
 
