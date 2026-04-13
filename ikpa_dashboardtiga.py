@@ -916,37 +916,94 @@ def enrich_nama_satker(df):
     return df
 
 
-# ===============================
-# AUTO PROCESS DIPA
-# ===============================
 def auto_process_dipa(df_raw):
-
+    
+    # ===============================
     # 1️⃣ DETEKSI OMSPAN
+    # ===============================
     if is_omspan_dipa(df_raw):
         df = adapt_dipa_omspan(df_raw)
 
     else:
+        # ===============================
         # 2️⃣ FIX HEADER
+        # ===============================
         df_fixed = fix_dipa_header(df_raw)
-
-        # 🔥 FIX DI SINI (HAPUS STANDARDIZE)
         df = df_fixed.copy()
 
+        # ===============================
+        # 🔥 NORMALISASI KOLOM WAJIB
+        # ===============================
+        df.columns = [str(c).strip() for c in df.columns]
+
+        # ===============================
+        # 🔥 DETEKSI KODE SATKER
+        # ===============================
+        col_kode = None
+        for c in df.columns:
+            if "SATKER" in str(c).upper():
+                col_kode = c
+                break
+
+        if col_kode is None:
+            raise ValueError("Kode Satker tidak ditemukan di DIPA")
+
+        df["Kode Satker"] = (
+            df[col_kode]
+            .astype(str)
+            .str.extract(r"(\d{6})")[0]
+        )
+
+        # ===============================
+        # 🔥 DETEKSI TOTAL PAGU
+        # ===============================
+        col_pagu = None
+        for c in df.columns:
+            if "PAGU" in str(c).upper():
+                col_pagu = c
+                break
+
+        if col_pagu:
+            df["Total Pagu"] = df[col_pagu]
+        else:
+            df["Total Pagu"] = 0
+
+    # ===============================
     # 4️⃣ BERSIHKAN ANGKA
+    # ===============================
     for col in df.columns:
         col_str = str(col).upper()
 
         if any(x in col_str for x in ["PAGU", "REVISI"]):
             df[col] = df[col].apply(clean_numeric)
 
+    # ===============================
+    # 🔥 NORMALISASI KODE SATKER FINAL
+    # ===============================
+    df["Kode Satker"] = (
+        df["Kode Satker"]
+        .astype(str)
+        .str.extract(r"(\d{6})")[0]
+        .fillna("")
+    )
+
+    # ===============================
     # 5️⃣ ISI NAMA SATKER
+    # ===============================
     df = enrich_nama_satker(df)
 
+    # ===============================
     # 6️⃣ DROP DATA INVALID
-    df = df.dropna(subset=["Kode Satker"])
-    df = df[df["Kode Satker"] != "000000"]
+    # ===============================
+    df = df[
+        df["Kode Satker"].notna() &
+        (df["Kode Satker"] != "") &
+        (df["Kode Satker"] != "000000")
+    ]
 
+    # ===============================
     # 7️⃣ FINAL CLEAN
+    # ===============================
     df = df.fillna({
         "Total Pagu": 0,
         "Revisi ke-": 0,
@@ -956,64 +1013,6 @@ def auto_process_dipa(df_raw):
 
     return df.reset_index(drop=True)
 
-
-def clean_invalid_satker_rows(df):
-    df = df.copy()
-
-    # Kode Satker wajib 6 digit & bukan 000000
-    df = df[
-        df["Kode Satker"].notna() &
-        df["Kode Satker"].astype(str).str.match(r"^\d{6}$") &
-        (df["Kode Satker"] != "000000")
-    ]
-
-    # Uraian Satker tidak boleh NILAI / BOBOT / NILAI AKHIR
-    df = df[
-        df["Uraian Satker"].notna() &
-        (~df["Uraian Satker"]
-          .astype(str)
-          .str.upper()
-          .isin(["NILAI", "BOBOT", "NILAI AKHIR"]))
-    ]
-
-    return df.reset_index(drop=True)
-
-
-def fix_missing_month(df):
-    df = df.copy()
-
-    if df["Bulan"].isna().all() or (df["Bulan"] == "NAN").all():
-        df["Bulan"] = "JULI"   # atau ambil dari UI
-
-    df["Bulan"] = df["Bulan"].astype(str).str.upper()
-    return df
-
-def fix_dipa_header(df_raw):
-    """
-    Header detector SUPER FLEXIBLE:
-    - Tidak tergantung kata 'pagu'
-    - Bisa handle format aneh
-    """
-
-    for i in range(min(15, len(df_raw))):
-        row = df_raw.iloc[i].astype(str).str.upper()
-
-        # 🔥 DETEKSI LEBIH FLEKSIBEL
-        if (
-            (row.str.contains("SATKER").any()) or
-            (row.str.contains("KODE").any() and row.str.contains("SATKER").any()) or
-            (row.str.contains("NAMA").any())
-        ):
-            df = df_raw.iloc[i+1:].copy()
-            df.columns = df_raw.iloc[i]
-            return df.reset_index(drop=True)
-
-    # fallback aman
-    df = df_raw.copy()
-    df.columns = df.iloc[0]
-    df = df[1:]
-
-    return df.reset_index(drop=True)
 
 # ============================================================
 # 🔍 DETEKSI FORMAT DIPA OMSPAN
