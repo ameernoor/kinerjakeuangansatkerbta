@@ -1744,44 +1744,51 @@ def process_excel_file(uploaded_file, upload_year):
 
         row = df_raw.iloc[i]
 
+        # ===============================
+        # DETEKSI SATKER
+        # ===============================
         kode_satker = normalize_kode_satker(row[4])
         uraian_satker = str(row[5]).strip()
 
-        # skip baris tidak valid
         if not kode_satker or len(kode_satker) != 6:
             i += 1
             continue
 
-        # =========================
-        # 🔥 AMBIL BLOK 3 BARIS
-        # =========================
+        # ===============================
+        # AMBIL 3 BARIS (NILAI, BOBOT, NILAI AKHIR)
+        # ===============================
         row_nilai = df_raw.iloc[i]
-        row_bobot = df_raw.iloc[i+1] if i+1 < len(df_raw) else None
-        row_akhir = df_raw.iloc[i+2] if i+2 < len(df_raw) else None
 
-        # =========================
-        # 🔥 VALIDASI "NILAI AKHIR"
-        # =========================
-        if row_akhir is not None and "AKHIR" in str(row_akhir[6]).upper():
-            try:
-                nilai_final = float(str(row_akhir.iloc[-1]).replace(",", "."))
-            except:
-                nilai_final = 0
-        else:
-            nilai_final = 0
+        row_akhir = None
+        if i + 2 < len(df_raw):
+            row_akhir = df_raw.iloc[i + 2]
 
-        # =========================
+        # ===============================
+        # AMBIL NILAI IKPA (BARIS NILAI AKHIR)
+        # ===============================
+        nilai_final = 0
+
+        if row_akhir is not None:
+            label = str(row_akhir[6]).upper()
+
+            if "AKHIR" in label:
+                try:
+                    nilai_final = float(str(row_akhir.iloc[-1]).replace(",", "."))
+                except:
+                    nilai_final = 0
+
+        # ===============================
         # HELPER
-        # =========================
+        # ===============================
         def safe_num(val):
             try:
                 return float(str(val).replace(",", "."))
             except:
                 return 0
 
-        # =========================
+        # ===============================
         # BUILD DATA
-        # =========================
+        # ===============================
         row_data = {
             "Kode Satker": kode_satker,
             "Uraian Satker": uraian_satker,
@@ -1806,10 +1813,13 @@ def process_excel_file(uploaded_file, upload_year):
 
         processed_rows.append(row_data)
 
-        # lompat 3 baris
+        # 🔥 lompat 3 baris
         i += 3
 
-    return pd.DataFrame(processed_rows)
+    df_final = pd.DataFrame(processed_rows)
+
+    # 🔥 WAJIB: RETURN 3 NILAI
+    return df_final, "MARET", upload_year
 
 
 VALID_MONTHS = {
@@ -8755,6 +8765,8 @@ def page_admin():
                         except Exception as e:
                             st.error(f"❌ Error {uploaded_file.name}: {e}")
 
+                    need_merge = st.session_state.get("ikpa_dipa_merged", False)
+                    
                     if need_merge and st.session_state.DATA_DIPA_by_year:
                         with st.spinner("🔄 Menggabungkan IKPA & DIPA..."):
                             merge_ikpa_dipa_auto()
