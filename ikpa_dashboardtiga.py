@@ -2624,21 +2624,6 @@ def load_data_from_github(_cache_buster: int = 0):
     except Exception:
         return data_storage
 
-    REQUIRED_COLUMNS = [
-        "No", "Kode KPPN", "Kode BA", "Kode Satker", "Uraian Satker",
-        "Kualitas Perencanaan Anggaran",
-        "Kualitas Pelaksanaan Anggaran",
-        "Kualitas Hasil Pelaksanaan Anggaran",
-        "Revisi DIPA", "Deviasi Halaman III DIPA",
-        "Penyerapan Anggaran", "Belanja Kontraktual",
-        "Penyelesaian Tagihan", "Pengelolaan UP dan TUP",
-        "Capaian Output",
-        "Nilai Total", "Konversi Bobot",
-        "Dispensasi SPM (Pengurang)",
-        "Nilai Akhir (Nilai Total/Konversi Bobot)",
-        "Bulan", "Tahun"
-    ]
-
     MONTH_ORDER = {
         "JANUARI": 1, "FEBRUARI": 2, "MARET": 3, "APRIL": 4,
         "MEI": 5, "JUNI": 6, "JULI": 7, "AGUSTUS": 8,
@@ -2653,20 +2638,21 @@ def load_data_from_github(_cache_buster: int = 0):
             decoded = base64.b64decode(file.content)
 
             # ===============================
-            # 🔥 AUTO DETEKSI HEADER SUPER KUAT
+            # 🔥 LOAD RAW
             # ===============================
             df_raw = pd.read_excel(io.BytesIO(decoded), header=None)
 
+            # ===============================
+            # 🔥 DETEKSI HEADER FLEXIBLE
+            # ===============================
             header_row = None
 
             for i in range(20):
                 row = df_raw.iloc[i].astype(str).str.upper()
 
                 if (
-                    row.str.contains("KODE").any() and
                     row.str.contains("SATKER").any()
-                ) or (
-                    row.str.contains("URAIAN").any()
+                    or row.str.contains("URAIAN").any()
                 ):
                     header_row = i
                     break
@@ -2681,47 +2667,24 @@ def load_data_from_github(_cache_buster: int = 0):
 
             df = df.reset_index(drop=True)
             df.columns = [str(c).strip() for c in df.columns]
-            
-            # 🔥 ANTI ERROR UPPER
-            for col in ["Bulan", "Uraian Satker", "Kode Satker"]:
-                if col in df.columns:
-                    df[col] = df[col].astype(str)
-            
-            month = normalize_month(df["Bulan"].iloc[0]) if "Bulan" in df.columns else "MARET"
-            year = str(df["Tahun"].iloc[0]) if "Tahun" in df.columns else "2026"
-            key = (month, year)
 
+            # ===============================
+            # 🔥 PAKSA STRING (ANTI ERROR)
+            # ===============================
+            for col in df.columns:
+                df[col] = df[col].astype(str)
+
+            # ===============================
+            # 🔥 STANDARDIZE IKPA
+            # ===============================
             df = standardize_ikpa_format(df)
 
-            df["Bulan"] = df["Bulan"].apply(normalize_month)
-            df["Tahun"] = year
-        
             # ===============================
-            # 🔥 BUANG BARIS SAMPAH
+            # 🔥 VALIDASI KODE SATKER (INI KUNCI FIX)
             # ===============================
-            if "Kode Satker" in df.columns:
-                df = df[df["Kode Satker"].notna()]
-
-            # ===============================
-            # 🔥 RESET KOLOM TAMBAHAN
-            # ===============================
-            for col in ["Uraian Satker-RINGKAS", "Uraian Satker Final", "Satker"]:
-                if col in df.columns:
-                    df.drop(columns=[col], inplace=True)
-
-            # ===============================
-            # 🔥 VALIDASI FLEXIBLE
-            # ===============================
-            missing = [col for col in REQUIRED_COLUMNS if col not in df.columns]
-            if len(missing) > 5:
+            if "Kode Satker" not in df.columns:
                 continue
 
-            df["Bulan"] = month
-            df["Tahun"] = year
-
-            # ===============================
-            # NORMALISASI KODE SATKER
-            # ===============================
             df["Kode Satker"] = (
                 df["Kode Satker"]
                 .astype(str)
@@ -2730,40 +2693,56 @@ def load_data_from_github(_cache_buster: int = 0):
                 .str.zfill(6)
             )
 
-            # ===============================
-            # FIX NAMA SATKER
-            # ===============================
-            df = apply_reference_short_names(df)
-            df = create_satker_column(df)
+            df = df[df["Kode Satker"] != ""]
+            df = df[df["Kode Satker"] != "000000"]
+
+            if df.empty:
+                continue
 
             # ===============================
-            # NORMALISASI NUMERIK
+            # 🔥 AMBIL BULAN & TAHUN
+            # ===============================
+            month = normalize_month(df["Bulan"].iloc[0]) if "Bulan" in df.columns else "MARET"
+            year = str(df["Tahun"].iloc[0]) if "Tahun" in df.columns else "2026"
+
+            # ===============================
+            # 🔥 SET ULANG
+            # ===============================
+            df["Bulan"] = month
+            df["Tahun"] = year
+
+            # ===============================
+            # 🔥 NUMERIC CLEAN
             # ===============================
             for col in df.columns:
                 if col not in ["Kode Satker", "Uraian Satker", "Bulan", "Tahun"]:
                     df[col] = df[col].apply(clean_numeric)
 
             # ===============================
-            # PERIOD
+            # 🔥 METADATA
             # ===============================
             month_num = MONTH_ORDER.get(month, 0)
+
             df["Source"] = "GitHub"
             df["Period"] = f"{month} {year}"
             df["Period_Sort"] = f"{int(year):04d}-{month_num:02d}"
 
             # ===============================
-            # RANKING
+            # 🔥 RANKING
             # ===============================
             nilai_col = "Nilai Akhir (Nilai Total/Konversi Bobot)"
-            df = df.sort_values(nilai_col, ascending=False)
-            df["Peringkat"] = (
-                df[nilai_col]
-                .rank(method="dense", ascending=False)
-                .astype(int)
-            )
+
+            if nilai_col in df.columns:
+                df = df.sort_values(nilai_col, ascending=False)
+
+                df["Peringkat"] = (
+                    df[nilai_col]
+                    .rank(method="dense", ascending=False)
+                    .astype(int)
+                )
 
             # ===============================
-            # MERGE DIPA
+            # 🔥 MERGE DIPA
             # ===============================
             df = merge_ikpa_with_dipa(df)
 
@@ -2772,9 +2751,14 @@ def load_data_from_github(_cache_buster: int = 0):
 
             df = classify_jenis_satker(df)
 
+            # ===============================
+            # 🔥 SIMPAN
+            # ===============================
+            key = (month, year)
             data_storage[key] = df
 
         except Exception as e:
+            st.warning(f"⚠️ Skip {file.name}: {e}")
             continue
 
     return data_storage
