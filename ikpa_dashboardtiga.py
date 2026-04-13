@@ -1737,67 +1737,36 @@ def process_excel_file(uploaded_file, upload_year):
     
     df_raw = pd.read_excel(uploaded_file, header=None)
 
-    # =========================
-    # 🔥 CARI HEADER OTOMATIS
-    # =========================
-    header_row = None
+    # ===============================
+    # AMBIL BULAN
+    # ===============================
+    try:
+        month_text = str(df_raw.iloc[1, 0])
+        month_raw = month_text.split(":")[-1].strip().upper()
+    except:
+        month_raw = "MARET"
 
-    for i in range(20):
-        row = df_raw.iloc[i].astype(str).str.upper()
+    month = VALID_MONTHS.get(month_raw, "MARET")
 
-        if "REVISI" in " ".join(row.values) and "PENYERAPAN" in " ".join(row.values):
-            header_row = i
-            break
+    # ===============================
+    # DATA MULAI
+    # ===============================
+    df_data = df_raw.iloc[4:].reset_index(drop=True)
 
-    if header_row is None:
-        raise ValueError("Header IKPA tidak ditemukan")
-
-    # =========================
-    # 🔥 SET HEADER
-    # =========================
-    df = df_raw.iloc[header_row+1:].copy()
-    df.columns = df_raw.iloc[header_row]
-    df = df.reset_index(drop=True)
-
-    # =========================
-    # 🔥 NORMALISASI KOLOM
-    # =========================
-    df.columns = [str(c).strip() for c in df.columns]
-
-    # =========================
-    # 🔥 DETEKSI KOLOM PENTING
-    # =========================
-    def find_col(keyword):
-        for c in df.columns:
-            if keyword in str(c).upper():
-                return c
-        return None
-
-    col_kode = find_col("SATKER")
-    col_nama = df.columns[df.columns.get_loc(col_kode) + 1]
-
-    col_revisi = find_col("REVISI")
-    col_deviasi = find_col("DEVIASI")
-    col_serap = find_col("PENYERAPAN")
-    col_kontrak = find_col("KONTRAK")
-    col_tagihan = find_col("TAGIHAN")
-    col_up = find_col("UP")
-    col_output = find_col("OUTPUT")
-    col_total = find_col("NILAI TOTAL")
-    col_konversi = find_col("KONVERSI")
-    col_disp = find_col("DISPENSASI")
-    col_akhir = find_col("NILAI AKHIR")
-
-    # =========================
-    # 🔥 BUILD DATA
-    # =========================
     processed_rows = []
+    i = 0
 
-    for _, row in df.iterrows():
+    while i + 2 < len(df_data):
 
-        kode_satker = normalize_kode_satker(row[col_kode])
+        nilai = df_data.iloc[i]
+        bobot = df_data.iloc[i + 1]
+        nilai_akhir = df_data.iloc[i + 2]
 
-        if not kode_satker:
+        kode_satker = normalize_kode_satker(str(nilai[3]))
+        uraian_satker = str(nilai[4]).strip()
+
+        if not kode_satker or len(kode_satker) != 6:
+            i += 3
             continue
 
         def safe(x):
@@ -1806,31 +1775,36 @@ def process_excel_file(uploaded_file, upload_year):
             except:
                 return 0
 
-        processed_rows.append({
+        row = {
             "Kode Satker": kode_satker,
-            "Uraian Satker": str(row[col_nama]).strip(),
+            "Uraian Satker": uraian_satker,
 
-            "Revisi DIPA": safe(row[col_revisi]),
-            "Deviasi Halaman III DIPA": safe(row[col_deviasi]),
-            "Penyerapan Anggaran": safe(row[col_serap]),
-            "Belanja Kontraktual": safe(row[col_kontrak]),
-            "Penyelesaian Tagihan": safe(row[col_tagihan]),
-            "Pengelolaan UP dan TUP": safe(row[col_up]),
-            "Capaian Output": safe(row[col_output]),
+            "Revisi DIPA": safe(nilai[6]),
+            "Deviasi Halaman III DIPA": safe(nilai[7]),
+            "Penyerapan Anggaran": safe(nilai[8]),
+            "Belanja Kontraktual": safe(nilai[9]),
+            "Penyelesaian Tagihan": safe(nilai[10]),
+            "Pengelolaan UP dan TUP": safe(nilai[11]),
+            "Capaian Output": safe(nilai[12]),
 
-            "Nilai Total": safe(row[col_total]),
-            "Konversi Bobot": safe(row[col_konversi]),
-            "Dispensasi SPM (Pengurang)": safe(row[col_disp]),
+            "Nilai Total": safe(nilai[13]),
+            "Konversi Bobot": safe(nilai[14]),
+            "Dispensasi SPM (Pengurang)": safe(nilai[15]),
 
-            "Nilai Akhir (Nilai Total/Konversi Bobot)": safe(row[col_akhir]),
+            # 🔥 INI YANG PALING PENTING
+            "Nilai Akhir (Nilai Total/Konversi Bobot)": safe(nilai_akhir.iloc[-1]),
 
-            "Bulan": "MARET",
+            "Bulan": month,
             "Tahun": upload_year
-        })
+        }
+
+        processed_rows.append(row)
+
+        i += 3
 
     df_final = pd.DataFrame(processed_rows)
 
-    return df_final, "MARET", upload_year
+    return df_final, month, upload_year
 
 
 VALID_MONTHS = {
