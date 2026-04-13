@@ -1733,25 +1733,9 @@ def process_excel_digipay(uploaded_file, upload_year):
     return df_final
 
 
-# ===============================
-# PARSER IKPA SATKER (INI KUNCI)
-# ===============================
 def process_excel_file(uploaded_file, upload_year):
     
     df_raw = pd.read_excel(uploaded_file, header=None)
-
-    # ===============================
-    # DETEKSI BULAN
-    # ===============================
-    month = "JULI"
-    for i in range(len(df_raw)):
-        row_text = " ".join(df_raw.iloc[i].astype(str)).upper()
-        for key, val in VALID_MONTHS.items():
-            if key in row_text:
-                month = val
-                break
-        if month != "JULI":
-            break
 
     processed_rows = []
 
@@ -1760,92 +1744,72 @@ def process_excel_file(uploaded_file, upload_year):
 
         row = df_raw.iloc[i]
 
-        # ===============================
-        # DETEKSI SATKER (ANCHOR UTAMA)
-        # ===============================
-        kode_satker = normalize_kode_satker(row[3])
-        uraian_satker = str(row[4]).strip()
+        kode_satker = normalize_kode_satker(row[4])
+        uraian_satker = str(row[5]).strip()
 
-        if (
-            not kode_satker
-            or len(kode_satker) != 6
-            or uraian_satker.upper() in ["NILAI", "BOBOT", "NILAI AKHIR"]
-        ):
+        # skip baris tidak valid
+        if not kode_satker or len(kode_satker) != 6:
             i += 1
             continue
 
-        # ===============================
-        # AMBIL BLOK BARIS (FLEKSIBEL)
-        # ===============================
-        block = df_raw.iloc[i:i+5]  # ambil 5 baris ke depan (aman semua format)
+        # =========================
+        # 🔥 AMBIL BLOK 3 BARIS
+        # =========================
+        row_nilai = df_raw.iloc[i]
+        row_bobot = df_raw.iloc[i+1] if i+1 < len(df_raw) else None
+        row_akhir = df_raw.iloc[i+2] if i+2 < len(df_raw) else None
 
-        # ===============================
-        # AMBIL NILAI IKPA (PALING AKURAT)
-        # ===============================
-        nilai_final = 0
+        # =========================
+        # 🔥 VALIDASI "NILAI AKHIR"
+        # =========================
+        if row_akhir is not None and "AKHIR" in str(row_akhir[6]).upper():
+            try:
+                nilai_final = float(str(row_akhir.iloc[-1]).replace(",", "."))
+            except:
+                nilai_final = 0
+        else:
+            nilai_final = 0
 
-        for _, r in block.iterrows():
-            for val in r:
-                try:
-                    val_float = float(str(val).replace(",", "."))
-                    if 50 <= val_float <= 100:
-                        nilai_final = val_float
-                except:
-                    continue
-
-        # ambil nilai terakhir (biasanya IKPA)
-        # bukan max → tapi terakhir valid
-        # ini kunci biar tidak 100 semua
-
-        # ===============================
-        # HELPER NUMERIK
-        # ===============================
+        # =========================
+        # HELPER
+        # =========================
         def safe_num(val):
             try:
                 return float(str(val).replace(",", "."))
             except:
-                return None
+                return 0
 
-        # ===============================
-        # AMBIL DATA INDIKATOR (BARIS PERTAMA)
-        # ===============================
-        row_nilai = row
-
+        # =========================
+        # BUILD DATA
+        # =========================
         row_data = {
-            "No": row_nilai[0],
-            "Kode KPPN": str(row_nilai[1]).strip("'"),
-            "Kode BA": str(row_nilai[2]).strip("'"),
             "Kode Satker": kode_satker,
             "Uraian Satker": uraian_satker,
 
-            "Revisi DIPA": safe_num(row_nilai[6]),
-            "Deviasi Halaman III DIPA": safe_num(row_nilai[7]),
-            "Penyerapan Anggaran": safe_num(row_nilai[8]),
-            "Belanja Kontraktual": safe_num(row_nilai[9]),
-            "Penyelesaian Tagihan": safe_num(row_nilai[10]),
-            "Pengelolaan UP dan TUP": safe_num(row_nilai[11]),
-            "Capaian Output": safe_num(row_nilai[12]),
+            "Revisi DIPA": safe_num(row_nilai[7]),
+            "Deviasi Halaman III DIPA": safe_num(row_nilai[8]),
+            "Penyerapan Anggaran": safe_num(row_nilai[10]),
+            "Belanja Kontraktual": safe_num(row_nilai[11]),
+            "Penyelesaian Tagihan": safe_num(row_nilai[12]),
+            "Pengelolaan UP dan TUP": safe_num(row_nilai[13]),
+            "Capaian Output": safe_num(row_nilai[15]),
 
-            "Nilai Total": safe_num(row_nilai[13]),
-            "Konversi Bobot": safe_num(row_nilai[14]),
-            "Dispensasi SPM (Pengurang)": safe_num(row_nilai[15]),
+            "Nilai Total": safe_num(row_nilai[17]),
+            "Konversi Bobot": safe_num(row_nilai[18]),
+            "Dispensasi SPM (Pengurang)": safe_num(row_nilai[19]),
 
             "Nilai Akhir (Nilai Total/Konversi Bobot)": nilai_final,
 
-            "Bulan": month,
+            "Bulan": "MARET",
             "Tahun": upload_year
         }
 
         processed_rows.append(row_data)
 
-        # ===============================
-        # LOMPAT DINAMIS
-        # ===============================
-        i += 3  # tidak paksa 4 → biar fleksibel semua format
+        # lompat 3 baris
+        i += 3
 
-    df_final = pd.DataFrame(processed_rows)
-
-    return df_final, month, upload_year
+    return pd.DataFrame(processed_rows)
 
 
 VALID_MONTHS = {
@@ -1867,7 +1831,6 @@ VALID_MONTHS = {
     "NOPEMBER": "NOVEMBER",
     "DESEMBER": "DESEMBER",
 }
-
 
 
 def post_process_ikpa_satker(df, source="Upload"):
