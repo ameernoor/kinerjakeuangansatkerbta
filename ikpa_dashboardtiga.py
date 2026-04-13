@@ -2694,13 +2694,8 @@ def save_file_to_github(content_bytes, filename, folder):
 # ============================
 #  LOAD DATA IKPA DARI GITHUB
 # ============================
-@st.cache_data(ttl=3600)
+@st.cache_data(ttl=0)  
 def load_data_from_github(_cache_buster: int = 0):
-    """
-    Load IKPA Satker dari GitHub (/data).
-    HANYA file hasil proses (df_final) yang diterima.
-    Mengembalikan dict: {(BULAN, TAHUN): DataFrame}
-    """
 
     data_storage = {}
 
@@ -2745,24 +2740,38 @@ def load_data_from_github(_cache_buster: int = 0):
 
         try:
             decoded = base64.b64decode(file.content)
-            df = pd.read_excel(io.BytesIO(decoded))
-            
-            # ===============================
-            # 🔥 RESET HASIL LAMA (WAJIB)
-            # ===============================
-            df = df.copy()
 
+            # ===============================
+            # 🔥 FIX HEADER IKPA 2026
+            # ===============================
+            df_raw = pd.read_excel(io.BytesIO(decoded), header=None)
+
+            for i in range(10):
+                row = df_raw.iloc[i].astype(str).str.upper()
+                if row.str.contains("KODE SATKER").any():
+                    df_raw.columns = df_raw.iloc[i]
+                    df_raw = df_raw[i+1:]
+                    break
+
+            df = df_raw.reset_index(drop=True)
+            df.columns = [str(c).strip() for c in df.columns]
+
+            # ===============================
+            # 🔥 RESET KOLOM TAMBAHAN
+            # ===============================
             for col in ["Uraian Satker-RINGKAS", "Uraian Satker Final", "Satker"]:
                 if col in df.columns:
                     df.drop(columns=[col], inplace=True)
 
             # ===============================
-            # VALIDASI KOLOM WAJIB
+            # 🔥 VALIDASI LEBIH FLEXIBLE
             # ===============================
-            if not all(col in df.columns for col in REQUIRED_COLUMNS):
+            missing = [col for col in REQUIRED_COLUMNS if col not in df.columns]
+
+            if len(missing) > 5:
                 continue
 
-            month = str(df["Bulan"].iloc[0]).upper()
+            month = str(df["Bulan"].iloc[0]).upper().strip()
             year = str(df["Tahun"].iloc[0])
             key = (month, year)
 
@@ -2778,9 +2787,9 @@ def load_data_from_github(_cache_buster: int = 0):
                 .apply(normalize_kode_satker)
             )
 
-            # =====================================================
-            # 🔑 PAKSA URAIAN SATKER RINGKAS (FIX UTAMA)
-            # =====================================================
+            # ===============================
+            # 🔥 FIX NAMA SATKER
+            # ===============================
             df = apply_reference_short_names(df)
             df = create_satker_column(df)
 
@@ -2801,7 +2810,7 @@ def load_data_from_github(_cache_buster: int = 0):
 
             for col in numeric_cols:
                 if col in df.columns:
-                    df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0)
+                    df[col] = df[col].apply(clean_numeric)
 
             month_num = MONTH_ORDER.get(month, 0)
 
@@ -2810,7 +2819,7 @@ def load_data_from_github(_cache_buster: int = 0):
             df["Period_Sort"] = f"{int(year):04d}-{month_num:02d}"
 
             # ===============================
-            # RANKING DENSE
+            # RANKING
             # ===============================
             nilai_col = "Nilai Akhir (Nilai Total/Konversi Bobot)"
             df = df.sort_values(nilai_col, ascending=False)
@@ -2821,7 +2830,7 @@ def load_data_from_github(_cache_buster: int = 0):
             )
 
             # ===============================
-            # MERGE DIPA + JENIS SATKER
+            # 🔥 MERGE DIPA
             # ===============================
             df = merge_ikpa_with_dipa(df)
 
