@@ -1196,9 +1196,41 @@ def standardize_ikpa_format(df):
         nama_satker_col = df.columns[idx + 1]
 
     # =========================
+    # 🔥 STEP 4b: DETEKSI KODE BA & KODE KPPN
+    # Kode KPPN biasanya 6 digit, Kode BA biasanya 3 digit, di kolom sebelum Kode Satker
+    # =========================
+    kode_ba_col   = None
+    kode_kppn_col = None
+
+    for c in df.columns:
+        cu = str(c).upper()
+        if "KODE BA" in cu or ("BA" in cu and "KODE" in cu):
+            kode_ba_col = c
+        if "KODE KPPN" in cu or "KPPN" in cu:
+            kode_kppn_col = c
+
+    # Fallback: deteksi otomatis dari pola angka sebelum Kode Satker
+    if kode_ba_col is None and idx > 0:
+        for back_idx in range(idx - 1, -1, -1):
+            c = df.columns[back_idx]
+            sample = df[c].astype(str).str.strip()
+            ratio_3 = sample.str.match(r"^\d{3}$").mean()
+            ratio_6 = sample.str.match(r"^\d{6}$").mean()
+            if ratio_3 > 0.5 and kode_ba_col is None:
+                kode_ba_col = c
+            elif ratio_6 > 0.5 and kode_kppn_col is None:
+                kode_kppn_col = c
+
+    # =========================
     # 🔥 BUILD OUTPUT
     # =========================
     out = pd.DataFrame()
+
+    # Kode KPPN & BA wajib preserve (sebelum Kode Satker)
+    if kode_kppn_col:
+        out["Kode KPPN"] = df[kode_kppn_col].astype(str).str.strip()
+    if kode_ba_col:
+        out["Kode BA"] = df[kode_ba_col].astype(str).str.strip()
 
     out["Kode Satker"] = df[kode_satker_col]
 
@@ -1274,11 +1306,6 @@ def apply_filter_ba(df):
 st.set_page_config(
     page_title="Dashboard IKPA KPPN Baturaja",
     page_icon="📊",
-    layout="wide"
-)
-
-st.set_page_config(
-    page_title="Dashboard IKPA",
     layout="wide"
 )
 
@@ -1738,73 +1765,136 @@ def process_excel_file(uploaded_file, upload_year):
     df_raw = pd.read_excel(uploaded_file, header=None)
 
     # ===============================
-    # AMBIL BULAN
+    # DETEKSI BULAN DARI HEADER FILE
     # ===============================
-    try:
-        month_text = str(df_raw.iloc[1, 0])
-        month_raw = month_text.split(":")[-1].strip().upper()
-    except:
-        month_raw = "MARET"
+    detected_month = "UNKNOWN"
+    MONTH_KEYS = {
+        "JANUARI": "JANUARI", "FEBRUARI": "FEBRUARI", "PEBRUARI": "FEBRUARI",
+        "MARET": "MARET", "APRIL": "APRIL", "MEI": "MEI",
+        "JUNI": "JUNI", "JULI": "JULI", "AGUSTUS": "AGUSTUS",
+        "SEPTEMBER": "SEPTEMBER", "OKTOBER": "OKTOBER",
+        "NOVEMBER": "NOVEMBER", "NOPEMBER": "NOVEMBER", "DESEMBER": "DESEMBER"
+    }
 
-    month = VALID_MONTHS.get(month_raw, "MARET")
+    for i in range(min(15, len(df_raw))):
+        row_text = " ".join(df_raw.iloc[i].astype(str).str.upper().fillna(""))
+        for m_key, m_val in MONTH_KEYS.items():
+            if m_key in row_text:
+                detected_month = m_val
+                break
+        if detected_month != "UNKNOWN":
+            break
 
-    # ===============================
-    # DATA MULAI
-    # ===============================
-    df_data = df_raw.iloc[4:].reset_index(drop=True)
+    # fallback ke nama file
+    if detected_month == "UNKNOWN":
+        fname = getattr(uploaded_file, "name", "").upper()
+        for m_key, m_val in MONTH_KEYS.items():
+            if m_key in fname:
+                detected_month = m_val
+                break
+
+    if detected_month == "UNKNOWN":
+        detected_month = "MARET"  # last resort fallback
 
     processed_rows = []
+
     i = 0
+    while i < len(df_raw):
 
-    while i + 2 < len(df_data):
+        row = df_raw.iloc[i]
 
-        nilai = df_data.iloc[i]
-        bobot = df_data.iloc[i + 1]
-        nilai_akhir = df_data.iloc[i + 2]
-
-        kode_satker = normalize_kode_satker(str(nilai[3]))
-        uraian_satker = str(nilai[4]).strip()
+        # ===============================
+        # DETEKSI SATKER
+        # ===============================
+        kode_satker = normalize_kode_satker(row[4])
+        uraian_satker = str(row[5]).strip()
 
         if not kode_satker or len(kode_satker) != 6:
-            i += 3
+            i += 1
             continue
 
-        def safe(x):
+        # ===============================
+        # AMBIL 3 BARIS (NILAI, BOBOT, NILAI AKHIR)
+        # ===============================
+        row_nilai = df_raw.iloc[i]
+
+        row_akhir = None
+        if i + 2 < len(df_raw):
+            row_akhir = df_raw.iloc[i + 2]
+
+        # ===============================
+        # AMBIL NILAI IKPA (BARIS NILAI AKHIR)
+        # ===============================
+        nilai_final = 0
+
+        if row_akhir is not None:
+            label = str(row_akhir[6]).upper()
+
+            if "AKHIR" in label:
+                try:
+                    nilai_final = float(str(row_akhir.iloc[-1]).replace(",", "."))
+                except:
+                    nilai_final = 0
+
+        # ===============================
+        # HELPER
+        # ===============================
+        def safe_num(val):
             try:
-                return float(str(x).replace(",", "."))
+                return float(str(val).replace(",", "."))
             except:
                 return 0
 
-        row = {
+        # ===============================
+        # AMBIL KODE BA & KODE KPPN
+        # (kolom 1 = Kode KPPN, kolom 2 = Kode BA, kolom 3 = Kode Satker biasanya)
+        # ===============================
+        try:
+            kode_kppn_raw = str(row[1]).strip() if len(row) > 1 else ""
+            kode_ba_raw   = str(row[2]).strip() if len(row) > 2 else ""
+
+            import re as _re
+            kode_kppn = _re.sub(r"[^\d]", "", kode_kppn_raw).zfill(6) if kode_kppn_raw not in ("", "nan") else ""
+            kode_ba   = _re.sub(r"[^\d]", "", kode_ba_raw).zfill(3)   if kode_ba_raw   not in ("", "nan") else ""
+        except Exception:
+            kode_kppn = ""
+            kode_ba   = ""
+
+        # ===============================
+        # BUILD DATA
+        # ===============================
+        row_data = {
+            "Kode KPPN": kode_kppn,
+            "Kode BA": kode_ba,
             "Kode Satker": kode_satker,
             "Uraian Satker": uraian_satker,
 
-            "Revisi DIPA": safe(nilai[6]),
-            "Deviasi Halaman III DIPA": safe(nilai[7]),
-            "Penyerapan Anggaran": safe(nilai[8]),
-            "Belanja Kontraktual": safe(nilai[9]),
-            "Penyelesaian Tagihan": safe(nilai[10]),
-            "Pengelolaan UP dan TUP": safe(nilai[11]),
-            "Capaian Output": safe(nilai[12]),
+            "Revisi DIPA": safe_num(row_nilai[7]),
+            "Deviasi Halaman III DIPA": safe_num(row_nilai[8]),
+            "Penyerapan Anggaran": safe_num(row_nilai[10]),
+            "Belanja Kontraktual": safe_num(row_nilai[11]),
+            "Penyelesaian Tagihan": safe_num(row_nilai[12]),
+            "Pengelolaan UP dan TUP": safe_num(row_nilai[13]),
+            "Capaian Output": safe_num(row_nilai[15]),
 
-            "Nilai Total": safe(nilai[13]),
-            "Konversi Bobot": safe(nilai[14]),
-            "Dispensasi SPM (Pengurang)": safe(nilai[15]),
+            "Nilai Total": safe_num(row_nilai[17]),
+            "Konversi Bobot": safe_num(row_nilai[18]),
+            "Dispensasi SPM (Pengurang)": safe_num(row_nilai[19]),
 
-            # 🔥 INI YANG PALING PENTING
-            "Nilai Akhir (Nilai Total/Konversi Bobot)": safe(nilai_akhir.iloc[-1]),
+            "Nilai Akhir (Nilai Total/Konversi Bobot)": nilai_final,
 
-            "Bulan": month,
+            "Bulan": detected_month,
             "Tahun": upload_year
         }
 
-        processed_rows.append(row)
+        processed_rows.append(row_data)
 
+        # 🔥 lompat 3 baris
         i += 3
 
     df_final = pd.DataFrame(processed_rows)
 
-    return df_final, month, upload_year
+    return df_final, detected_month, upload_year
 
 
 VALID_MONTHS = {
@@ -1856,9 +1946,10 @@ def post_process_ikpa_satker(df, source="Upload"):
     # 🔥 2. NORMALISASI NUMERIK (ANTI NAN)
     # =========================
     non_numeric = [
-        "Uraian Satker",
-        "Bulan",
-        "Tahun",
+        "Kode Satker", "Uraian Satker", "Bulan", "Tahun",
+        "Kode BA", "Kode KPPN", "Source", "Period", "Period_Sort",
+        "Satker", "Uraian Satker-RINGKAS", "Uraian Satker Final",
+        "Jenis Satker", "Peringkat",
         "Nilai Akhir (Nilai Total/Konversi Bobot)"
     ]
 
@@ -2444,7 +2535,6 @@ def load_DATA_DIPA_from_github():
 
         match = pattern.match(f.name)
         if not match:
-            st.write("⛔ Skip:", f.name)
             continue
 
         tahun = int(match.group(1))
@@ -2456,14 +2546,12 @@ def load_DATA_DIPA_from_github():
             raw = base64.b64decode(f.content)
             df_raw = pd.read_excel(io.BytesIO(raw))
 
-
             # ===============================
             # STANDARDIZE
             # ===============================
             df_parsed = auto_process_dipa(df_raw)
 
             if df_parsed is None or df_parsed.empty:
-                st.error(f"❌ DIPA {tahun} kosong setelah parsing")
                 continue
 
             # SET TAHUN
@@ -2479,22 +2567,18 @@ def load_DATA_DIPA_from_github():
                 .str.zfill(6)
             )
 
-
-
             # SIMPAN
             st.session_state.DATA_DIPA_by_year[tahun] = df_parsed
             loaded_years.append(str(tahun))
 
         except Exception as e:
-            st.error(f"❌ ERROR parsing {tahun}: {e}")
+            pass  # skip file yang gagal
 
     # ===============================
     # FINAL RESULT
     # ===============================
     if loaded_years:
-        st.success("✅ DIPA berhasil dimuat: " + ", ".join(loaded_years))
-    else:
-        st.error("❌ SEMUA DIPA GAGAL DIMUAT")
+        add_notification("Data DIPA berhasil dimuat: " + ", ".join(loaded_years))
 
     return True
 
@@ -2717,8 +2801,14 @@ def load_data_from_github(_cache_buster: int = 0):
             # ===============================
             # 🔥 NUMERIC CLEAN
             # ===============================
+            NON_NUMERIC_COLS = [
+                "Kode Satker", "Uraian Satker", "Bulan", "Tahun",
+                "Kode BA", "Kode KPPN", "Source", "Period", "Period_Sort",
+                "Satker", "Uraian Satker-RINGKAS", "Uraian Satker Final",
+                "Jenis Satker", "Peringkat"
+            ]
             for col in df.columns:
-                if col not in ["Kode Satker", "Uraian Satker", "Bulan", "Tahun"]:
+                if col not in NON_NUMERIC_COLS:
                     df[col] = df[col].apply(clean_numeric)
 
             # ===============================
@@ -2745,9 +2835,12 @@ def load_data_from_github(_cache_buster: int = 0):
                 )
 
             # ===============================
-            # 🔥 MERGE DIPA
+            # 🔥 MERGE DIPA (hanya jika DIPA sudah tersedia)
             # ===============================
-            df = merge_ikpa_with_dipa(df)
+            if st.session_state.get("DATA_DIPA_by_year"):
+                df = merge_ikpa_with_dipa(df)
+            else:
+                df["Total Pagu"] = df.get("Total Pagu", 0)
 
             if "Jenis Satker" in df.columns:
                 df = df.drop(columns=["Jenis Satker"])
@@ -2850,7 +2943,7 @@ def load_data_ikpa_kppn_from_github():
             data[key] = df
 
         except Exception as e:
-            st.write(f"❌ ERROR {f.path}:", e)
+            pass  # skip file error
 
     return data
 
@@ -3095,7 +3188,6 @@ def get_all_kppn_files(repo, path="Data IKPA KPPN"):
     try:
         contents = repo.get_contents(path)
     except Exception as e:
-        st.write("❌ ERROR PATH:", e)
         return all_files
 
     for c in contents:
@@ -3141,19 +3233,23 @@ def create_ranking_chart(df, title, top=True, limit=10):
     
     colors = px.colors.sequential.Greens if top else px.colors.sequential.Reds
     
+    nilai_col = 'Nilai Akhir (Nilai Total/Konversi Bobot)'
+    min_val = df_sorted[nilai_col].min()
+    max_val = df_sorted[nilai_col].max()
+
     # use 'Satker' for y labels to keep them unique
     fig.add_trace(go.Bar(
-    y=df_filtered['Satker'],
-    x=df_filtered[column],
+    y=df_sorted['Satker'],
+    x=df_sorted[nilai_col],
     orientation='h',
     marker=dict(
-        color=df_filtered[column],
+        color=df_sorted[nilai_col],
         colorscale='OrRd_r',
         showscale=True,
         cmin=min_val,
         cmax=max_val,
     ),
-    text=df_filtered[column].round(2),
+    text=df_sorted[nilai_col].round(2),
     textposition='outside',
     hovertemplate='<b>%{y}</b><br>Nilai: %{x:.2f}<extra></extra>'
 ))
@@ -3170,11 +3266,11 @@ def create_ranking_chart(df, title, top=True, limit=10):
     # Rotated labels 45° di bawah
     # ============================
     annotations = []
-    y_positions = list(range(len(df_filtered)))
+    y_positions = list(range(len(df_sorted)))
 
-    for i, satker in enumerate(df_filtered['Satker']):
+    for i, satker in enumerate(df_sorted['Satker']):
         annotations.append(dict(
-        x=df_filtered[column].min() - 3,
+        x=df_sorted[nilai_col].min() - 3,
         y=i,
         text=satker,
         xanchor="right",
@@ -3205,20 +3301,24 @@ def get_top_bottom(df, n=10, top=True):
 
 
 def make_column_chart(data, title, color_scale, y_min, y_max):
-    if data.empty:
+    if data is None or data.empty:
         return None
 
-    plot_df = df.copy()
+    nilai_col = "Nilai Akhir (Nilai Total/Konversi Bobot)"
+    plot_df = data.copy()
+
+    if "Satker" not in plot_df.columns:
+        return None
+
     fig = px.bar(
-        plot_df.sort_values("Nilai Akhir (Nilai Total/Konversi Bobot)"),
-        x="Nilai Akhir (Nilai Total/Konversi Bobot)",
+        plot_df.sort_values(nilai_col),
+        x=nilai_col,
         y="Satker",
         orientation="h",
-        color="Nilai Akhir (Nilai Total/Konversi Bobot)",
+        color=nilai_col,
         color_continuous_scale=color_scale,
         title=title
     )
-
 
     fig.update_layout(
         xaxis_range=[y_min, y_max],
@@ -3237,20 +3337,6 @@ def make_column_chart(data, title, color_scale, y_min, y_max):
     )
 
     return fig
-
-def safe_chart(df, title, top=True, color="Greens", y_min=0, y_max=110):
-    if df is None or df.empty:
-        st.info("Tidak ada data.")
-        return
-
-    chart_df = get_top_bottom(df, 10, top)
-    if chart_df is None or chart_df.empty:
-        st.info("Tidak ada data.")
-        return
-
-    fig = make_column_chart(chart_df, "", color, y_min, y_max)
-    if fig:
-        st.plotly_chart(fig, use_container_width=True)
 
 # ============================================================
 # Problem Chart untuk Dashboard Internal
@@ -3544,50 +3630,83 @@ def create_satker_column(df):
 
 
 def merge_ikpa_with_dipa(df):
-    
     df = df.copy()
 
-    year = str(df["Tahun"].iloc[0])
-
-    # =========================
-    # CEK DIPA ADA
-    # =========================
-    if year not in st.session_state.DATA_DIPA_by_year:
+    # ===============================
+    # VALIDASI
+    # ===============================
+    if df.empty or "Tahun" not in df.columns:
         df["Total Pagu"] = 0
         return df
 
-    dipa_df = st.session_state.DATA_DIPA_by_year[year].copy()
+    # ===============================
+    # NORMALISASI TAHUN
+    # ===============================
+    df["Tahun"] = pd.to_numeric(df["Tahun"], errors="coerce").fillna(0).astype(int)
 
-    # =========================
-    # 🔥 NORMALISASI KODE SATKER
-    # =========================
+    tahun_list = df["Tahun"].unique()
+    tahun = int(tahun_list[0])
+
+    dipa_dict = st.session_state.get("DATA_DIPA_by_year", {})
+
+    # ===============================
+    # AMBIL DIPA
+    # ===============================
+    df_dipa = dipa_dict.get(tahun)
+
+    if df_dipa is None or df_dipa.empty:
+        df["Total Pagu"] = 0
+        return df
+
+    df_dipa = df_dipa.copy()
+
+    # ===============================
+    # 🔥 SAFETY KOLOM PAGU (WAJIB)
+    # ===============================
+    if "Total Pagu" not in df_dipa.columns:
+        # tidak usah error, langsung isi 0
+        df["Total Pagu"] = 0
+        return df
+
+    # ===============================
+    # NORMALISASI KODE SATKER
+    # ===============================
     df["Kode Satker"] = (
         df["Kode Satker"]
         .astype(str)
-        .str.extract(r"(\d{6})")[0]
+        .str.extract(r"(\d+)")[0]
         .fillna("")
+        .str.zfill(6)
     )
 
-    dipa_df["Kode Satker"] = (
-        dipa_df["Kode Satker"]
+    df_dipa["Kode Satker"] = (
+        df_dipa["Kode Satker"]
         .astype(str)
-        .str.extract(r"(\d{6})")[0]
+        .str.extract(r"(\d+)")[0]
         .fillna("")
+        .str.zfill(6)
     )
 
-    # =========================
+    # ===============================
+    # 🔥 CLEAN PAGU (AMAN)
+    # ===============================
+    df_dipa["Total Pagu"] = df_dipa["Total Pagu"].apply(clean_numeric)
+
+    # ===============================
     # MERGE
-    # =========================
-    df = df.merge(
-        dipa_df[["Kode Satker", "Total Pagu"]],
+    # ===============================
+    df_merge = df.merge(
+        df_dipa[["Kode Satker", "Total Pagu"]],
         on="Kode Satker",
         how="left"
     )
 
-    # 🔥 ANTI NULL
-    df["Total Pagu"] = df["Total Pagu"].fillna(0)
+    # ===============================
+    # HANDLE NILAI KOSONG
+    # ===============================
+    df_merge["Total Pagu"] = df_merge["Total Pagu"].fillna(0)
 
-    return df
+    return df_merge
 
 
 def classify_jenis_satker(df):
@@ -3609,20 +3728,14 @@ def classify_jenis_satker(df):
         df["Jenis Satker"] = "SEDANG"
         return df
 
-    # =========================
-    # ANTI ERROR CUT
-    # =========================
-    if df["Total Pagu"].nunique() <= 1:
-        df["Jenis Satker"] = "SEDANG"
-    else:
-        p40 = df["Total Pagu"].quantile(0.40)
-        p70 = df["Total Pagu"].quantile(0.70)
+    p40 = df["Total Pagu"].quantile(0.40)
+    p70 = df["Total Pagu"].quantile(0.70)
 
-        df["Jenis Satker"] = pd.cut(
-            df["Total Pagu"],
-            bins=[-float("inf"), p40, p70, float("inf")],
-            labels=["KECIL", "SEDANG", "BESAR"]
-        )
+    df["Jenis Satker"] = pd.cut(
+        df["Total Pagu"],
+        bins=[-float("inf"), p40, p70, float("inf")],
+        labels=["KECIL", "SEDANG", "BESAR"]
+    )
 
     df["Jenis Satker"] = df["Jenis Satker"].astype(str)
 
@@ -4692,9 +4805,6 @@ def page_dashboard():
             # ===============================
             # GUNAKAN JENIS SATKER DARI LOADER
             # ===============================
-            if "Jenis Satker" not in df.columns:
-                df["Jenis Satker"] = "SEDANG"
-
             df['Jenis Satker'] = df['Jenis Satker'].astype(str)
 
             df_kecil  = df[df['Jenis Satker'] == 'KECIL']
@@ -7985,10 +8095,7 @@ def detect_dipa_header(uploaded_file):
         
         # Jika tidak ada yang cocok, gunakan baris 0
         if header_row is None or max_matches < 3:
-            st.warning("⚠️ Header otomatis tidak terdeteksi, menggunakan baris pertama")
             header_row = 0
-        else:
-            st.info(f"✅ Header terdeteksi di baris {header_row + 1} (keyword match: {max_matches})")
         
         # Baca ulang dengan header yang benar
         uploaded_file.seek(0)
@@ -7999,7 +8106,7 @@ def detect_dipa_header(uploaded_file):
             df.columns.astype(str)
             .str.replace("\n", " ", regex=False)
             .str.replace("\r", " ", regex=False)
-            .str.replace("\s+", " ", regex=True)
+            .str.replace(r"\s+", " ", regex=True)
             .str.strip()
             .str.upper()  # Normalize to uppercase
         )
@@ -8453,6 +8560,15 @@ def merge_ikpa_dipa_auto():
         # ===============================
         df_merged = classify_jenis_satker(df_merged)
 
+        # ===============================
+        # 🔥 REBUILD NAMA SATKER (WAJIB setelah merge)
+        # ===============================
+        df_merged = apply_reference_short_names(df_merged)
+        df_merged = create_satker_column(df_merged)
+
+        # Hapus kolom bantu Kode Clean
+        df_merged = df_merged.drop(columns=["Kode Clean"], errors="ignore")
+
         st.session_state.data_storage[(bulan, tahun)] = df_merged
 
     st.session_state.ikpa_dipa_merged = True
@@ -8726,12 +8842,10 @@ def page_admin():
                         except Exception as e:
                             st.error(f"❌ Error {uploaded_file.name}: {e}")
 
-                    need_merge = st.session_state.get("ikpa_dipa_merged", False)
-                    
-                    if need_merge and st.session_state.DATA_DIPA_by_year:
+                    # Merge IKPA + DIPA setelah upload (ikpa_dipa_merged sudah di-reset False di atas)
+                    if not st.session_state.get("ikpa_dipa_merged", False) and st.session_state.get("DATA_DIPA_by_year"):
                         with st.spinner("🔄 Menggabungkan IKPA & DIPA..."):
                             merge_ikpa_dipa_auto()
-                            st.session_state.ikpa_dipa_merged = True
                     
                     st.session_state["_just_uploaded"] = True
 
@@ -10682,28 +10796,16 @@ def page_admin():
                     ascending=[True, False]
                 ).drop_duplicates(subset="Kode Satker", keep="first")
 
-
-            # =========================
-            # AMAN TOTAL PAGU
-            # =========================
+            # Klasifikasi Satker
             if "Total Pagu" in df.columns:
+                p40 = df["Total Pagu"].quantile(0.40)
+                p70 = df["Total Pagu"].quantile(0.70)
 
-                df["Total Pagu"] = pd.to_numeric(df["Total Pagu"], errors="coerce").fillna(0)
-
-                # =========================
-                # ANTI ERROR CUT
-                # =========================
-                if df["Total Pagu"].nunique() <= 1:
-                    df["Jenis Satker"] = "Satker Sedang"
-                else:
-                    p40 = df["Total Pagu"].quantile(0.40)
-                    p70 = df["Total Pagu"].quantile(0.70)
-
-                    df["Jenis Satker"] = pd.cut(
-                        df["Total Pagu"],
-                        bins=[-float("inf"), p40, p70, float("inf")],
-                        labels=["Satker Kecil", "Satker Sedang", "Satker Besar"]
-                    )
+                df["Jenis Satker"] = pd.cut(
+                    df["Total Pagu"],
+                    bins=[-float("inf"), p40, p70, float("inf")],
+                    labels=["Satker Kecil", "Satker Sedang", "Satker Besar"]
+                )
 
 
             # Preview
@@ -11090,27 +11192,13 @@ def main():
                 })
 
     # ============================================================
-    # LOAD IKPA (STABIL & SEKALI SAJA)
+    # LOAD IKPA (HANYA SEKALI)
     # ============================================================
     if "data_storage" not in st.session_state:
         st.session_state.data_storage = {}
 
     if not st.session_state.data_storage:
-        st.write("🔄 Loading IKPA dari GitHub...")
-
         st.session_state.data_storage = load_data_from_github()
-
-        if st.session_state.data_storage:
-            st.success("✅ IKPA berhasil dimuat")
-        else:
-            st.error("❌ IKPA GAGAL DIMUAT")
-
-
-    # ============================================================
-    #  AUTO LOAD DATA IKPA
-    # ============================================================
-    if not st.session_state.data_storage:
-            st.session_state.data_storage = load_data_from_github()
 
     if st.session_state.data_storage:
         add_notification("Data IKPA berhasil dimuat dari GitHub")
@@ -11198,9 +11286,9 @@ def main():
     # AUTO LOAD KKP SAAT PAGE DIBUKA
     # ============================================================
     if "kkp_master" not in st.session_state:
-        kkp_count = load_kkp_from_github()
+        kkp_loaded = load_kkp_master_from_github()
 
-        if kkp_count > 0:
+        if kkp_loaded:
             add_notification("Database utama KKP berhasil dimuat dari GitHub")
 
 
