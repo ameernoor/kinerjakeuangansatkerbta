@@ -901,7 +901,7 @@ def enrich_nama_satker(df):
 
 
 # ===============================
-# 🔥 AUTO PROCESS DIPA (UNIVERSAL)
+# AUTO PROCESS DIPA
 # ===============================
 def auto_process_dipa(df_raw):
 
@@ -913,8 +913,8 @@ def auto_process_dipa(df_raw):
         # 2️⃣ FIX HEADER
         df_fixed = fix_dipa_header(df_raw)
 
-        # 3️⃣ STANDARDIZE
-        df = standardize_dipa(df_fixed)
+        # 🔥 FIX DI SINI (HAPUS STANDARDIZE)
+        df = df_fixed.copy()
 
     # 4️⃣ BERSIHKAN ANGKA
     for col in df.columns:
@@ -972,20 +972,30 @@ def fix_missing_month(df):
 
 def fix_dipa_header(df_raw):
     """
-    Adapter kecil:
-    - Cari baris header DIPA
-    - Jadikan header
-    - Kembalikan df siap masuk standardize_dipa()
+    Header detector SUPER FLEXIBLE:
+    - Tidak tergantung kata 'pagu'
+    - Bisa handle format aneh
     """
-    for i in range(min(10, len(df_raw))):
-        row = df_raw.iloc[i].astype(str).str.lower()
-        if row.str.contains("satker").any() and row.str.contains("pagu").any():
+
+    for i in range(min(15, len(df_raw))):
+        row = df_raw.iloc[i].astype(str).str.upper()
+
+        # 🔥 DETEKSI LEBIH FLEKSIBEL
+        if (
+            (row.str.contains("SATKER").any()) or
+            (row.str.contains("KODE").any() and row.str.contains("SATKER").any()) or
+            (row.str.contains("NAMA").any())
+        ):
             df = df_raw.iloc[i+1:].copy()
             df.columns = df_raw.iloc[i]
             return df.reset_index(drop=True)
 
-    # fallback → biar standardize_dipa yang handle
-    return df_raw
+    # fallback aman
+    df = df_raw.copy()
+    df.columns = df.iloc[0]
+    df = df[1:]
+
+    return df.reset_index(drop=True)
 
 # ============================================================
 # 🔍 DETEKSI FORMAT DIPA OMSPAN
@@ -8240,13 +8250,13 @@ def process_uploaded_dipa(uploaded_file, save_file_to_github, forced_year=None):
             if df_adapted.empty:
                 return None, None, "❌ Data OMSPAN tidak valid"
 
-            df_std = standardize_dipa(df_adapted)
+            df_std = df_adapted.copy()
         else:
             raw_fixed = fix_dipa_header(raw)
-            df_std = standardize_dipa(raw_fixed)
+            df_std = raw_fixed.copy()
 
         # ===============================
-        # 🔥 3️⃣ PAKSA TAHUN DARI UI
+        # 3️⃣ PAKSA TAHUN DARI UI
         # ===============================
         if forced_year is not None:
             tahun_dipa = int(forced_year)
