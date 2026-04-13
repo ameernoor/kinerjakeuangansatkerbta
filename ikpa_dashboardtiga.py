@@ -1119,7 +1119,19 @@ def standardize_dipa(df_raw):
 
     col_kode = find_col(["Kode Satker", "Satker"])
     col_nama = find_col(["Nama Satker", "Uraian Satker", "Satker"])
-    col_pagu = find_col(["Total Pagu", "Pagu Belanja", "Jumlah"])
+
+    # 🔥 FIX BESAR DI SINI (SUPPORT SEMUA FORMAT)
+    col_pagu = find_col([
+        "Total Pagu",
+        "Pagu Belanja",
+        "Jumlah",
+        "Pagu",
+        "Nilai",
+        "Jumlah Pagu",
+        "Pagu Total",
+        "Pagu Anggaran"
+    ])
+
     col_tanggal_revisi = find_col(["Tanggal Posting Revisi", "Tanggal Revisi"])
     col_revisi_ke = find_col(["Revisi Terakhir", "Revisi ke"])
     col_no = find_col(["No"])
@@ -1134,7 +1146,7 @@ def standardize_dipa(df_raw):
     out = pd.DataFrame()
 
     # =============================
-    # 🔥 KODE SATKER
+    # KODE SATKER
     # =============================
     if col_kode:
         out["Kode Satker"] = (
@@ -1148,7 +1160,7 @@ def standardize_dipa(df_raw):
         out["Kode Satker"] = ""
 
     # =============================
-    # 🔥 NAMA SATKER (AMAN)
+    # NAMA SATKER
     # =============================
     if col_nama:
         out["Satker"] = (
@@ -1161,12 +1173,18 @@ def standardize_dipa(df_raw):
         out["Satker"] = ""
 
     # =============================
-    # 🔥 PAGU (ANTI NAN)
+    # 🔥 PAGU (ANTI GAGAL TOTAL)
     # =============================
     if col_pagu:
         out["Total Pagu"] = df[col_pagu].apply(clean_numeric)
     else:
-        out["Total Pagu"] = 0
+        # 🔥 fallback: cari kolom numerik
+        numeric_cols = df.select_dtypes(include=["number"]).columns
+
+        if len(numeric_cols) > 0:
+            out["Total Pagu"] = df[numeric_cols[0]].apply(clean_numeric)
+        else:
+            out["Total Pagu"] = 0
 
     # =============================
     # TANGGAL
@@ -1225,14 +1243,14 @@ def standardize_dipa(df_raw):
         out["Jenis Revisi"] = ""
 
     # =============================
-    # 🔥 CLEAN FINAL
+    # CLEAN FINAL
     # =============================
     out = out.dropna(subset=["Kode Satker"])
     out = out[out["Kode Satker"] != "000000"]
 
     out["Kode Satker"] = out["Kode Satker"].astype(str).str.zfill(6)
 
-    # 🔥 inject nama satker dari referensi (PENTING)
+    # 🔥 WAJIB: inject nama satker
     out = enrich_nama_satker(out)
 
     # =============================
@@ -3611,7 +3629,6 @@ def merge_ikpa_with_dipa(df):
     # ===============================
     df["Tahun"] = pd.to_numeric(df["Tahun"], errors="coerce").fillna(0).astype(int)
 
-    # 🔥 ambil tahun unik (lebih aman)
     tahun_list = df["Tahun"].unique()
     tahun = int(tahun_list[0])
 
@@ -3623,11 +3640,18 @@ def merge_ikpa_with_dipa(df):
     df_dipa = dipa_dict.get(tahun)
 
     if df_dipa is None or df_dipa.empty:
-        # tidak usah error, langsung isi 0
         df["Total Pagu"] = 0
         return df
 
     df_dipa = df_dipa.copy()
+
+    # ===============================
+    # 🔥 SAFETY KOLOM PAGU (WAJIB)
+    # ===============================
+    if "Total Pagu" not in df_dipa.columns:
+        # tidak usah error, langsung isi 0
+        df["Total Pagu"] = 0
+        return df
 
     # ===============================
     # NORMALISASI KODE SATKER
@@ -3649,7 +3673,7 @@ def merge_ikpa_with_dipa(df):
     )
 
     # ===============================
-    # 🔥 CLEAN PAGU (ANTI NAN)
+    # 🔥 CLEAN PAGU (AMAN)
     # ===============================
     df_dipa["Total Pagu"] = df_dipa["Total Pagu"].apply(clean_numeric)
 
