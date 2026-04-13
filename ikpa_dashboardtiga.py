@@ -1619,11 +1619,15 @@ def extract_kode_from_satker_field(s, width=6):
     return ''
 
         
-# ===============================
-# REGISTER IKPA SATKER (GLOBAL)
-# ===============================
 def register_ikpa_satker(df_final, month, year, source="Manual"):
-    key = (month, str(year))
+    
+    # ===============================
+    # 🔥 NORMALISASI (INI KUNCI FIX)
+    # ===============================
+    month = str(month).upper().strip()
+    year = str(year)
+
+    key = (month, year)
 
     df = df_final.copy()
 
@@ -1635,29 +1639,35 @@ def register_ikpa_satker(df_final, month, year, source="Manual"):
         "MEI": 5, "JUNI": 6, "JULI": 7, "AGUSTUS": 8,
         "SEPTEMBER": 9, "OKTOBER": 10, "NOVEMBER": 11, "DESEMBER": 12
     }
+
     df["Period_Sort"] = f"{int(year):04d}-{MONTH_ORDER.get(month, 0):02d}"
 
     # ===============================
-    # PERBAIKAN RANKING 
+    # 🔥 FIX NUMERIC (ANTI NAN)
     # ===============================
     nilai_col = "Nilai Akhir (Nilai Total/Konversi Bobot)"
 
     if nilai_col in df.columns:
-        # pastikan numerik
-        df[nilai_col] = pd.to_numeric(df[nilai_col], errors="coerce").fillna(0)
 
-        # urutkan DESC
+        df[nilai_col] = df[nilai_col].apply(clean_numeric)
+
+        # ===============================
+        # 🔥 SORT + RANK
+        # ===============================
         df = df.sort_values(nilai_col, ascending=False)
 
-        # DENSE RANKING → 1,1,1,2,3,4,...
         df["Peringkat"] = (
             df[nilai_col]
             .rank(method="dense", ascending=False)
             .astype(int)
         )
 
+    # ===============================
+    # 🔥 SIMPAN KE STORAGE
+    # ===============================
     st.session_state.data_storage[key] = df
-
+    
+    
 
 def find_header_row_by_keywords(uploaded_file, keywords, max_rows=15):
     """
@@ -4571,7 +4581,13 @@ def page_dashboard():
     if "selected_period" not in st.session_state:
         st.session_state.selected_period = all_periods[0]
     
-    df = st.session_state.data_storage.get(st.session_state.selected_period)
+    # ===============================
+    # NORMALISASI KEY 
+    # ===============================
+    sel = st.session_state.selected_period
+    key = (str(sel[0]).upper().strip(), str(sel[1]))
+
+    df = st.session_state.data_storage.get(key)
 
     if df is not None:
         df = df.copy()
@@ -4717,7 +4733,13 @@ def page_dashboard():
                 key="selected_period"
             )
 
-            df = st.session_state.data_storage.get(st.session_state.selected_period)
+            # ===============================
+            # NORMALISASI KEY 
+            # ===============================
+            sel = st.session_state.selected_period
+            key = (str(sel[0]).upper().strip(), str(sel[1]))
+
+            df = st.session_state.data_storage.get(key)
 
             if df is None or df.empty:
                 st.warning("Data IKPA belum tersedia.")
