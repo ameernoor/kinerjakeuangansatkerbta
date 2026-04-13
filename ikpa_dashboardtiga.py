@@ -1135,42 +1135,49 @@ def standardize_ikpa_format(df):
 
     def find_col(keywords):
         for c in df.columns:
-            c_norm = c.upper()
+            c_str = str(c).upper()
             for k in keywords:
-                if k in c_norm:
+                if k in c_str:
                     return c
         return None
 
-    # =========================
-    # MAP KOLOM WAJIB
-    # =========================
-    col_map = {
-        "Kode Satker": find_col(["KODE SATKER"]),
-        "Uraian Satker": find_col(["URAIAN SATKER", "NAMA SATKER"]),
-        "Kode BA": find_col(["BA"]),
-        "Kode KPPN": find_col(["KPPN"]),
-        "Nilai Akhir (Nilai Total/Konversi Bobot)": find_col(["NILAI AKHIR"]),
-        "Nilai Total": find_col(["NILAI TOTAL"]),
-        "Konversi Bobot": find_col(["KONVERSI"]),
-        "Revisi DIPA": find_col(["REVISI"]),
-        "Deviasi Halaman III DIPA": find_col(["DEVIASI"]),
-        "Penyerapan Anggaran": find_col(["PENYERAPAN"]),
-        "Belanja Kontraktual": find_col(["KONTRAKTUAL"]),
-        "Penyelesaian Tagihan": find_col(["TAGIHAN"]),
-        "Pengelolaan UP dan TUP": find_col(["UP", "TUP"]),
-        "Capaian Output": find_col(["OUTPUT"]),
-    }
-
     out = pd.DataFrame()
 
-    for target, source in col_map.items():
-        if source:
-            out[target] = df[source]
+    # =========================
+    # 🔥 KODE SATKER (SUPER FLEXIBLE)
+    # =========================
+    col_kode = find_col(["KODE SATKER", "SATKER", "KODE"])
+
+    if col_kode:
+        out["Kode Satker"] = df[col_kode]
+    else:
+        # 🔥 fallback cari kolom angka 6 digit
+        for c in df.columns:
+            if df[c].astype(str).str.match(r"\d{6}").any():
+                out["Kode Satker"] = df[c]
+                break
         else:
-            out[target] = 0
+            out["Kode Satker"] = ""
 
     # =========================
-    # FIX KODE SATKER
+    # 🔥 NAMA SATKER
+    # =========================
+    col_nama = find_col(["URAIAN", "NAMA", "SATKER"])
+
+    if col_nama:
+        out["Uraian Satker"] = df[col_nama]
+    else:
+        out["Uraian Satker"] = ""
+
+    # =========================
+    # 🔥 KOLOM LAIN (AMAN)
+    # =========================
+    for col in df.columns:
+        if col not in out.columns:
+            out[col] = df[col]
+
+    # =========================
+    # 🔥 FIX FINAL KODE SATKER
     # =========================
     out["Kode Satker"] = (
         out["Kode Satker"]
@@ -1179,16 +1186,6 @@ def standardize_ikpa_format(df):
         .fillna("")
         .str.zfill(6)
     )
-
-    # =========================
-    # FIX NAMA SATKER
-    # =========================
-    out["Uraian Satker"] = out["Uraian Satker"].astype(str)
-
-    # =========================
-    # TAMBAHAN KOLOM WAJIB
-    # =========================
-    out["No"] = range(1, len(out)+1)
 
     return out
 
