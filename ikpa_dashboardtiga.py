@@ -915,6 +915,28 @@ def enrich_nama_satker(df):
 
     return df
 
+def fix_dipa_header(df_raw):
+    """
+    Header detector SUPER FLEXIBLE:
+    """
+    for i in range(min(15, len(df_raw))):
+        row = df_raw.iloc[i].astype(str).str.upper()
+
+        if (
+            (row.str.contains("SATKER").any()) or
+            (row.str.contains("KODE").any() and row.str.contains("SATKER").any()) or
+            (row.str.contains("NAMA").any())
+        ):
+            df = df_raw.iloc[i+1:].copy()
+            df.columns = df_raw.iloc[i]
+            return df.reset_index(drop=True)
+
+    # fallback
+    df = df_raw.copy()
+    df.columns = df.iloc[0]
+    df = df[1:]
+
+    return df.reset_index(drop=True)
 
 def auto_process_dipa(df_raw):
     
