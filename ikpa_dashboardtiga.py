@@ -934,7 +934,9 @@ def auto_process_dipa(df_raw):
 
     # 4️⃣ BERSIHKAN ANGKA
     for col in df.columns:
-        if any(x in col.upper() for x in ["PAGU", "REVISI"]):
+        col_str = str(col).upper()
+
+        if any(x in col_str for x in ["PAGU", "REVISI"]):
             df[col] = df[col].apply(clean_numeric)
 
     # 5️⃣ ISI NAMA SATKER
@@ -2680,8 +2682,8 @@ def load_data_from_github(_cache_buster: int = 0):
             df = df.reset_index(drop=True)
             df.columns = [str(c).strip() for c in df.columns]
             
-            # 🔥 FORCE STRING UNTUK KOLOM TEXT
-            for col in ["Bulan", "Uraian Satker"]:
+            # 🔥 ANTI ERROR UPPER
+            for col in ["Bulan", "Uraian Satker", "Kode Satker"]:
                 if col in df.columns:
                     df[col] = df[col].astype(str)
             
@@ -2693,8 +2695,7 @@ def load_data_from_github(_cache_buster: int = 0):
 
             df["Bulan"] = df["Bulan"].apply(normalize_month)
             df["Tahun"] = year
-            
-
+        
             # ===============================
             # 🔥 BUANG BARIS SAMPAH
             # ===============================
