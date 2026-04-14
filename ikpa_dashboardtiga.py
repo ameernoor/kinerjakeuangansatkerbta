@@ -3309,22 +3309,6 @@ def get_template_file():
         st.error(f"Error membaca template: {e}")
         return None
 
-# ============================================================
-# Helper: format angka → 100/0 tanpa desimal, lainnya 2 desimal
-# ============================================================
-def fmt_nilai(x):
-    """Format nilai: 100.00 → '100', 0.00 → '0', lainnya → '98.97'"""
-    try:
-        v = float(x)
-        if v == 100.0:
-            return "100"
-        if v == 0.0:
-            return "0"
-        return f"{v:.2f}"
-    except (TypeError, ValueError):
-        return str(x)
-
-
 # Fungsi visualisasi podium/bintang
 def create_ranking_chart(df, title, top=True, limit=10):
     """
@@ -4999,6 +4983,42 @@ def page_dashboard():
                             hide_index=True,
                             height=min(400, len(display_df) * 35 + 38)
                         )
+
+            # ===============================
+            # 🔥 FIX LABEL DARI REFERENCE (WAJIB)
+            # ===============================
+            ref = st.session_state.get("reference_df", pd.DataFrame())
+
+            if not ref.empty:
+
+                # mapping kode → nama ringkas
+                ref_map = dict(zip(
+                    ref["Kode Satker"].astype(str),
+                    ref["Uraian Satker-SINGKAT"]
+                ))
+
+                # inject ke df_full (data utama dashboard)
+                df_full["Label Satker"] = (
+                    df_full["Kode Satker"]
+                    .astype(str)
+                    .map(ref_map)
+                )
+
+                # fallback kalau tidak ketemu
+                df_full["Label Satker"] = df_full["Label Satker"].fillna(
+                    "SATKER " + df_full["Kode Satker"].astype(str)
+                )
+
+                # versi pendek untuk chart
+                df_full["Label Satker Pendek"] = (
+                    df_full["Label Satker"]
+                    .astype(str)
+                    .str.slice(0, 35)
+                )
+
+            else:
+                # fallback total
+                df_full["Label Satker Pendek"] = df_full["Kode Satker"].astype(str)
             
             # ===============================
             # Kontrol Skala Chart
