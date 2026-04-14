@@ -1276,14 +1276,25 @@ def parse_dipa(df_raw):
 # ============================================================
 # FUNGSI HELPER: Load Data DIPA dari GitHub
 # ============================================================
-
-
 def auto_process_dipa(df_raw):
-    """
-    Wrapper — diteruskan ke standardize_dipa (versi yang sudah terbukti benar).
-    Nama auto_process_dipa dipertahankan agar semua pemanggil tidak perlu diubah.
-    """
-    return standardize_dipa(df_raw)
+    
+    if is_omspan_dipa(df_raw):
+        df = adapt_dipa_omspan(df_raw)
+    else:
+        df = standardize_dipa(df_raw)
+
+    # safety net WAJIB
+    if "Tanggal Posting Revisi" not in df.columns:
+        df["Tanggal Posting Revisi"] = pd.Timestamp("2026-12-31")
+
+    df["Tanggal Posting Revisi"] = pd.to_datetime(
+        df["Tanggal Posting Revisi"],
+        errors="coerce"
+    ).fillna(pd.Timestamp("2026-12-31"))
+
+    return df
+
+
 def is_omspan_dipa(df_raw):
     cols = df_raw.astype(str).apply(lambda x: " ".join(x), axis=1).str.upper()
     return (
