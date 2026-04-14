@@ -3309,6 +3309,22 @@ def get_template_file():
         st.error(f"Error membaca template: {e}")
         return None
 
+# ============================================================
+# Helper: format angka → 100/0 tanpa desimal, lainnya 2 desimal
+# ============================================================
+def fmt_nilai(x):
+    """Format nilai: 100.00 → '100', 0.00 → '0', lainnya → '98.97'"""
+    try:
+        v = float(x)
+        if v == 100.0:
+            return "100"
+        if v == 0.0:
+            return "0"
+        return f"{v:.2f}"
+    except (TypeError, ValueError):
+        return str(x)
+
+
 # Fungsi visualisasi podium/bintang
 def create_ranking_chart(df, title, top=True, limit=10):
     """
@@ -3332,9 +3348,10 @@ def create_ranking_chart(df, title, top=True, limit=10):
     min_val = df_sorted[nilai_col].min()
     max_val = df_sorted[nilai_col].max()
 
-    # use 'Satker' for y labels to keep them unique
+    # gunakan Uraian Satker-RINGKAS untuk label nama satker yang ringkas
+    label_col = 'Uraian Satker-RINGKAS' if 'Uraian Satker-RINGKAS' in df_sorted.columns else 'Satker'
     fig.add_trace(go.Bar(
-    y=df_sorted['Satker'],
+    y=df_sorted[label_col],
     x=df_sorted[nilai_col],
     orientation='h',
     marker=dict(
@@ -3344,7 +3361,7 @@ def create_ranking_chart(df, title, top=True, limit=10):
         cmin=min_val,
         cmax=max_val,
     ),
-    text=df_sorted[nilai_col].round(2),
+    text=df_sorted[nilai_col].apply(fmt_nilai),
     textposition='outside',
     hovertemplate='<b>%{y}</b><br>Nilai: %{x:.2f}<extra></extra>'
 ))
@@ -3363,7 +3380,7 @@ def create_ranking_chart(df, title, top=True, limit=10):
     annotations = []
     y_positions = list(range(len(df_sorted)))
 
-    for i, satker in enumerate(df_sorted['Satker']):
+    for i, satker in enumerate(df_sorted[label_col]):
         annotations.append(dict(
         x=df_sorted[nilai_col].min() - 3,
         y=i,
@@ -3405,13 +3422,20 @@ def make_column_chart(data, title, color_scale, y_min, y_max):
     if "Satker" not in plot_df.columns:
         return None
 
+    # gunakan Uraian Satker-RINGKAS jika tersedia
+    label_col = "Uraian Satker-RINGKAS" if "Uraian Satker-RINGKAS" in plot_df.columns else "Satker"
+
+    plot_df_sorted = plot_df.sort_values(nilai_col)
+    plot_df_sorted["_label_fmt"] = plot_df_sorted[nilai_col].apply(fmt_nilai)
+
     fig = px.bar(
-        plot_df.sort_values(nilai_col),
+        plot_df_sorted,
         x=nilai_col,
-        y="Satker",
+        y=label_col,
         orientation="h",
         color=nilai_col,
         color_continuous_scale=color_scale,
+        text="_label_fmt",
         title=title
     )
 
@@ -3426,7 +3450,7 @@ def make_column_chart(data, title, color_scale, y_min, y_max):
     )
 
     fig.update_traces(
-        texttemplate="%{x:.2f}",
+        texttemplate="%{text}",
         textposition="outside",
         hovertemplate="<b>%{y}</b><br>Nilai: %{x:.2f}<extra></extra>"
     )
@@ -3456,8 +3480,9 @@ def create_problem_chart(df, column, threshold, title, comparison='less', y_min=
     max_val = df_filtered[column].max()
 
     fig = go.Figure()
+    label_col_p = 'Uraian Satker-RINGKAS' if 'Uraian Satker-RINGKAS' in df_filtered.columns else 'Satker'
     fig.add_trace(go.Bar(
-    x=df_filtered['Satker'],
+    x=df_filtered[label_col_p],
     y=df_filtered[column],
     marker=dict(
         color=df_filtered[column],
@@ -3471,7 +3496,7 @@ def create_problem_chart(df, column, threshold, title, comparison='less', y_min=
             len=0.85         # ⬅️ TIDAK TERLALU TINGGI
         )
         ),
-        text=df_filtered[column].round(2),
+        text=df_filtered[column].apply(fmt_nilai),
         textposition='outside',
         textangle=0,
         textfont=dict(family="Arial Black", size=12),
@@ -3552,8 +3577,9 @@ def create_internal_problem_chart_vertical(
 
     fig = go.Figure()
 
+    label_col_iv = "Uraian Satker-RINGKAS" if "Uraian Satker-RINGKAS" in df.columns else "Satker"
     fig.add_bar(
-        x=df["Satker"],
+        x=df[label_col_iv],
         y=df[column],
         marker=dict(
             color=df[column],
@@ -3564,7 +3590,7 @@ def create_internal_problem_chart_vertical(
                 len=0.85
             ) if show_colorbar else None
         ),
-        text=df[column].round(2),
+        text=df[column].apply(fmt_nilai),
         textposition="outside",
         hovertemplate="<b>%{x}</b><br>Nilai: %{y:.2f}<extra></extra>"
     )
@@ -3907,22 +3933,26 @@ def safe_chart(
         st.info("Tidak ada data valid untuk ditampilkan.")
         return
 
+    # gunakan Uraian Satker-RINGKAS untuk label nama satker
+    label_col_sc = "Uraian Satker-RINGKAS" if "Uraian Satker-RINGKAS" in df_sorted.columns else "Satker"
+    df_sorted["_fmt_text"] = df_sorted[nilai_col].apply(fmt_nilai)
+
     # ===============================
     # PLOT
     # ===============================
     fig = px.bar(
         df_sorted,
         x=nilai_col,
-        y="Satker",
+        y=label_col_sc,
         orientation="h",
         color=nilai_col,
         color_continuous_scale=color,
-        text=nilai_col
+        text="_fmt_text"
     )
 
     fig.update_traces(
         width=0.65 if thin_bar else 0.8,
-        texttemplate="%{text:.2f}",
+        texttemplate="%{text}",
         textposition="outside",
         cliponaxis=False
     )
@@ -5273,17 +5303,18 @@ def page_dashboard():
             # ===============================
             # CHART VERTIKAL (KHUSUS BA)
             # ===============================
+            df_ba["_fmt_ba"] = df_ba["Rata-rata IKPA"].apply(fmt_nilai)
             fig_ba = px.bar(
                 df_ba,
                 x="Label BA",
                 y="Rata-rata IKPA",
                 color="Rata-rata IKPA",
                 color_continuous_scale="Blues",
-                text="Rata-rata IKPA"
+                text="_fmt_ba"
             )
 
             fig_ba.update_traces(
-                texttemplate="%{text:.2f}",
+                texttemplate="%{text}",
                 textposition="outside"
             )
 
@@ -5378,17 +5409,18 @@ def page_dashboard():
             if df_ba_problem.empty:
                 st.success("✅ Seluruh BA sudah optimal (rata-rata Deviasi ≥ 90).")
             else:
+                df_ba_problem["_fmt_dev"] = df_ba_problem["Rata-rata Deviasi Halaman III DIPA"].apply(fmt_nilai)
                 fig_ba_dev = px.bar(
                     df_ba_problem,
                     x="Label BA",
                     y="Rata-rata Deviasi Halaman III DIPA",
                     color="Rata-rata Deviasi Halaman III DIPA",
                     color_continuous_scale="YlOrRd",
-                    text="Rata-rata Deviasi Halaman III DIPA"
+                    text="_fmt_dev"
                 )
 
                 fig_ba_dev.update_traces(
-                    texttemplate="%{text:.2f}",
+                    texttemplate="%{text}",
                     textposition="outside"
                 )
 
