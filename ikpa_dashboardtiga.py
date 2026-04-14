@@ -5842,25 +5842,43 @@ def page_dashboard():
                     # ===============================
                     satker_list = (
                         df_full[["Kode Satker", "Uraian Satker-RINGKAS"]]
-                        .drop_duplicates()
-                        .sort_values("Uraian Satker-RINGKAS")
+                        .dropna(subset=["Kode Satker"])
+                        .copy()
                     )
 
+                    # 🔥 CLEAN DATA
+                    satker_list["Kode Satker"] = (
+                        satker_list["Kode Satker"]
+                        .astype(str)
+                        .str.strip()
+                    )
+
+                    satker_list["Uraian Satker-RINGKAS"] = (
+                        satker_list["Uraian Satker-RINGKAS"]
+                        .fillna("TANPA NAMA")
+                        .astype(str)
+                    )
+
+                    satker_list = satker_list.drop_duplicates().sort_values("Uraian Satker-RINGKAS")
+
+                    # 🔥 AMBIL OPTIONS AMAN
                     satker_options = ["SEMUA SATKER"] + satker_list["Kode Satker"].tolist()
+
+                    # 🔥 BUAT MAPPING BIAR AMAN
+                    satker_map = dict(
+                        zip(satker_list["Kode Satker"], satker_list["Uraian Satker-RINGKAS"])
+                    )
 
                     selected_satkers = st.multiselect(
                         "Pilih Satker",
-                        satker_options,
+                        options=satker_options,
+                        default=["SEMUA SATKER"],
+                        key="satker_compare",
                         format_func=lambda x: (
                             "SEMUA SATKER"
                             if x == "SEMUA SATKER"
-                            else satker_list.loc[
-                                satker_list["Kode Satker"] == x,
-                                "Uraian Satker-RINGKAS"
-                            ].values[0]
-                        ),
-                        default=["SEMUA SATKER"],
-                        key="satker_compare"
+                            else satker_map.get(x, f"SATKER {x}")  # 🔥 anti error
+                        )
                     )
 
                     selected_satkers_final = (
