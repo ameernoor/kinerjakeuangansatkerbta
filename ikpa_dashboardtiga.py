@@ -8706,7 +8706,7 @@ def merge_ikpa_dipa_auto():
         df_final = df_final.drop(columns=['Total Pagu', 'Jenis Satker', 'Kode Clean'], errors='ignore')
 
         # ===============================
-        # 🔥 MERGE UTAMA
+        # MERGE UTAMA
         # ===============================
         dipa_by_kode = dipa_latest[['Kode Satker', 'Total Pagu']].copy()
         dipa_by_kode["Total Pagu"] = dipa_by_kode["Total Pagu"].fillna(0)
