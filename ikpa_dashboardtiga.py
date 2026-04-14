@@ -3396,20 +3396,24 @@ def get_top_bottom(df, n=10, top=True):
 
 
 def make_column_chart(data, title, color_scale, y_min, y_max):
-    if data.empty:
+    if data is None or data.empty:
         return None
 
-    plot_df = df.copy()
+    nilai_col = "Nilai Akhir (Nilai Total/Konversi Bobot)"
+    plot_df = data.copy()
+
+    if "Satker" not in plot_df.columns:
+        return None
+
     fig = px.bar(
-        plot_df.sort_values("Nilai Akhir (Nilai Total/Konversi Bobot)"),
-        x="Nilai Akhir (Nilai Total/Konversi Bobot)",
+        plot_df.sort_values(nilai_col),
+        x=nilai_col,
         y="Satker",
         orientation="h",
-        color="Nilai Akhir (Nilai Total/Konversi Bobot)",
+        color=nilai_col,
         color_continuous_scale=color_scale,
         title=title
     )
-
 
     fig.update_layout(
         xaxis_range=[y_min, y_max],
@@ -3428,21 +3432,6 @@ def make_column_chart(data, title, color_scale, y_min, y_max):
     )
 
     return fig
-
-def safe_chart(df, title, top=True, color="Greens", y_min=0, y_max=110):
-    if df is None or df.empty:
-        st.info("Tidak ada data.")
-        return
-
-    chart_df = get_top_bottom(df, 10, top)
-    if chart_df is None or chart_df.empty:
-        st.info("Tidak ada data.")
-        return
-
-    fig = make_column_chart(chart_df, "", color, y_min, y_max)
-    if fig:
-        st.plotly_chart(fig, use_container_width=True)
-        
 
 # ============================================================
 # Problem Chart untuk Dashboard Internal
@@ -3949,7 +3938,6 @@ def safe_chart(
     )
 
     st.plotly_chart(fig, use_container_width=True)
-    
 
 def get_top_bottom_unique(
     df,
@@ -4679,120 +4667,30 @@ def page_dashboard():
     st.markdown('</div>', unsafe_allow_html=True)
     st.markdown('</div>', unsafe_allow_html=True)
     
-    st.markdown("""
-    <style>
-    /* Warna tombol popover */
-    div[data-testid="stPopover"] button {
-        background-color: #FFF9E6 !important;
-        border: 1px solid #E6C200 !important;
-        color: #664400 !important;
-    }
-    div[data-testid="stPopover"] button:hover {
-        background-color: #FFE4B5 !important;
-        color: black !important;
-    }
-    button[data-testid="baseButton"][kind="popover"] {
-        background-color: #FFF9E6 !important;
-        border: 1px solid #E6C200 !important;
-        color: #664400 !important;
-    }
-    button[data-testid="baseButton"][kind="popover"]:hover {
-        background-color: #FFE4B5 !important;
-    }
-    </style>
-    """, unsafe_allow_html=True)
     
-    
-    
-    st.markdown("""
-    <style>
-
-    /* Base button */
-    div.stButton > button {
-        height: 95px;
-        border-radius: 20px;
-        border: 1px solid #e2e8f0;
-        background: #f8fafc;
-        font-size: 18px;
-        font-weight: 600;
-        color: #1e293b;
-        transition: all 0.25s ease;
-    }
-
-    /* Hover effect */
-    div.stButton > button:hover {
-        transform: translateY(-5px);
-        box-shadow: 0 10px 25px rgba(59,130,246,0.15);
-        border: 1px solid #93c5fd;
-    }
-
-    /* IKPA active */
-    %s
-
-    /* Digitalisasi active */
-    %s
-
-    </style>
-    """ % (
-
-    """
-    div[data-testid="column"]:nth-of-type(1) div.stButton > button {
-        background: linear-gradient(135deg, #e0f2fe, #bae6fd) !important;
-        border: 1px solid #7dd3fc !important;
-        color: #0c4a6e !important;
-        box-shadow: 0 10px 25px rgba(59,130,246,0.25);
-    }
-    """ if st.session_state.get("main_menu") == "IKPA" else "",
-
-    """
-    div[data-testid="column"]:nth-of-type(2) div.stButton > button {
-        background: linear-gradient(135deg, #e0f2fe, #bae6fd) !important;
-        border: 1px solid #7dd3fc !important;
-        color: #0c4a6e !important;
-        box-shadow: 0 10px 25px rgba(59,130,246,0.25);
-    }
-    """ if st.session_state.get("main_menu") == "Digitalisasi" else ""
-
-    ), unsafe_allow_html=True)
-    
-    st.markdown("### Pilih Menu")
-
     if "main_menu" not in st.session_state:
         st.session_state.main_menu = None
 
-    col1, col2 = st.columns(2)
+    st.markdown('<div class="menu-header">Pilih Menu</div>', unsafe_allow_html=True)
 
+    col1, col2 = st.columns(2)
     with col1:
 
-        st.markdown("""
-        <div class="menu-card">
-            <div class="menu-icon">📊</div>
-            <div class="menu-title">IKPA</div>
-            <div class="menu-desc">
-            Indikator Kinerja Pelaksanaan Anggaran
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
-
-        if st.button("Buka Menu IKPA", use_container_width=True):
+        if st.button(
+            "📊\n\nIKPA\n\nIndikator Kinerja Pelaksanaan Anggaran",
+            use_container_width=True
+        ):
             st.session_state.main_menu = "IKPA"
-
+            st.rerun()
 
     with col2:
 
-        st.markdown("""
-        <div class="menu-card">
-            <div class="menu-icon">💳</div>
-            <div class="menu-title">Digitalisasi</div>
-            <div class="menu-desc">
-            CMS • DIGIPAY • KKP
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
-
-        if st.button("Buka Menu Digitalisasi", use_container_width=True):
+        if st.button(
+            "💳\n\nDigitalisasi\n\nCMS • DIGIPAY • KKP",
+            use_container_width=True
+        ):
             st.session_state.main_menu = "Digitalisasi"
-    
+            st.rerun()
     
     # ===============================
     # STOP DI SINI JIKA BELUM PILIH
@@ -4834,7 +4732,13 @@ def page_dashboard():
     if "selected_period" not in st.session_state:
         st.session_state.selected_period = all_periods[0]
     
-    df = st.session_state.data_storage.get(st.session_state.selected_period)
+    # ===============================
+    # NORMALISASI KEY 
+    # ===============================
+    sel = st.session_state.selected_period
+    key = (str(sel[0]).upper().strip(), str(sel[1]))
+
+    df = st.session_state.data_storage.get(key)
 
     if df is not None:
         df = df.copy()
@@ -4980,7 +4884,13 @@ def page_dashboard():
                 key="selected_period"
             )
 
-            df = st.session_state.data_storage.get(st.session_state.selected_period)
+            # ===============================
+            # NORMALISASI KEY 
+            # ===============================
+            sel = st.session_state.selected_period
+            key = (str(sel[0]).upper().strip(), str(sel[1]))
+
+            df = st.session_state.data_storage.get(key)
 
             if df is None or df.empty:
                 st.warning("Data IKPA belum tersedia.")
@@ -5074,6 +4984,42 @@ def page_dashboard():
                             height=min(400, len(display_df) * 35 + 38)
                         )
 
+            # ===============================
+            # 🔥 FIX LABEL DARI REFERENCE (WAJIB)
+            # ===============================
+            ref = st.session_state.get("reference_df", pd.DataFrame())
+
+            if not ref.empty:
+
+                # mapping kode → nama ringkas
+                ref_map = dict(zip(
+                    ref["Kode Satker"].astype(str),
+                    ref["Uraian Satker-SINGKAT"]
+                ))
+
+                # inject ke df_full (data utama dashboard)
+                df_full["Label Satker"] = (
+                    df_full["Kode Satker"]
+                    .astype(str)
+                    .map(ref_map)
+                )
+
+                # fallback kalau tidak ketemu
+                df_full["Label Satker"] = df_full["Label Satker"].fillna(
+                    "SATKER " + df_full["Kode Satker"].astype(str)
+                )
+
+                # versi pendek untuk chart
+                df_full["Label Satker Pendek"] = (
+                    df_full["Label Satker"]
+                    .astype(str)
+                    .str.slice(0, 35)
+                )
+
+            else:
+                # fallback total
+                df_full["Label Satker Pendek"] = df_full["Kode Satker"].astype(str)
+            
             # ===============================
             # Kontrol Skala Chart
             # ===============================
