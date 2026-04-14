@@ -901,23 +901,6 @@ def normalize_month(val):
     val = str(val).strip()
     return MONTH_MAP.get(val, safe_upper(val))
 
-# ===============================
-# 🔥 ENRICH NAMA SATKER
-# ===============================
-def enrich_nama_satker(df):
-    ref = st.session_state.get("reference_df", pd.DataFrame())
-
-    if ref.empty:
-        return df
-
-    ref_map = dict(zip(
-        ref["Kode Satker"].astype(str),
-        ref["Uraian Satker-SINGKAT"]
-    ))
-
-    df["Satker"] = df["Kode Satker"].map(ref_map).fillna(df.get("Satker", ""))
-
-    return df
 
 def fix_dipa_header(df_raw):
     """
@@ -9007,10 +8990,9 @@ def page_admin():
                                 )
 
                             # ======================
-                            # 🔐 NORMALISASI NAMA SATKER (WAJIB)
+                            #  FULL POST PROCESS 
                             # ======================
-                            df_final = apply_reference_short_names(df_final)
-                            df_final = create_satker_column(df_final)
+                            df_final = post_process_ikpa_satker(df_final)
 
                             # ======================
                             # OVERRIDE JIKA BULAN SAMA
