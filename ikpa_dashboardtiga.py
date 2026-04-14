@@ -943,7 +943,7 @@ def fix_dipa_header(df_raw):
     return df.reset_index(drop=True)
 
 def standardize_dipa(df_raw):
-
+    
     df = df_raw.copy()
     df.columns = [str(c).strip() for c in df.columns]
 
@@ -959,11 +959,17 @@ def standardize_dipa(df_raw):
                     return c
         return None
 
-    # Cari kolom penting
+    # 🔥 FIX: tambah variasi nama kolom tanggal
     col_kode = find_col(["Kode Satker", "Satker"])
     col_nama = find_col(["Nama Satker", "Uraian Satker", "Satker"])
     col_pagu = find_col(["Total Pagu", "Pagu Belanja", "Jumlah"])
-    col_tanggal_revisi = find_col(["Tanggal Posting Revisi", "Tanggal Revisi"])
+    col_tanggal_revisi = find_col([
+        "Tanggal Posting Revisi",
+        "Tanggal Revisi",
+        "Tgl Revisi",
+        "Tgl Posting",
+        "Posting Date"
+    ])
     col_revisi_ke = find_col(["Revisi Terakhir", "Revisi ke"])
     col_no = find_col(["No"])
     col_kementerian = find_col(["Kementerian", "BA", "K/L"])
@@ -1004,14 +1010,24 @@ def standardize_dipa(df_raw):
     else:
         out["Total Pagu"] = 0
 
-    # TANGGAL POSTING REVISI
+    # ===============================
+    # 🔥 FIX UTAMA DI SINI
+    # ===============================
     if col_tanggal_revisi:
-        out["Tanggal Posting Revisi"] = pd.to_datetime(df[col_tanggal_revisi], errors="coerce")
+        out["Tanggal Posting Revisi"] = pd.to_datetime(
+            df[col_tanggal_revisi],
+            errors="coerce"
+        )
     else:
         out["Tanggal Posting Revisi"] = pd.NaT
 
+    # 🔥 WAJIB: isi default supaya tidak error
+    out["Tanggal Posting Revisi"] = out["Tanggal Posting Revisi"].fillna(
+        pd.Timestamp(f"{datetime.now().year}-12-31")
+    )
+
     # TAHUN
-    out["Tahun"] = out["Tanggal Posting Revisi"].dt.year.fillna(datetime.now().year).astype(int)
+    out["Tahun"] = out["Tanggal Posting Revisi"].dt.year.astype(int)
 
     # NO
     if col_no:
@@ -1052,7 +1068,7 @@ def standardize_dipa(df_raw):
     # DIGITAL STAMP
     out["Digital Stamp"] = df[col_stamp].astype(str) if col_stamp else ""
 
-    # Jenis Satker (nanti dihitung di luar)
+    # Jenis Satker
     out["Jenis Satker"] = ""
 
     # KODE STATUS HISTORY
