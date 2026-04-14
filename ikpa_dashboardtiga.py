@@ -4644,6 +4644,8 @@ if "cms_master" not in st.session_state:
 # HALAMAN 1: DASHBOARD UTAMA
 def page_dashboard():
     
+    df_full = pd.DataFrame()
+    
     # ===============================
     # LOAD & MAP BA (WAJIB DI SINI)
     # ===============================
@@ -4917,7 +4919,12 @@ def page_dashboard():
             # ===============================
             # GUNAKAN JENIS SATKER DARI LOADER
             # ===============================
-            df['Jenis Satker'] = df['Jenis Satker'].astype(str)
+            df['Jenis Satker'] = (
+                df['Jenis Satker']
+                .astype(str)
+                .str.upper()
+                .str.strip()
+            )
 
             df_kecil  = df[df['Jenis Satker'] == 'KECIL']
             df_sedang = df[df['Jenis Satker'] == 'SEDANG']
