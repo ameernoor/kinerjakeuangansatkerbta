@@ -3408,7 +3408,7 @@ def make_column_chart(data, title, color_scale, y_min, y_max):
     fig = px.bar(
         plot_df.sort_values(nilai_col),
         x=nilai_col,
-        y="Satker",
+        y="Label Satker",
         orientation="h",
         color=nilai_col,
         color_continuous_scale=color_scale,
@@ -3913,7 +3913,7 @@ def safe_chart(
     fig = px.bar(
         df_sorted,
         x=nilai_col,
-        y="Satker",
+        y="Label Satker",
         orientation="h",
         color=nilai_col,
         color_continuous_scale=color,
@@ -4742,6 +4742,36 @@ def page_dashboard():
 
     if df is not None:
         df = df.copy()
+    
+    # ===============================
+    # 🔥 FIX: INJECT NAMA SATKER RINGKAS
+    # ===============================
+    ref = st.session_state.get("reference_df", pd.DataFrame())
+
+    if df is not None and not ref.empty:
+
+        ref_map = dict(zip(
+            ref["Kode Satker"].astype(str),
+            ref["Uraian Satker-SINGKAT"]
+        ))
+
+        df["Uraian Satker-RINGKAS"] = (
+            df["Kode Satker"]
+            .astype(str)
+            .map(ref_map)
+        )
+
+        # fallback kalau tidak ada di referensi
+        df["Uraian Satker-RINGKAS"] = df["Uraian Satker-RINGKAS"].fillna(
+            df.get("Satker", "SATKER " + df["Kode Satker"].astype(str))
+        )
+
+        # versi pendek untuk chart
+        df["Label Satker"] = (
+            df["Uraian Satker-RINGKAS"]
+            .astype(str)
+            .str.slice(0, 35)
+        )
 
 
     st.markdown("""
@@ -4984,41 +5014,6 @@ def page_dashboard():
                             height=min(400, len(display_df) * 35 + 38)
                         )
 
-            # ===============================
-            # 🔥 FIX LABEL DARI REFERENCE (WAJIB)
-            # ===============================
-            ref = st.session_state.get("reference_df", pd.DataFrame())
-
-            if not ref.empty:
-
-                # mapping kode → nama ringkas
-                ref_map = dict(zip(
-                    ref["Kode Satker"].astype(str),
-                    ref["Uraian Satker-SINGKAT"]
-                ))
-
-                # inject ke df_full (data utama dashboard)
-                df_full["Label Satker"] = (
-                    df_full["Kode Satker"]
-                    .astype(str)
-                    .map(ref_map)
-                )
-
-                # fallback kalau tidak ketemu
-                df_full["Label Satker"] = df_full["Label Satker"].fillna(
-                    "SATKER " + df_full["Kode Satker"].astype(str)
-                )
-
-                # versi pendek untuk chart
-                df_full["Label Satker Pendek"] = (
-                    df_full["Label Satker"]
-                    .astype(str)
-                    .str.slice(0, 35)
-                )
-
-            else:
-                # fallback total
-                df_full["Label Satker Pendek"] = df_full["Kode Satker"].astype(str)
             
             # ===============================
             # Kontrol Skala Chart
