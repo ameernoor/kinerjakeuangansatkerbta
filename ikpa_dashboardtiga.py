@@ -945,6 +945,36 @@ def fix_dipa_header(df_raw):
 def auto_process_dipa(df_raw):
     
     # ===============================
+    # 0️⃣ DETEKSI FORMAT SUDAH DIPROSES (5 kolom standar)
+    # ===============================
+    if isinstance(df_raw, pd.DataFrame):
+        cols_up = [str(c).upper().strip() for c in df_raw.columns]
+        is_processed = (
+            "KODE SATKER" in cols_up and
+            "TOTAL PAGU" in cols_up and
+            len(df_raw.columns) <= 15
+        )
+        if is_processed:
+            df = df_raw.copy()
+            df.columns = [str(c).strip() for c in df.columns]
+            # Normalisasi kolom wajib
+            if "Total Pagu" not in df.columns:
+                for c in df.columns:
+                    if "PAGU" in str(c).upper():
+                        df["Total Pagu"] = df[c]
+                        break
+            if "Total Pagu" not in df.columns:
+                df["Total Pagu"] = 0
+            # Pastikan Total Pagu numerik
+            df["Total Pagu"] = pd.to_numeric(df["Total Pagu"], errors="coerce").fillna(0)
+            if "Kode Satker" not in df.columns:
+                for c in df.columns:
+                    if "SATKER" in str(c).upper() and "KODE" in str(c).upper():
+                        df["Kode Satker"] = df[c]
+                        break
+            return df.reset_index(drop=True)
+
+    # ===============================
     # 1️⃣ DETEKSI OMSPAN
     # ===============================
     if is_omspan_dipa(df_raw):
@@ -2522,6 +2552,9 @@ def load_DATA_DIPA_from_github():
             raw = base64.b64decode(f.content)
             df_raw = pd.read_excel(io.BytesIO(raw))
 
+            if df_raw is None or df_raw.empty:
+                continue
+
             # ===============================
             # STANDARDIZE
             # ===============================
@@ -2529,6 +2562,13 @@ def load_DATA_DIPA_from_github():
 
             if df_parsed is None or df_parsed.empty:
                 continue
+
+            # ===============================
+            # NORMALISASI TOTAL PAGU (WAJIB)
+            # ===============================
+            df_parsed["Total Pagu"] = pd.to_numeric(
+                df_parsed["Total Pagu"], errors="coerce"
+            ).fillna(0)
 
             # SET TAHUN
             df_parsed["Tahun"] = tahun
@@ -2542,6 +2582,14 @@ def load_DATA_DIPA_from_github():
                 .fillna("")
                 .str.zfill(6)
             )
+
+            # ===============================
+            # VALIDASI: jika Total Pagu semua 0 → skip (data rusak)
+            # ===============================
+            if df_parsed["Total Pagu"].sum() == 0:
+                # tandai tapi tetap simpan agar bisa di-override nanti
+                st.session_state.DATA_DIPA_by_year[tahun] = df_parsed
+                continue
 
             # SIMPAN
             st.session_state.DATA_DIPA_by_year[tahun] = df_parsed
@@ -8466,6 +8514,14 @@ def process_uploaded_dipa(uploaded_file, save_file_to_github, forced_year=None):
         st.write("**Preview 5 baris pertama:**")
         st.dataframe(df_std.head(5))
 
+        # ===============================
+        # VALIDASI TOTAL PAGU SEBELUM RETURN
+        # ===============================
+        df_std["Total Pagu"] = pd.to_numeric(df_std["Total Pagu"], errors="coerce").fillna(0)
+        
+        if df_std["Total Pagu"].sum() == 0:
+            st.warning("⚠️ Total Pagu semua 0 — cek apakah file DIPA yang diupload benar (harus file mentah SPAN/OMSPAN, bukan file yang sudah diproses)")
+
         return df_std, tahun_dipa, "✅ Sukses diproses"
 
     except Exception as e:
@@ -8503,9 +8559,30 @@ def merge_ikpa_dipa_auto():
     if "DATA_DIPA_by_year" not in st.session_state:
         return
 
+    # Bangun lookup DIPA per tahun — hanya yang punya Total Pagu valid
+    valid_dipa_years = {}
+    for yr, dipa_df in st.session_state.DATA_DIPA_by_year.items():
+        if dipa_df is not None and not dipa_df.empty:
+            pagu_sum = pd.to_numeric(dipa_df.get("Total Pagu", 0), errors="coerce").fillna(0).sum()
+            if pagu_sum > 0:
+                valid_dipa_years[int(yr)] = dipa_df
+
     for (bulan, tahun), df_ikpa in st.session_state.data_storage.items():
 
-        dipa = st.session_state.DATA_DIPA_by_year.get(int(tahun))
+        # ==============================
+        # Cari DIPA: tahun ini dulu, fallback ke tahun terdekat yang valid
+        # ==============================
+        tahun_int = int(tahun)
+        dipa = valid_dipa_years.get(tahun_int)
+
+        if dipa is None:
+            # fallback: cari tahun terdekat (misal 2025 untuk IKPA 2026 awal)
+            if valid_dipa_years:
+                nearest = min(valid_dipa_years.keys(), key=lambda y: abs(y - tahun_int))
+                dipa = valid_dipa_years[nearest]
+            else:
+                continue
+
         if dipa is None or dipa.empty:
             continue
 
