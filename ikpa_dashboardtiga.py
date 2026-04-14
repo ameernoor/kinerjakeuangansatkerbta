@@ -3695,19 +3695,36 @@ def classify_jenis_satker(df):
     # 🚨 PAKSA RESET
     df["Jenis Satker"] = None
 
-    # kalau semua nol (harusnya sudah tidak)
+    # kalau semua nol → bagikan merata berdasarkan rank/index
     if df["Total Pagu"].sum() == 0:
-        df["Jenis Satker"] = "SEDANG"
+        n = len(df)
+        labels_merata = (
+            ["KECIL"] * (n // 3) +
+            ["SEDANG"] * (n // 3) +
+            ["BESAR"] * (n - 2 * (n // 3))
+        )
+        df["Jenis Satker"] = labels_merata
         return df
 
     p40 = df["Total Pagu"].quantile(0.40)
     p70 = df["Total Pagu"].quantile(0.70)
 
-    df["Jenis Satker"] = pd.cut(
-        df["Total Pagu"],
-        bins=[-float("inf"), p40, p70, float("inf")],
-        labels=["KECIL", "SEDANG", "BESAR"]
-    )
+    # Jika p40 == p70 (semua satker pagu sama), pakai rank-based
+    if p40 == p70:
+        df["_rank"] = df["Total Pagu"].rank(method="first")
+        n = len(df)
+        cut40 = n * 0.40
+        cut70 = n * 0.70
+        df["Jenis Satker"] = df["_rank"].apply(
+            lambda r: "KECIL" if r <= cut40 else ("SEDANG" if r <= cut70 else "BESAR")
+        )
+        df = df.drop(columns=["_rank"])
+    else:
+        df["Jenis Satker"] = pd.cut(
+            df["Total Pagu"],
+            bins=[-float("inf"), p40, p70, float("inf")],
+            labels=["KECIL", "SEDANG", "BESAR"]
+        )
 
     df["Jenis Satker"] = df["Jenis Satker"].astype(str)
 
@@ -8500,32 +8517,51 @@ def merge_ikpa_dipa_auto():
             .str.zfill(6)
         )
 
-        # 🔥 TAMBAHAN KUNCI FIX
-        df_final["Kode Clean"] = df_final["Kode Satker"].str.lstrip("0")
-        dipa_latest["Kode Clean"] = dipa_latest["Kode Satker"].str.lstrip("0")
-
         # ===============================
-        # AMBIL PAGU
+        # BERSIHKAN PAGU DIPA
         # ===============================
-        dipa_selected = dipa_latest[['Kode Clean', 'Total Pagu']]
+        dipa_latest["Total Pagu"] = dipa_latest["Total Pagu"].apply(clean_numeric).fillna(0)
 
         # HAPUS LAMA
-        df_final = df_final.drop(columns=['Total Pagu', 'Jenis Satker'], errors='ignore')
+        df_final = df_final.drop(columns=['Total Pagu', 'Jenis Satker', 'Kode Clean'], errors='ignore')
 
         # ===============================
-        # 🔥 MERGE PAKAI KODE CLEAN
+        # 🔥 MERGE TAHAP 1 — PAKAI KODE SATKER 6-DIGIT (UTAMA)
         # ===============================
+        dipa_by_kode = dipa_latest[['Kode Satker', 'Total Pagu']].drop_duplicates('Kode Satker')
+
         df_merged = pd.merge(
             df_final,
-            dipa_selected,
-            on='Kode Clean',
+            dipa_by_kode,
+            on='Kode Satker',
             how='left'
         )
 
         # ===============================
-        # HANDLE NILAI
+        # 🔥 MERGE TAHAP 2 — FALLBACK KODE CLEAN (UNTUK YANG MASIH KOSONG)
         # ===============================
-        df_merged["Total Pagu"] = df_merged["Total Pagu"].apply(clean_numeric).fillna(0)
+        no_match_mask = df_merged["Total Pagu"].isna() | (df_merged["Total Pagu"] == 0)
+
+        if no_match_mask.any():
+            dipa_latest["Kode Clean"] = dipa_latest["Kode Satker"].str.lstrip("0")
+            df_merged["Kode Clean"] = df_merged["Kode Satker"].str.lstrip("0")
+
+            dipa_by_clean = dipa_latest[['Kode Clean', 'Total Pagu']].drop_duplicates('Kode Clean')
+
+            df_fallback = pd.merge(
+                df_merged[no_match_mask].drop(columns=['Total Pagu'], errors='ignore'),
+                dipa_by_clean,
+                on='Kode Clean',
+                how='left'
+            )
+
+            df_merged.loc[no_match_mask, 'Total Pagu'] = df_fallback['Total Pagu'].values
+            df_merged = df_merged.drop(columns=['Kode Clean'], errors='ignore')
+
+        # ===============================
+        # HANDLE NILAI KOSONG
+        # ===============================
+        df_merged["Total Pagu"] = pd.to_numeric(df_merged["Total Pagu"], errors="coerce").fillna(0)
 
         # ===============================
         # 🔥 KLASIFIKASI (WAJIB)
