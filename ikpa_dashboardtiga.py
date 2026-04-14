@@ -4985,6 +4985,42 @@ def page_dashboard():
                         )
 
             # ===============================
+            # 🔥 FIX LABEL DARI REFERENCE (WAJIB)
+            # ===============================
+            ref = st.session_state.get("reference_df", pd.DataFrame())
+
+            if not ref.empty:
+
+                # mapping kode → nama ringkas
+                ref_map = dict(zip(
+                    ref["Kode Satker"].astype(str),
+                    ref["Uraian Satker-SINGKAT"]
+                ))
+
+                # inject ke df_full (data utama dashboard)
+                df_full["Label Satker"] = (
+                    df_full["Kode Satker"]
+                    .astype(str)
+                    .map(ref_map)
+                )
+
+                # fallback kalau tidak ketemu
+                df_full["Label Satker"] = df_full["Label Satker"].fillna(
+                    "SATKER " + df_full["Kode Satker"].astype(str)
+                )
+
+                # versi pendek untuk chart
+                df_full["Label Satker Pendek"] = (
+                    df_full["Label Satker"]
+                    .astype(str)
+                    .str.slice(0, 35)
+                )
+
+            else:
+                # fallback total
+                df_full["Label Satker Pendek"] = df_full["Kode Satker"].astype(str)
+            
+            # ===============================
             # Kontrol Skala Chart
             # ===============================
             st.markdown("---")
