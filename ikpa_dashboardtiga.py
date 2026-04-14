@@ -8279,17 +8279,27 @@ def assign_jenis_satker(df):
         return df
 
     # pastikan numerik
-    df["Total Pagu"] = pd.to_numeric(df["Total Pagu"], errors="coerce")
-
+    df["Total Pagu"] = pd.to_numeric(df["Total Pagu"], errors="coerce").fillna(0)
 
     p40 = df["Total Pagu"].quantile(0.40)
     p70 = df["Total Pagu"].quantile(0.70)
 
-    df["Jenis Satker"] = pd.cut(
-        df["Total Pagu"],
-        bins=[-float("inf"), p40, p70, float("inf")],
-        labels=["Satker Kecil", "Satker Sedang", "Satker Besar"]
-    )
+    if df["Total Pagu"].sum() == 0 or p40 == p70:
+        # Rank-based jika semua pagu sama / tidak bisa dibagi bins
+        df["_rank"] = df["Total Pagu"].rank(method="first")
+        n = len(df)
+        cut40 = n * 0.40
+        cut70 = n * 0.70
+        df["Jenis Satker"] = df["_rank"].apply(
+            lambda r: "Satker Kecil" if r <= cut40 else ("Satker Sedang" if r <= cut70 else "Satker Besar")
+        )
+        df = df.drop(columns=["_rank"])
+    else:
+        df["Jenis Satker"] = pd.cut(
+            df["Total Pagu"],
+            bins=[-float("inf"), p40, p70, float("inf")],
+            labels=["Satker Kecil", "Satker Sedang", "Satker Besar"]
+        )
 
     # rapikan posisi kolom
     cols = list(df.columns)
@@ -10806,14 +10816,26 @@ def page_admin():
 
             # Klasifikasi Satker
             if "Total Pagu" in df.columns:
+                df["Total Pagu"] = pd.to_numeric(df["Total Pagu"], errors="coerce").fillna(0)
                 p40 = df["Total Pagu"].quantile(0.40)
                 p70 = df["Total Pagu"].quantile(0.70)
 
-                df["Jenis Satker"] = pd.cut(
-                    df["Total Pagu"],
-                    bins=[-float("inf"), p40, p70, float("inf")],
-                    labels=["Satker Kecil", "Satker Sedang", "Satker Besar"]
-                )
+                if df["Total Pagu"].sum() == 0 or p40 == p70:
+                    # Rank-based jika semua pagu sama / tidak bisa dibagi bins
+                    df["_rank"] = df["Total Pagu"].rank(method="first")
+                    n = len(df)
+                    cut40 = n * 0.40
+                    cut70 = n * 0.70
+                    df["Jenis Satker"] = df["_rank"].apply(
+                        lambda r: "Satker Kecil" if r <= cut40 else ("Satker Sedang" if r <= cut70 else "Satker Besar")
+                    )
+                    df = df.drop(columns=["_rank"])
+                else:
+                    df["Jenis Satker"] = pd.cut(
+                        df["Total Pagu"],
+                        bins=[-float("inf"), p40, p70, float("inf")],
+                        labels=["Satker Kecil", "Satker Sedang", "Satker Besar"]
+                    )
 
 
             # Preview
