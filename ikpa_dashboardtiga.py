@@ -8651,7 +8651,13 @@ def merge_ikpa_dipa_auto():
     # ===============================
     # 🔥 LOOP IKPA
     # ===============================
+    selected_year = datetime.now().year  # atau pakai upload_year kalau ada
+
     for (bulan, tahun), df_ikpa in st.session_state.data_storage.items():
+
+        # 🔥 SKIP TAHUN LAIN
+        if int(tahun) != int(selected_year):
+            continue
 
         tahun_int = int(tahun)
         dipa = valid_dipa_years.get(tahun_int)
@@ -9046,7 +9052,7 @@ def page_admin():
                     st.session_state["_just_uploaded"] = True
 
                     # 🔥 WAJIB: proses ulang semua data (ambil dari GitHub)
-                    reprocess_all_ikpa_satker()
+                   # reprocess_all_ikpa_satker()
 
                     # refresh UI
                     st.rerun()
