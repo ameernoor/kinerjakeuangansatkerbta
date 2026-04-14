@@ -8464,7 +8464,7 @@ def process_uploaded_dipa(uploaded_file, save_file_to_github, forced_year=None):
             df_std = df_adapted.copy()
         else:
             raw_fixed = fix_dipa_header(raw)
-            df_std = raw_fixed.copy()
+            df_std = standardize_dipa(raw_fixed)
 
         # ===============================
         # 3️⃣ PAKSA TAHUN DARI UI
