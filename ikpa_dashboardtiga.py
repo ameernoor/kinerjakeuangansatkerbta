@@ -870,11 +870,15 @@ if "_reference_loaded" not in st.session_state:
 def clean_numeric(val):
     if pd.isna(val):
         return 0
-    val = str(val)
-    val = val.replace(".", "")   # hapus ribuan
-    val = val.replace(",", ".")  # desimal
+    # Jika sudah numerik (int/float), langsung return — jangan diproses lagi
+    if isinstance(val, (int, float)):
+        return float(val)
+    val = str(val).strip().replace("%", "")
+    # Format Indonesia: koma = desimal, titik = ribuan -> '88,98' atau '1.234,56'
+    if "," in val:
+        val = val.replace(".", "").replace(",", ".")
+    # Format sudah Python float: '88.98' — jangan hapus titik
     val = re.sub(r"[^\d\.\-]", "", val)
-
     try:
         return float(val)
     except:
