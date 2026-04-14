@@ -3309,6 +3309,22 @@ def get_template_file():
         st.error(f"Error membaca template: {e}")
         return None
 
+# ============================================================
+# Helper: format angka → 100/0 tanpa desimal, lainnya 2 desimal
+# ============================================================
+def fmt_nilai(x):
+    """Format nilai: 100.00 → '100', 0.00 → '0', lainnya → '98.97'"""
+    try:
+        v = float(x)
+        if v == 100.0:
+            return "100"
+        if v == 0.0:
+            return "0"
+        return f"{v:.2f}"
+    except (TypeError, ValueError):
+        return str(x)
+
+
 # Fungsi visualisasi podium/bintang
 def create_ranking_chart(df, title, top=True, limit=10):
     """
@@ -3332,9 +3348,10 @@ def create_ranking_chart(df, title, top=True, limit=10):
     min_val = df_sorted[nilai_col].min()
     max_val = df_sorted[nilai_col].max()
 
-    # use 'Satker' for y labels to keep them unique
+    # gunakan Uraian Satker-RINGKAS untuk label nama satker yang ringkas
+    label_col = 'Uraian Satker-RINGKAS' if 'Uraian Satker-RINGKAS' in df_sorted.columns else 'Satker'
     fig.add_trace(go.Bar(
-    y=df_sorted['Satker'],
+    y=df_sorted[label_col],
     x=df_sorted[nilai_col],
     orientation='h',
     marker=dict(
@@ -3344,7 +3361,7 @@ def create_ranking_chart(df, title, top=True, limit=10):
         cmin=min_val,
         cmax=max_val,
     ),
-    text=df_sorted[nilai_col].round(2),
+    text=df_sorted[nilai_col].apply(fmt_nilai),
     textposition='outside',
     hovertemplate='<b>%{y}</b><br>Nilai: %{x:.2f}<extra></extra>'
 ))
@@ -3363,7 +3380,7 @@ def create_ranking_chart(df, title, top=True, limit=10):
     annotations = []
     y_positions = list(range(len(df_sorted)))
 
-    for i, satker in enumerate(df_sorted['Satker']):
+    for i, satker in enumerate(df_sorted[label_col]):
         annotations.append(dict(
         x=df_sorted[nilai_col].min() - 3,
         y=i,
@@ -3405,13 +3422,20 @@ def make_column_chart(data, title, color_scale, y_min, y_max):
     if "Satker" not in plot_df.columns:
         return None
 
+    # gunakan Uraian Satker-RINGKAS jika tersedia
+    label_col = "Uraian Satker-RINGKAS" if "Uraian Satker-RINGKAS" in plot_df.columns else "Satker"
+
+    plot_df_sorted = plot_df.sort_values(nilai_col)
+    plot_df_sorted["_label_fmt"] = plot_df_sorted[nilai_col].apply(fmt_nilai)
+
     fig = px.bar(
-        plot_df.sort_values(nilai_col),
+        plot_df_sorted,
         x=nilai_col,
-        y="Satker",
+        y=label_col,
         orientation="h",
         color=nilai_col,
         color_continuous_scale=color_scale,
+        text="_label_fmt",
         title=title
     )
 
@@ -3426,7 +3450,7 @@ def make_column_chart(data, title, color_scale, y_min, y_max):
     )
 
     fig.update_traces(
-        texttemplate="%{x:.2f}",
+        texttemplate="%{text}",
         textposition="outside",
         hovertemplate="<b>%{y}</b><br>Nilai: %{x:.2f}<extra></extra>"
     )
@@ -3456,8 +3480,9 @@ def create_problem_chart(df, column, threshold, title, comparison='less', y_min=
     max_val = df_filtered[column].max()
 
     fig = go.Figure()
+    label_col_p = 'Uraian Satker-RINGKAS' if 'Uraian Satker-RINGKAS' in df_filtered.columns else 'Satker'
     fig.add_trace(go.Bar(
-    x=df_filtered['Satker'],
+    x=df_filtered[label_col_p],
     y=df_filtered[column],
     marker=dict(
         color=df_filtered[column],
@@ -3471,7 +3496,7 @@ def create_problem_chart(df, column, threshold, title, comparison='less', y_min=
             len=0.85         # ⬅️ TIDAK TERLALU TINGGI
         )
         ),
-        text=df_filtered[column].round(2),
+        text=df_filtered[column].apply(fmt_nilai),
         textposition='outside',
         textangle=0,
         textfont=dict(family="Arial Black", size=12),
@@ -3552,8 +3577,9 @@ def create_internal_problem_chart_vertical(
 
     fig = go.Figure()
 
+    label_col_iv = "Uraian Satker-RINGKAS" if "Uraian Satker-RINGKAS" in df.columns else "Satker"
     fig.add_bar(
-        x=df["Satker"],
+        x=df[label_col_iv],
         y=df[column],
         marker=dict(
             color=df[column],
@@ -3564,7 +3590,7 @@ def create_internal_problem_chart_vertical(
                 len=0.85
             ) if show_colorbar else None
         ),
-        text=df[column].round(2),
+        text=df[column].apply(fmt_nilai),
         textposition="outside",
         hovertemplate="<b>%{x}</b><br>Nilai: %{y:.2f}<extra></extra>"
     )
@@ -3907,22 +3933,26 @@ def safe_chart(
         st.info("Tidak ada data valid untuk ditampilkan.")
         return
 
+    # gunakan Uraian Satker-RINGKAS untuk label nama satker
+    label_col_sc = "Uraian Satker-RINGKAS" if "Uraian Satker-RINGKAS" in df_sorted.columns else "Satker"
+    df_sorted["_fmt_text"] = df_sorted[nilai_col].apply(fmt_nilai)
+
     # ===============================
     # PLOT
     # ===============================
     fig = px.bar(
         df_sorted,
         x=nilai_col,
-        y="Satker",
+        y=label_col_sc,
         orientation="h",
         color=nilai_col,
         color_continuous_scale=color,
-        text=nilai_col
+        text="_fmt_text"
     )
 
     fig.update_traces(
         width=0.65 if thin_bar else 0.8,
-        texttemplate="%{text:.2f}",
+        texttemplate="%{text}",
         textposition="outside",
         cliponaxis=False
     )
@@ -5273,17 +5303,18 @@ def page_dashboard():
             # ===============================
             # CHART VERTIKAL (KHUSUS BA)
             # ===============================
+            df_ba["_fmt_ba"] = df_ba["Rata-rata IKPA"].apply(fmt_nilai)
             fig_ba = px.bar(
                 df_ba,
                 x="Label BA",
                 y="Rata-rata IKPA",
                 color="Rata-rata IKPA",
                 color_continuous_scale="Blues",
-                text="Rata-rata IKPA"
+                text="_fmt_ba"
             )
 
             fig_ba.update_traces(
-                texttemplate="%{text:.2f}",
+                texttemplate="%{text}",
                 textposition="outside"
             )
 
@@ -5378,17 +5409,18 @@ def page_dashboard():
             if df_ba_problem.empty:
                 st.success("✅ Seluruh BA sudah optimal (rata-rata Deviasi ≥ 90).")
             else:
+                df_ba_problem["_fmt_dev"] = df_ba_problem["Rata-rata Deviasi Halaman III DIPA"].apply(fmt_nilai)
                 fig_ba_dev = px.bar(
                     df_ba_problem,
                     x="Label BA",
                     y="Rata-rata Deviasi Halaman III DIPA",
                     color="Rata-rata Deviasi Halaman III DIPA",
                     color_continuous_scale="YlOrRd",
-                    text="Rata-rata Deviasi Halaman III DIPA"
+                    text="_fmt_dev"
                 )
 
                 fig_ba_dev.update_traces(
-                    texttemplate="%{text:.2f}",
+                    texttemplate="%{text}",
                     textposition="outside"
                 )
 
@@ -5759,23 +5791,12 @@ def page_dashboard():
                     st.markdown("### 📊 Perbandingan Antara Dua Tahun")
 
                     # ===============================
-                    # 1. GABUNGKAN SELURUH DATA (AMAN)
+                    # 1. GABUNGKAN SELURUH DATA
                     # ===============================
                     all_data = []
 
                     for (mon, yr), df in st.session_state.data_storage.items():
-
-                        if df is None or df.empty:
-                            continue
-
                         df2 = df.copy()
-
-                        # AMANKAN KOLOM
-                        if "Bulan" not in df2.columns:
-                            df2["Bulan"] = mon
-
-                        if "Tahun" not in df2.columns:
-                            df2["Tahun"] = yr
 
                         df2["Bulan_upper"] = (
                             df2["Bulan"]
@@ -5790,8 +5811,6 @@ def page_dashboard():
 
                         if "Kode BA" in df2.columns:
                             df2["Kode BA"] = df2["Kode BA"].apply(normalize_kode_ba)
-                        else:
-                            df2["Kode BA"] = None
 
                         all_data.append(df2)
 
@@ -5799,54 +5818,25 @@ def page_dashboard():
                         st.warning("Belum ada data IKPA.")
                         st.stop()
 
-                    # ===============================
-                    # 2. CONCAT (SUPER AMAN)
-                    # ===============================
-                    try:
-                        df_full = pd.concat(all_data, ignore_index=True)
-                    except Exception as e:
-                        st.error(f"Gagal menggabungkan data: {e}")
-                        st.stop()
-
-                    if df_full is None or df_full.empty:
-                        st.warning("Data kosong setelah digabung.")
-                        st.stop()
+                    df_full = pd.concat(all_data, ignore_index=True)
 
                     # ===============================
-                    # 3. PASTIKAN KOLOM WAJIB ADA
+                    # 2. FILTER BA VALID (SESUI HIGHLIGHTS)
                     # ===============================
-                    required_cols = ["Kode BA", "Kode Satker", "Tahun", "Bulan_upper"]
+                    latest_period = max(
+                        st.session_state.data_storage.keys(),
+                        key=lambda x: (int(x[1]), MONTH_ORDER.get(x[0], 0))
+                    )
 
-                    for col in required_cols:
-                        if col not in df_full.columns:
-                            df_full[col] = None
+                    df_latest = st.session_state.data_storage[latest_period].copy()
+                    df_latest["Kode BA"] = df_latest["Kode BA"].apply(normalize_kode_ba)
+                    df_full["Kode BA"] = df_full["Kode BA"].apply(normalize_kode_ba)
 
-                    # ===============================
-                    # 4. FILTER BA VALID (AMBIL DARI DATA TERBARU)
-                    # ===============================
-                    try:
-                        latest_period = max(
-                            st.session_state.data_storage.keys(),
-                            key=lambda x: (int(x[1]), MONTH_ORDER.get(x[0], 0))
-                        )
-
-                        df_latest = st.session_state.data_storage[latest_period].copy()
-
-                        if "Kode BA" in df_latest.columns:
-                            df_latest["Kode BA"] = df_latest["Kode BA"].apply(normalize_kode_ba)
-
-                        df_full["Kode BA"] = df_full["Kode BA"].apply(normalize_kode_ba)
-
-                        valid_ba = df_latest["Kode BA"].dropna().unique()
-
-                        if len(valid_ba) > 0:
-                            df_full = df_full[df_full["Kode BA"].isin(valid_ba)]
-
-                    except Exception:
-                        pass  # fallback kalau gagal, tetap lanjut
+                    valid_ba = df_latest["Kode BA"].dropna().unique()
+                    df_full = df_full[df_full["Kode BA"].isin(valid_ba)]
 
                     # ===============================
-                    # 5. FILTER BA (MULTISELECT)
+                    # 3. FILTER BA KHUSUS COMPARE
                     # ===============================
                     if "filter_ba_compare" not in st.session_state:
                         st.session_state["filter_ba_compare"] = ["SEMUA BA"]
@@ -5863,18 +5853,12 @@ def page_dashboard():
                         "Pilih Kode BA (Perbandingan)",
                         options=ba_options,
                         format_func=format_ba_compare,
-                        key="filter_ba_compare"
+                        key="filter_ba_compare"   # ✅ cukup ini
                     )
 
-                    if selected_ba_compare and "SEMUA BA" not in selected_ba_compare:
-                        df_full = df_full[df_full["Kode BA"].isin(selected_ba_compare)]
-
-                    if df_full.empty:
-                        st.warning("Data kosong setelah filter BA.")
-                        st.stop()
 
                     # ===============================
-                    # 6. VALIDASI TAHUN
+                    # 4. VALIDASI TAHUN
                     # ===============================
                     available_years = sorted(
                         df_full["Tahun"].dropna().unique().astype(int)
@@ -5885,19 +5869,27 @@ def page_dashboard():
                         st.stop()
 
                     colA, colB = st.columns(2)
-
                     with colA:
-                        year_a = st.selectbox("Tahun A", available_years, index=0)
-
+                        year_a = st.selectbox(
+                            "Tahun A (Awal)",
+                            available_years,
+                            index=0,
+                            key="tahunA_compare"
+                        )
                     with colB:
-                        year_b = st.selectbox("Tahun B", available_years, index=1)
+                        year_b = st.selectbox(
+                            "Tahun B (Akhir)",
+                            available_years,
+                            index=1,
+                            key="tahunB_compare"
+                        )
 
                     if year_a == year_b:
-                        st.info("Pilih dua tahun berbeda.")
+                        st.info("Pilih dua tahun yang berbeda.")
                         st.stop()
 
                     # ===============================
-                    # 7. FILTER DATA
+                    # 5. FILTER DATA PER TAHUN
                     # ===============================
                     df_a = df_full[df_full["Tahun"] == year_a]
                     df_b = df_full[df_full["Tahun"] == year_b]
@@ -5914,20 +5906,33 @@ def page_dashboard():
                     tw_b = extract_tw(df_b)
 
                     # ===============================
-                    # 8. LIST SATKER (ANTI ERROR)
+                    # 6. PILIH SATKER
                     # ===============================
-                    if "Uraian Satker-RINGKAS" not in df_full.columns:
-                        df_full["Uraian Satker-RINGKAS"] = "TANPA NAMA"
-
                     satker_list = (
                         df_full[["Kode Satker", "Uraian Satker-RINGKAS"]]
                         .dropna(subset=["Kode Satker"])
-                        .drop_duplicates()
-                        .sort_values("Uraian Satker-RINGKAS")
+                        .copy()
                     )
 
+                    # 🔥 CLEAN DATA
+                    satker_list["Kode Satker"] = (
+                        satker_list["Kode Satker"]
+                        .astype(str)
+                        .str.strip()
+                    )
+
+                    satker_list["Uraian Satker-RINGKAS"] = (
+                        satker_list["Uraian Satker-RINGKAS"]
+                        .fillna("TANPA NAMA")
+                        .astype(str)
+                    )
+
+                    satker_list = satker_list.drop_duplicates().sort_values("Uraian Satker-RINGKAS")
+
+                    # 🔥 AMBIL OPTIONS AMAN
                     satker_options = ["SEMUA SATKER"] + satker_list["Kode Satker"].tolist()
 
+                    # 🔥 BUAT MAPPING BIAR AMAN
                     satker_map = dict(
                         zip(satker_list["Kode Satker"], satker_list["Uraian Satker-RINGKAS"])
                     )
@@ -5936,10 +5941,11 @@ def page_dashboard():
                         "Pilih Satker",
                         options=satker_options,
                         default=["SEMUA SATKER"],
+                        key="satker_compare",
                         format_func=lambda x: (
                             "SEMUA SATKER"
                             if x == "SEMUA SATKER"
-                            else satker_map.get(x, f"SATKER {x}")
+                            else satker_map.get(x, f"SATKER {x}")  # 🔥 anti error
                         )
                     )
 
@@ -5950,13 +5956,12 @@ def page_dashboard():
                     )
 
                     # ===============================
-                    # 9. BUILD TABLE
+                    # 7. BANGUN TABEL PERBANDINGAN
                     # ===============================
                     rows = []
 
                     for _, m in satker_list.iterrows():
                         kode = m["Kode Satker"]
-
                         if kode not in selected_satkers_final:
                             continue
 
@@ -5992,7 +5997,6 @@ def page_dashboard():
                             if valA is not None:
                                 latest_a = valA
                                 has_data = True
-
                             if valB is not None:
                                 latest_b = valB
                                 has_data = True
@@ -6009,13 +6013,13 @@ def page_dashboard():
                         rows.append(row)
 
                     if not rows:
-                        st.info("Tidak ada data untuk ditampilkan.")
+                        st.info("Tidak ada data indikator untuk periode yang dipilih.")
                         st.stop()
 
                     df_compare = pd.DataFrame(rows)
 
                     # ===============================
-                    # 10. OUTPUT
+                    # 8. TAMPILKAN HASIL (AGGRID)
                     # ===============================
                     st.markdown("### 📋 Hasil Perbandingan")
                     render_table_pin_satker(df_compare)
