@@ -2656,7 +2656,7 @@ def load_DATA_DIPA_from_github():
             loaded_years.append(str(tahun))
 
         except Exception as e:
-            pass  # skip file yang gagal
+            st.error(f"Gagal load file {f.name}: {e}")
 
     # ===============================
     # FINAL RESULT
@@ -11488,14 +11488,14 @@ def main():
     if "_DIPA_LOCKED" not in st.session_state:
         st.session_state._DIPA_LOCKED = False
 
-    # ===============================
-    # LOAD DIPA (HANYA SEKALI)
-    # ===============================
-    if not st.session_state.get("_DIPA_LOADED", False):
 
+    # ===============================
+    # 🔥 FORCE AUTO LOAD DIPA (SETIAP RUN)
+    # ===============================
+    st.session_state.DATA_DIPA_by_year = {}
+
+    with st.spinner("🔄 Memuat data DIPA dari GitHub..."):
         load_DATA_DIPA_from_github()
-
-        st.session_state["_DIPA_LOADED"] = True
 
 
 
