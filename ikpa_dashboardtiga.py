@@ -11545,6 +11545,9 @@ def main():
                 df["Uraian Satker-RINGKAS"] = "-"
 
             st.session_state.DATA_DIPA_by_year[tahun] = df
+    
+    # 🔥 WAJIB RESET
+    st.session_state.ikpa_dipa_merged = False
 
     # ============================================================
     # 5️⃣ AUTO MERGE IKPA + DIPA 
