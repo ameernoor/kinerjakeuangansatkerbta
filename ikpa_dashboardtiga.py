@@ -773,6 +773,30 @@ def normalize_kode_satker(k, width=6):
     return kode.zfill(width)
 
 
+def enrich_nama_satker(df):
+    ref = st.session_state.get("reference_df", pd.DataFrame())
+
+    if ref.empty:
+        return df
+
+    ref_map = dict(zip(
+        ref["Kode Satker"].astype(str),
+        ref["Uraian Satker-SINGKAT"]
+    ))
+
+    df["Uraian Satker-RINGKAS"] = (
+        df["Kode Satker"]
+        .astype(str)
+        .map(ref_map)
+    )
+
+    df["Uraian Satker-RINGKAS"] = df["Uraian Satker-RINGKAS"].fillna(
+        "SATKER " + df["Kode Satker"].astype(str)
+    )
+
+    return df
+
+
 @st.cache_data(show_spinner=False)
 def load_reference_satker():
     """
@@ -1475,7 +1499,6 @@ def standardize_ikpa_format(df):
     df = df.reset_index(drop=True)
 
     return df
-
 
 
 #Normalisasi kode BA
@@ -2633,7 +2656,6 @@ def load_DATA_DIPA_from_github():
 
             # SET TAHUN
             df_parsed["Tahun"] = tahun
-            df_parsed = enrich_nama_satker(df_parsed)
 
             # NORMALISASI KODE SATKER
             df_parsed["Kode Satker"] = (
@@ -6218,7 +6240,6 @@ def page_dashboard():
                 on="Kode Satker",
                 how="left"
             )
-
 
             # Gunakan nama satker ringkas
             df_digipay["SATKER"] = df_digipay["Uraian Satker-SINGKAT"].fillna(df_digipay["NMSATKER"])
