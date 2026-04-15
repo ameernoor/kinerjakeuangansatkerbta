@@ -7611,87 +7611,141 @@ def menu_ews_satker():
 
 
     # ======================================================
-    # KOLOM KIRI — Pengelolaan UP dan TUP
+    # 🔥 FIX NUMERIC WAJIB (ANTI STRING ERROR)
+    # ======================================================
+    def ensure_numeric(df, cols):
+        df = df.copy()
+        for col in cols:
+            if col in df.columns:
+                df[col] = df[col].apply(clean_numeric)
+        return df
+
+
+    # ======================================================
+    # 🔥 FILTER AMAN (<100)
+    # ======================================================
+    def get_problem(df, col):
+        if col not in df.columns:
+            return pd.DataFrame()
+
+        df = df.copy()
+        df[col] = df[col].apply(clean_numeric)
+
+        return df[df[col] < 100]
+
+
+    # ======================================================
+    # 🔥 PREP DATA
+    # ======================================================
+    df_latest = ensure_numeric(
+        df_latest,
+        ["Pengelolaan UP dan TUP", "Capaian Output"]
+    )
+
+    df_latest["Satker"] = df_latest["Satker_Internal"]
+
+
+    # ======================================================
+    # 🔥 HITUNG JUMLAH DATA
+    # ======================================================
+    n_up = len(get_problem(df_latest, "Pengelolaan UP dan TUP"))
+    n_out = len(get_problem(df_latest, "Capaian Output"))
+
+
+    # ======================================================
+    # 🔥 LAYOUT DINAMIS
+    # ======================================================
+    if n_up >= 15:
+        col1, col2 = st.columns([3.5, 1.2])
+    elif n_up >= 8:
+        col1, col2 = st.columns([3, 1.5])
+    else:
+        col1, col2 = st.columns([2.5, 1.5])
+
+
+    # ======================================================
+    # 🔥 SHARED HEIGHT
+    # ======================================================
+    BAR_HEIGHT = 38
+    BASE_HEIGHT = 260
+    MAX_VISIBLE_ITEMS = 10
+
+    effective_items = min(max(n_up, n_out), MAX_VISIBLE_ITEMS)
+
+    shared_height = BASE_HEIGHT + (effective_items * BAR_HEIGHT)
+    shared_height = min(max(shared_height, 380), 700)
+
+
+    # ======================================================
+    # 🔥 KOLOM KIRI — UP TUP
     # ======================================================
     with col1:
-        st.markdown(
-            """
-            <div style="margin-bottom:6px;">
-                <span style="font-size:16px; font-weight:600;">
-                    ⚠️ Pengelolaan UP dan TUP
-                </span><br>
-                <span style="font-size:13px; color:#666;">
-                    Pengelolaan UP dan TUP Belum Optimal (&lt; 100)
-                </span>
-            </div>
-            """,
-            unsafe_allow_html=True
+
+        st.markdown("""
+        <div style="margin-bottom:6px;">
+            <span style="font-size:16px; font-weight:600;">
+                ⚠️ Pengelolaan UP dan TUP
+            </span><br>
+            <span style="font-size:13px; color:#666;">
+                Pengelolaan UP dan TUP Belum Optimal (&lt; 100)
+            </span>
+        </div>
+        """, unsafe_allow_html=True)
+
+        df_problem_up = get_problem(df_latest, "Pengelolaan UP dan TUP")
+
+        # 🔥 fallback biar tidak kosong
+        if df_problem_up.empty:
+            df_problem_up = df_latest.sort_values("Pengelolaan UP dan TUP").head(10)
+
+        fig_up = create_internal_problem_chart_vertical(
+            df_problem_up,
+            column='Pengelolaan UP dan TUP',
+            threshold=100,
+            title="Pengelolaan UP dan TUP",
+            comparison='less',
+            show_yaxis=True,
+            show_colorbar=True,
+            fixed_height=shared_height
         )
 
-        df_latest_up = df_latest.copy()
-        df_latest_up["Satker"] = df_latest_up["Satker_Internal"]
-
-        df_problem_up = df_latest_up[
-            df_latest_up["Pengelolaan UP dan TUP"] < 100
-        ]
-
-        if df_problem_up.empty:
-            st.success("✅ Semua satker sudah optimal untuk Pengelolaan UP dan TUP")
-        else:
-            fig_up = create_internal_problem_chart_vertical(
-                df_problem_up,
-                column='Pengelolaan UP dan TUP',
-                threshold=100,
-                title="Pengelolaan UP dan TUP Belum Optimal (< 100)",
-                comparison='less',
-                show_yaxis=True,
-                show_colorbar=True,
-                fixed_height=shared_height
-            )
-
-            st.plotly_chart(fig_up, use_container_width=True)
+        st.plotly_chart(fig_up, use_container_width=True)
 
 
     # ======================================================
-    # KOLOM KANAN — Capaian Output
+    # 🔥 KOLOM KANAN — CAPAIAN OUTPUT
     # ======================================================
     with col2:
-        st.markdown(
-            """
-            <div style="margin-bottom:6px;">
-                <span style="font-size:16px; font-weight:600;">
-                    ⚠️ Capaian Output
-                </span><br>
-                <span style="font-size:13px; color:#666;">
-                    Capaian Output Belum Optimal (&lt; 100)
-                </span>
-            </div>
-            """,
-            unsafe_allow_html=True
+
+        st.markdown("""
+        <div style="margin-bottom:6px;">
+            <span style="font-size:16px; font-weight:600;">
+                ⚠️ Capaian Output
+            </span><br>
+            <span style="font-size:13px; color:#666;">
+                Capaian Output Belum Optimal (&lt; 100)
+            </span>
+        </div>
+        """, unsafe_allow_html=True)
+
+        df_problem_out = get_problem(df_latest, "Capaian Output")
+
+        # 🔥 fallback biar tidak kosong
+        if df_problem_out.empty:
+            df_problem_out = df_latest.sort_values("Capaian Output").head(10)
+
+        fig_output = create_internal_problem_chart_vertical(
+            df_problem_out,
+            column='Capaian Output',
+            threshold=100,
+            title="Capaian Output",
+            comparison='less',
+            show_yaxis=False,
+            show_colorbar=False,
+            fixed_height=shared_height
         )
 
-        df_latest_out = df_latest.copy()
-        df_latest_out["Satker"] = df_latest_out["Satker_Internal"]
-
-        df_problem_out = df_latest_out[
-            df_latest_out["Capaian Output"] < 100
-        ]
-
-        if df_problem_out.empty:
-            st.success("✅ Semua satker sudah optimal untuk Capaian Output")
-        else:
-            fig_output = create_internal_problem_chart_vertical(
-                df_problem_out,
-                column='Capaian Output',
-                threshold=100,
-                title="Capaian Output Belum Optimal (< 100)",
-                comparison='less',
-                show_yaxis=False,
-                show_colorbar=False,
-                fixed_height=shared_height
-            )
-
-            st.plotly_chart(fig_output, use_container_width=True)
+        st.plotly_chart(fig_output, use_container_width=True)
 
 
     warnings = []
