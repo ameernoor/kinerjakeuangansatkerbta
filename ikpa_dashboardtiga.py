@@ -8748,6 +8748,12 @@ def merge_ikpa_dipa_auto():
         df_final = df_final.drop(columns=["Total Pagu"], errors="ignore")
 
         # ===============================
+        # 🔥 FINAL NORMALIZATION (WAJIB)
+        # ===============================
+        df_final["Kode Satker"] = df_final["Kode Satker"].astype(str).str[-6:]
+        dipa_by_kode["Kode Satker"] = dipa_by_kode["Kode Satker"].astype(str).str[-6:]
+        
+        # ===============================
         # 🔥 MERGE
         # ===============================
         df_merged = pd.merge(
