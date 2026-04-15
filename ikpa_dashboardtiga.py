@@ -763,20 +763,14 @@ def normalize_kode_satker(k, width=6):
     if pd.isna(k):
         return ''
 
-    s = str(k).strip()
-
-    # ambil semua angka
-    digits = re.findall(r'\d+', s)
+    digits = re.findall(r'\d+', str(k))
     if not digits:
         return ''
 
-    x = ''.join(digits)
+    # ambil angka pertama (format standar satker)
+    kode = digits[0]
 
-    # 🔥 AMBIL 6 DIGIT TERAKHIR (INI KUNCI FIX)
-    if len(x) >= width:
-        return x[-width:]
-
-    return x.zfill(width)
+    return kode.zfill(width)
 
 
 @st.cache_data(show_spinner=False)
