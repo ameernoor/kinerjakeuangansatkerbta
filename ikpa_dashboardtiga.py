@@ -7664,22 +7664,25 @@ def menu_ews_satker():
         df_latest_up = df_latest.copy()
         df_latest_up["Satker"] = df_latest_up["Satker_Internal"]
 
-        fig_up = create_internal_problem_chart_vertical(
-            df_latest_up,
-            column='Pengelolaan UP dan TUP',
-            threshold=100,
-            title="Pengelolaan UP dan TUP Belum Optimal (< 100)",
-            comparison='less',
-            show_yaxis=True,
-            show_colorbar=True,
-            fixed_height=shared_height
-        )
+        df_problem_up = df_latest_up[
+            df_latest_up["Pengelolaan UP dan TUP"] < 100
+        ]
 
-
-        if fig_up:
-            st.plotly_chart(fig_up, use_container_width=True)
-        else:
+        if df_problem_up.empty:
             st.success("✅ Semua satker sudah optimal untuk Pengelolaan UP dan TUP")
+        else:
+            fig_up = create_internal_problem_chart_vertical(
+                df_problem_up,
+                column='Pengelolaan UP dan TUP',
+                threshold=100,
+                title="Pengelolaan UP dan TUP Belum Optimal (< 100)",
+                comparison='less',
+                show_yaxis=True,
+                show_colorbar=True,
+                fixed_height=shared_height
+            )
+
+            st.plotly_chart(fig_up, use_container_width=True)
 
 
     # ======================================================
@@ -7703,22 +7706,25 @@ def menu_ews_satker():
         df_latest_out = df_latest.copy()
         df_latest_out["Satker"] = df_latest_out["Satker_Internal"]
 
-        fig_output = create_internal_problem_chart_vertical(
-            df_latest_out,
-            column='Capaian Output',
-            threshold=100,
-            title="Capaian Output Belum Optimal (< 100)",
-            comparison='less',
-            show_yaxis=False,
-            show_colorbar=False,
-            fixed_height=shared_height
-        )
+        df_problem_out = df_latest_out[
+            df_latest_out["Capaian Output"] < 100
+        ]
 
-
-        if fig_output:
-            st.plotly_chart(fig_output, use_container_width=True)
-        else:
+        if df_problem_out.empty:
             st.success("✅ Semua satker sudah optimal untuk Capaian Output")
+        else:
+            fig_output = create_internal_problem_chart_vertical(
+                df_problem_out,
+                column='Capaian Output',
+                threshold=100,
+                title="Capaian Output Belum Optimal (< 100)",
+                comparison='less',
+                show_yaxis=False,
+                show_colorbar=False,
+                fixed_height=shared_height
+            )
+
+            st.plotly_chart(fig_output, use_container_width=True)
 
 
     warnings = []
