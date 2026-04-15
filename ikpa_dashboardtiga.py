@@ -762,12 +762,21 @@ TEMPLATE_PATH = r"C:\Users\KEMENKEU\Desktop\INDIKATOR PELAKSANAAN ANGGARAN.xlsx"
 def normalize_kode_satker(k, width=6):
     if pd.isna(k):
         return ''
+
     s = str(k).strip()
+
+    # ambil semua angka
     digits = re.findall(r'\d+', s)
     if not digits:
         return ''
-    kod = digits[0].zfill(width)
-    return kod
+
+    x = ''.join(digits)
+
+    # 🔥 AMBIL 6 DIGIT TERAKHIR (INI KUNCI FIX)
+    if len(x) >= width:
+        return x[-width:]
+
+    return x.zfill(width)
 
 
 @st.cache_data(show_spinner=False)
@@ -971,6 +980,7 @@ def standardize_dipa(df_raw):
     # KODE SATKER
     if col_kode:
         out["Kode Satker"] = df[col_kode].astype(str).str.extract(r"(\d{6})")[0]
+        out["Kode Satker"] = out["Kode Satker"].apply(normalize_kode_satker)
     else:
         out["Kode Satker"] = None
 
@@ -1446,6 +1456,8 @@ def standardize_ikpa_format(df):
         .str.extract(r"(\d{6})")[0]
         .fillna("")
     )
+    
+    df["Kode Satker"] = df["Kode Satker"].apply(normalize_kode_satker)
 
     if kode_ba_col and kode_ba_col != "Kode BA":
         df["Kode BA"] = df[kode_ba_col].astype(str).str.strip()
