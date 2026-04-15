@@ -2868,9 +2868,24 @@ def load_data_from_github(_cache_buster: int = 0):
                 df[col] = df[col].astype(str)
 
             # ===============================
-            # 🔥 STANDARDIZE IKPA
+            # 🔥 PAKAI PIPELINE YANG SAMA DENGAN UPLOAD
             # ===============================
-            df = standardize_ikpa_format(df)
+            df, month, year = process_excel_file(
+                io.BytesIO(decoded),
+                None  # year akan diambil dari file
+            )
+
+            df = post_process_ikpa_satker(df)
+
+            # ===============================
+            # 🔥 REGISTER (WAJIB BIAR SAMA)
+            # ===============================
+            register_ikpa_satker(
+                df,
+                month,
+                year,
+                source="GitHub"
+            )
 
             # ===============================
             # 🔥 VALIDASI KODE SATKER (INI KUNCI FIX)
