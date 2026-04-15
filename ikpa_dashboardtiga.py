@@ -3751,42 +3751,59 @@ def merge_ikpa_with_dipa(df):
     df_dipa = df_dipa.copy()
 
     # ===============================
-    # 🔥 SAFETY KOLOM PAGU (WAJIB)
+    # 🔥 SAFETY KOLOM PAGU
     # ===============================
     if "Total Pagu" not in df_dipa.columns:
-        # tidak usah error, langsung isi 0
-        df["Total Pagu"] = 0
-        return df
+        df_dipa["Total Pagu"] = 0
 
     # ===============================
-    # NORMALISASI KODE SATKER
+    # 🔥 CLEAN PAGU (FORMAT INDONESIA)
     # ===============================
-    df["Kode Satker"] = (
-        df["Kode Satker"]
+    df_dipa["Total Pagu"] = (
+        df_dipa["Total Pagu"]
         .astype(str)
-        .str.extract(r"(\d+)")[0]
-        .fillna("")
-        .str.zfill(6)
+        .str.replace(".", "", regex=False)
+        .str.replace(",", ".", regex=False)
     )
 
-    df_dipa["Kode Satker"] = (
-        df_dipa["Kode Satker"]
-        .astype(str)
-        .str.extract(r"(\d+)")[0]
-        .fillna("")
-        .str.zfill(6)
+    df_dipa["Total Pagu"] = pd.to_numeric(
+        df_dipa["Total Pagu"], errors="coerce"
+    ).fillna(0)
+
+    # ===============================
+    # 🔥 NORMALISASI KODE SATKER (FINAL FIX)
+    # ===============================
+    def normalize_satker(x):
+        if pd.isna(x):
+            return ""
+        x = ''.join(filter(str.isdigit, str(x)))
+        if x == "":
+            return ""
+        return x[-6:].zfill(6)
+
+    df["Kode Satker"] = df["Kode Satker"].apply(normalize_satker)
+    df_dipa["Kode Satker"] = df_dipa["Kode Satker"].apply(normalize_satker)
+
+    # ===============================
+    # 🔥 AGREGASI DIPA (ANTI DUPLIKAT)
+    # ===============================
+    df_dipa = (
+        df_dipa
+        .groupby("Kode Satker", as_index=False)["Total Pagu"]
+        .max()
     )
 
     # ===============================
-    # 🔥 CLEAN PAGU (AMAN)
+    # 🔥 FINAL FORCE MATCH (WAJIB)
     # ===============================
-    df_dipa["Total Pagu"] = df_dipa["Total Pagu"].apply(clean_numeric)
+    df["Kode Satker"] = df["Kode Satker"].astype(str).str[-6:]
+    df_dipa["Kode Satker"] = df_dipa["Kode Satker"].astype(str).str[-6:]
 
     # ===============================
     # MERGE
     # ===============================
     df_merge = df.merge(
-        df_dipa[["Kode Satker", "Total Pagu"]],
+        df_dipa,
         on="Kode Satker",
         how="left"
     )
@@ -3794,7 +3811,9 @@ def merge_ikpa_with_dipa(df):
     # ===============================
     # HANDLE NILAI KOSONG
     # ===============================
-    df_merge["Total Pagu"] = df_merge["Total Pagu"].fillna(0)
+    df_merge["Total Pagu"] = pd.to_numeric(
+        df_merge["Total Pagu"], errors="coerce"
+    ).fillna(0)
 
     return df_merge
 
