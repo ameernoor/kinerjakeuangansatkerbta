@@ -11550,14 +11550,18 @@ def main():
     st.session_state.ikpa_dipa_merged = False
 
     # ============================================================
-    # 5️⃣ AUTO MERGE IKPA + DIPA 
+    # AUTO MERGE IKPA + DIPA 
     # ============================================================
+    st.session_state.ikpa_dipa_merged = False
+
     if (
         st.session_state.data_storage and
-        st.session_state.DATA_DIPA_by_year and
-        not st.session_state.ikpa_dipa_merged
+        st.session_state.DATA_DIPA_by_year
     ):
+        try:
             merge_ikpa_dipa_auto()
+        except Exception as e:
+            st.error(f"Gagal merge IKPA & DIPA: {e}")
             
     # ============================================================
     # NOTIF GLOBAL STATUS DATA (MUNCUL SAAT APP DIBUKA)
