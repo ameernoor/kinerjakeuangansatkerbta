@@ -8639,7 +8639,7 @@ def merge_ikpa_dipa_auto():
         return
 
     # ===============================
-    # 🔥 BUILD DIPA VALID
+    # 🔥 BUILD DIPA (TANPA FILTER PAGU)
     # ===============================
     valid_dipa_years = {}
 
@@ -8650,22 +8650,37 @@ def merge_ikpa_dipa_auto():
 
         dipa_df = dipa_df.copy()
 
+        # ===============================
+        # 🔥 FIX FORMAT PAGU (INDONESIA)
+        # ===============================
         if "Total Pagu" not in dipa_df.columns:
             dipa_df["Total Pagu"] = 0
+
+        dipa_df["Total Pagu"] = (
+            dipa_df["Total Pagu"]
+            .astype(str)
+            .str.replace(".", "", regex=False)
+            .str.replace(",", ".", regex=False)
+        )
 
         dipa_df["Total Pagu"] = pd.to_numeric(
             dipa_df["Total Pagu"], errors="coerce"
         ).fillna(0)
 
-        if dipa_df["Total Pagu"].sum() > 0:
-            valid_dipa_years[int(yr)] = dipa_df
+        # 🔥 LANGSUNG MASUK (TANPA FILTER)
+        valid_dipa_years[int(yr)] = dipa_df
 
     if not valid_dipa_years:
         st.warning("❌ Tidak ada DIPA valid")
         return
 
     # ===============================
-    # 🔥 LOOP IKPA (TANPA FILTER TAHUN!!)
+    # 🔥 DEBUG KEY DIPA
+    # ===============================
+    st.write("📊 DIPA LOADED:", list(valid_dipa_years.keys()))
+
+    # ===============================
+    # 🔥 LOOP IKPA
     # ===============================
     for (bulan, tahun), df_ikpa in st.session_state.data_storage.items():
 
@@ -8680,6 +8695,7 @@ def merge_ikpa_dipa_auto():
         if dipa is None:
             nearest = min(valid_dipa_years.keys(), key=lambda y: abs(y - tahun_int))
             dipa = valid_dipa_years[nearest]
+            st.warning(f"⚠️ Tahun {tahun_int} pakai DIPA {nearest}")
 
         if dipa is None or dipa.empty:
             continue
@@ -8706,7 +8722,7 @@ def merge_ikpa_dipa_auto():
         )
 
         # ===============================
-        # 🔥 AGREGASI DIPA (ANTI SALAH)
+        # 🔥 AGREGASI DIPA (AMAN)
         # ===============================
         dipa_by_kode = (
             dipa
@@ -8715,13 +8731,12 @@ def merge_ikpa_dipa_auto():
         )
 
         # ===============================
-        # 🔥 DEBUG (WAJIB ADA)
+        # 🔥 HAPUS KOLOM LAMA BIAR GA TABRAKAN
         # ===============================
-        match_ratio = df_final["Kode Satker"].isin(dipa_by_kode["Kode Satker"]).mean()
-        st.write(f"📊 {bulan}-{tahun} Match Ratio:", round(match_ratio, 3))
+        df_final = df_final.drop(columns=["Total Pagu"], errors="ignore")
 
         # ===============================
-        # 🔥 MERGE UTAMA
+        # 🔥 MERGE
         # ===============================
         df_merged = pd.merge(
             df_final,
@@ -8729,52 +8744,32 @@ def merge_ikpa_dipa_auto():
             on="Kode Satker",
             how="left"
         )
-        
+
         # ===============================
-        # FIX NAMA KOLOM (WAJIB)
+        # 🔥 FIX KOLOM DUPLIKAT
         # ===============================
         if "Total Pagu_y" in df_merged.columns:
             df_merged["Total Pagu"] = df_merged["Total Pagu_y"]
         elif "Total Pagu_x" in df_merged.columns:
             df_merged["Total Pagu"] = df_merged["Total Pagu_x"]
 
-        # bersihkan kolom duplikat
         df_merged = df_merged.drop(
             columns=[c for c in ["Total Pagu_x", "Total Pagu_y"] if c in df_merged.columns],
             errors="ignore"
         )
 
         # ===============================
-        # FALLBACK (ANTI MISS)
+        # 🔥 DEBUG MATCH
         # ===============================
-        mask = df_merged["Total Pagu"].isna()
-
-        if mask.any():
-
-            dipa_by_kode["Kode Clean"] = dipa_by_kode["Kode Satker"].str.lstrip("0")
-            df_merged["Kode Clean"] = df_merged["Kode Satker"].str.lstrip("0")
-
-            fallback = pd.merge(
-                df_merged[mask].drop(columns=["Total Pagu"]),
-                dipa_by_kode[["Kode Clean", "Total Pagu"]],
-                on="Kode Clean",
-                how="left"
-            )
-
-            df_merged.loc[mask, "Total Pagu"] = fallback["Total Pagu"].values
+        match_ratio = df_merged["Total Pagu"].notna().mean()
+        st.write(f"📊 {bulan}-{tahun} Match Ratio:", round(match_ratio, 3))
 
         # ===============================
         # 🔥 FINAL CLEAN
         # ===============================
         df_merged["Total Pagu"] = pd.to_numeric(
-            df_merged["Total Pagu"],
-            errors="coerce"
-        )
-
-        # 🔥 JANGAN LANGSUNG 0 (BIAR KELIHATAN ERROR)
-        df_merged["Total Pagu"] = df_merged["Total Pagu"].fillna(0)
-
-        df_merged = df_merged.drop(columns=["Kode Clean"], errors="ignore")
+            df_merged["Total Pagu"], errors="coerce"
+        ).fillna(0)
 
         # ===============================
         # 🔥 POST PROCESS
