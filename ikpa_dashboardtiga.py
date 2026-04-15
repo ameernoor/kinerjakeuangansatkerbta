@@ -8729,9 +8729,23 @@ def merge_ikpa_dipa_auto():
             on="Kode Satker",
             how="left"
         )
+        
+        # ===============================
+        # FIX NAMA KOLOM (WAJIB)
+        # ===============================
+        if "Total Pagu_y" in df_merged.columns:
+            df_merged["Total Pagu"] = df_merged["Total Pagu_y"]
+        elif "Total Pagu_x" in df_merged.columns:
+            df_merged["Total Pagu"] = df_merged["Total Pagu_x"]
+
+        # bersihkan kolom duplikat
+        df_merged = df_merged.drop(
+            columns=[c for c in ["Total Pagu_x", "Total Pagu_y"] if c in df_merged.columns],
+            errors="ignore"
+        )
 
         # ===============================
-        # 🔥 FALLBACK (ANTI MISS)
+        # FALLBACK (ANTI MISS)
         # ===============================
         mask = df_merged["Total Pagu"].isna()
 
