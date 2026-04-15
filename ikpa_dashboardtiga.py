@@ -2796,7 +2796,7 @@ def save_file_to_github(content_bytes, filename, folder):
         
 
 # ============================
-#  LOAD DATA IKPA DARI GITHUB
+#  LOAD DATA IKPA DARI GITHUB (FINAL FIX)
 # ============================
 @st.cache_data(ttl=0)
 def load_data_from_github(_cache_buster: int = 0):
@@ -2831,68 +2831,25 @@ def load_data_from_github(_cache_buster: int = 0):
             decoded = base64.b64decode(file.content)
 
             # ===============================
-            # 🔥 LOAD RAW
+            # 🔥 LOAD LANGSUNG (FILE SUDAH BERSIH)
             # ===============================
-            df_raw = pd.read_excel(io.BytesIO(decoded), header=None)
-
-            # ===============================
-            # 🔥 DETEKSI HEADER FLEXIBLE
-            # ===============================
-            header_row = None
-
-            for i in range(20):
-                row = df_raw.iloc[i].astype(str).str.upper()
-
-                if (
-                    row.str.contains("SATKER").any()
-                    or row.str.contains("URAIAN").any()
-                ):
-                    header_row = i
-                    break
-
-            if header_row is not None:
-                df_raw.columns = df_raw.iloc[header_row]
-                df = df_raw[header_row + 1:].copy()
-            else:
-                df = df_raw.copy()
-                df.columns = df.iloc[0]
-                df = df[1:]
-
-            df = df.reset_index(drop=True)
+            df = pd.read_excel(io.BytesIO(decoded))
             df.columns = [str(c).strip() for c in df.columns]
 
             # ===============================
-            # 🔥 PAKSA STRING (ANTI ERROR)
-            # ===============================
-            for col in df.columns:
-                df[col] = df[col].astype(str)
-
-            # ===============================
-            # 🔥 PAKAI PIPELINE YANG SAMA DENGAN UPLOAD
-            # ===============================
-            df, month, year = process_excel_file(
-                io.BytesIO(decoded),
-                None  # year akan diambil dari file
-            )
-
-            df = post_process_ikpa_satker(df)
-
-            # ===============================
-            # 🔥 REGISTER (WAJIB BIAR SAMA)
-            # ===============================
-            register_ikpa_satker(
-                df,
-                month,
-                year,
-                source="GitHub"
-            )
-
-            # ===============================
-            # 🔥 VALIDASI KODE SATKER (INI KUNCI FIX)
+            # VALIDASI KOLOM WAJIB
             # ===============================
             if "Kode Satker" not in df.columns:
+                st.warning(f"⚠️ Skip {file.name}: tidak ada Kode Satker")
                 continue
 
+            if "Nilai Akhir (Nilai Total/Konversi Bobot)" not in df.columns:
+                st.warning(f"⚠️ Skip {file.name}: kolom IKPA tidak ditemukan")
+                continue
+
+            # ===============================
+            # NORMALISASI KODE SATKER
+            # ===============================
             df["Kode Satker"] = (
                 df["Kode Satker"]
                 .astype(str)
@@ -2901,39 +2858,32 @@ def load_data_from_github(_cache_buster: int = 0):
                 .str.zfill(6)
             )
 
-            df = df[df["Kode Satker"] != ""]
-            df = df[df["Kode Satker"] != "000000"]
+            df = df[(df["Kode Satker"] != "") & (df["Kode Satker"] != "000000")]
 
             if df.empty:
                 continue
 
             # ===============================
-            # 🔥 AMBIL BULAN & TAHUN
+            # AMBIL BULAN & TAHUN DARI NAMA FILE
             # ===============================
-            month = normalize_month(df["Bulan"].iloc[0]) if "Bulan" in df.columns else "MARET"
-            year = str(df["Tahun"].iloc[0]) if "Tahun" in df.columns else "2026"
+            match = re.search(r"IKPA_(\w+)_(\d{4})", file.name)
 
-            # ===============================
-            # 🔥 SET ULANG
-            # ===============================
+            if not match:
+                continue
+
+            month = match.group(1).upper()
+            year = match.group(2)
+
             df["Bulan"] = month
             df["Tahun"] = year
 
             # ===============================
-            # 🔥 NUMERIC CLEAN
+            # POST PROCESS (WAJIB)
             # ===============================
-            NON_NUMERIC_COLS = [
-                "Kode Satker", "Uraian Satker", "Bulan", "Tahun",
-                "Kode BA", "Kode KPPN", "Source", "Period", "Period_Sort",
-                "Satker", "Uraian Satker-RINGKAS", "Uraian Satker Final",
-                "Jenis Satker", "Peringkat"
-            ]
-            for col in df.columns:
-                if col not in NON_NUMERIC_COLS:
-                    df[col] = df[col].apply(clean_numeric)
+            df = post_process_ikpa_satker(df)
 
             # ===============================
-            # 🔥 METADATA
+            # METADATA
             # ===============================
             month_num = MONTH_ORDER.get(month, 0)
 
@@ -2942,34 +2892,36 @@ def load_data_from_github(_cache_buster: int = 0):
             df["Period_Sort"] = f"{int(year):04d}-{month_num:02d}"
 
             # ===============================
-            # 🔥 RANKING
+            # RANKING
             # ===============================
             nilai_col = "Nilai Akhir (Nilai Total/Konversi Bobot)"
 
-            if nilai_col in df.columns:
-                df = df.sort_values(nilai_col, ascending=False)
+            df = df.sort_values(nilai_col, ascending=False)
 
-                df["Peringkat"] = (
-                    df[nilai_col]
-                    .rank(method="dense", ascending=False)
-                    .astype(int)
-                )
+            df["Peringkat"] = (
+                df[nilai_col]
+                .rank(method="dense", ascending=False)
+                .astype(int)
+            )
 
             # ===============================
-            # 🔥 MERGE DIPA (hanya jika DIPA sudah tersedia)
+            # MERGE DIPA (AUTO)
             # ===============================
             if st.session_state.get("DATA_DIPA_by_year"):
                 df = merge_ikpa_with_dipa(df)
             else:
-                df["Total Pagu"] = df.get("Total Pagu", 0)
+                df["Total Pagu"] = 0
 
+            # ===============================
+            # JENIS SATKER
+            # ===============================
             if "Jenis Satker" in df.columns:
                 df = df.drop(columns=["Jenis Satker"])
 
             df = classify_jenis_satker(df)
 
             # ===============================
-            # 🔥 SIMPAN
+            # SIMPAN
             # ===============================
             key = (month, year)
             data_storage[key] = df
