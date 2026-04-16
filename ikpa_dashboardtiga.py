@@ -1856,8 +1856,8 @@ def extract_kode_from_satker_field(s, width=6):
         
 def register_ikpa_satker(df_final, month, year, source="Manual"):
     
-     # 🔥 TAMBAHKAN DI SINI
-    df_final = enrich_nama_satker(df_final)
+    df_final = apply_reference_short_names(df_final)
+    df_final = create_satker_column(df_final)
     
     # ===============================
     # 🔥 NORMALISASI
