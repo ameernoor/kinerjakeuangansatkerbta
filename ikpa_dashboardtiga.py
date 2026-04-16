@@ -1858,14 +1858,11 @@ def register_ikpa_satker(df_final, month, year, source="Manual"):
     
     df_final = apply_reference_short_names(df_final)
     df_final = create_satker_column(df_final)
-    
-    # ===============================
-    # 🔥 NORMALISASI
-    # ===============================
+    df_final["Satker"] = df_final["Satker"].astype(str).str.strip()
+
     month = normalize_month(month)
     year = str(year)
 
-    # 🔥 FIX: KEY WAJIB ADA
     key = (month, year)
 
     df = df_final.copy()
@@ -1881,26 +1878,21 @@ def register_ikpa_satker(df_final, month, year, source="Manual"):
 
     df["Period_Sort"] = f"{int(year):04d}-{MONTH_ORDER.get(month, 0):02d}"
 
-    # ===============================
-    # 🔥 FIX NUMERIC
-    # ===============================
     nilai_col = "Nilai Akhir (Nilai Total/Konversi Bobot)"
 
     if nilai_col in df.columns:
-
         df[nilai_col] = df[nilai_col].apply(clean_numeric)
-
         df = df.sort_values(nilai_col, ascending=False)
-
         df["Peringkat"] = (
             df[nilai_col]
             .rank(method="dense", ascending=False)
             .astype(int)
         )
 
-    # ===============================
-    # 🔥 SIMPAN
-    # ===============================
+    # 🔥 PAKSA SEKALI LAGI SEBELUM SIMPAN
+    df = apply_reference_short_names(df)
+    df = create_satker_column(df)
+
     st.session_state.data_storage[key] = df
     
 
@@ -9079,11 +9071,6 @@ def page_admin():
                                     .astype(str)
                                     .apply(normalize_kode_satker)
                                 )
-
-                            # ======================
-                            #  FULL POST PROCESS 
-                            # ======================
-                            df_final = post_process_ikpa_satker(df_final)
 
                             # ======================
                             # OVERRIDE JIKA BULAN SAMA
