@@ -3382,7 +3382,9 @@ def make_column_chart(data, title, color_scale, y_min, y_max):
 
     if "Satker" not in plot_df.columns:
         return None
-
+    
+    df = enrich_nama_satker(df)
+    
     fig = px.bar(
         plot_df.sort_values(nilai_col),
         x=nilai_col,
@@ -3903,7 +3905,9 @@ def safe_chart(
     if df_sorted.empty:
         st.info("Tidak ada data valid untuk ditampilkan.")
         return
-
+    
+    df = enrich_nama_satker(df)
+    
     # ===============================
     # PLOT
     # ===============================
