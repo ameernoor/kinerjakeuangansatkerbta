@@ -2020,100 +2020,122 @@ def fix_ikpa_satker_raw(df_raw):
     return df_raw
 
 
-# ===============================
-# PARSER IKPA SATKER (INI KUNCI)
-# ===============================
 def process_excel_file(uploaded_file, upload_year):
-    """
-    PARSER IKPA SATKER — SATU-SATUNYA YANG BOLEH MEMBACA EXCEL MENTAH
-    (Sudah difilter baris invalid & bulan dinormalisasi)
-    """
+    import pandas as pd
+    import re
+
     df_raw = pd.read_excel(uploaded_file, header=None)
 
     # ===============================
-    # 1️⃣ AMBIL BULAN (AMAN)
+    # 🔥 AUTO DETEKSI AWAL DATA (FIX UTAMA)
     # ===============================
-    try:
-        month_text = str(df_raw.iloc[1, 0])
-        month_raw = month_text.split(":")[-1].strip().upper()
-    except Exception:
-        month_raw = "JULI"
+    start_row = 0
+    for i in range(15):
+        row = df_raw.iloc[i].astype(str).str.upper()
 
-    month = VALID_MONTHS.get(month_raw, "JULI")
+        if row.str.contains("SATKER").any() and row.str.contains("KPPN").any():
+            start_row = i + 1
+            break
+
+    df_data = df_raw.iloc[start_row:].reset_index(drop=True)
 
     # ===============================
-    # 2️⃣ DATA MULAI BARIS KE-5
+    # BULAN
     # ===============================
-    df_data = df_raw.iloc[4:].reset_index(drop=True)
-    df_data.columns = range(len(df_data.columns))
+    month = "UNKNOWN"
+    for i in range(10):
+        row_text = " ".join(df_raw.iloc[i].astype(str)).upper()
+        if "NOVEMBER" in row_text:
+            month = "NOVEMBER"
+        elif "OKTOBER" in row_text:
+            month = "OKTOBER"
+        elif "SEPTEMBER" in row_text:
+            month = "SEPTEMBER"
 
+    # ===============================
+    # HELPER
+    # ===============================
+    def normalize_kode(val):
+        digits = re.findall(r"\d+", str(val))
+        return digits[0].zfill(6) if digits else ""
+
+    def safe(val):
+        try:
+            return float(str(val).replace(",", "."))
+        except:
+            return 0
+
+    # ===============================
+    # PARSING DINAMIS
+    # ===============================
     processed_rows = []
     i = 0
 
-    while i + 3 < len(df_data):
+    while i < len(df_data):
 
-        nilai = df_data.iloc[i]
-        bobot = df_data.iloc[i + 1]
-        nilai_akhir = df_data.iloc[i + 2]
-        nilai_aspek = df_data.iloc[i + 3]
+        row = df_data.iloc[i]
 
-        # ===============================
-        # 🔴 FILTER AWAL (CEGAH NILAI/BOBOT)
-        # ===============================
-        kode_satker = (
-            str(nilai[3])
-            .replace("\u00a0", "")   # hapus NBSP (spasi tak terlihat dari Excel)
-            .strip()                # hapus spasi kiri/kanan
-        )
-
-        kode_satker = normalize_kode_satker(kode_satker)
-
-        uraian_satker = str(nilai[4]).strip()
-
-        if (
-            not kode_satker.isdigit()
-            or len(kode_satker) != 6
-            or kode_satker == "000000"
-            or uraian_satker.upper() in ["NILAI", "BOBOT", "NILAI AKHIR"]
-        ):
-            i += 4
+        # 🔥 cari baris NILAI (bukan posisi tetap)
+        if not any(str(x).strip().upper() == "NILAI" for x in row.values):
+            i += 1
             continue
 
-        row = {
-            "No": nilai[0],
-            "Kode KPPN": str(nilai[1]).strip("'"),
-            "Kode BA": str(nilai[2]).strip("'"),
-            "Kode Satker": kode_satker,
-            "Uraian Satker": uraian_satker,
+        # 🔥 cari blok 4 baris
+        if i + 3 >= len(df_data):
+            break
 
-            "Kualitas Perencanaan Anggaran": nilai_aspek[6],
-            "Kualitas Pelaksanaan Anggaran": nilai_aspek[8],
-            "Kualitas Hasil Pelaksanaan Anggaran": nilai_aspek[12],
+        nilai       = df_data.iloc[i]
+        bobot       = df_data.iloc[i+1]
+        nilai_akhir = df_data.iloc[i+2]
+        nilai_aspek = df_data.iloc[i+3]
 
-            "Revisi DIPA": nilai[6],
-            "Deviasi Halaman III DIPA": nilai[7],
-            "Penyerapan Anggaran": nilai[8],
-            "Belanja Kontraktual": nilai[9],
-            "Penyelesaian Tagihan": nilai[10],
-            "Pengelolaan UP dan TUP": nilai[11],
-            "Capaian Output": nilai[12],
+        kode_satker = normalize_kode(nilai[3])
 
-            "Nilai Total": nilai[13],
-            "Konversi Bobot": nilai[14],
-            "Dispensasi SPM (Pengurang)": nilai[15],
-            "Nilai Akhir (Nilai Total/Konversi Bobot)": nilai[16],
+        if not kode_satker or kode_satker == "000000":
+            i += 1
+            continue
 
-            "Bulan": month,
-            "Tahun": upload_year
-        }
+        try:
+            processed_rows.append({
+                "No": nilai[0],
+                "Kode KPPN": str(nilai[1]).strip(),
+                "Kode BA": str(nilai[2]).strip(),
+                "Kode Satker": kode_satker,
+                "Uraian Satker": str(nilai[4]).strip(),
 
-        processed_rows.append(row)
+                "Revisi DIPA": safe(nilai[6]),
+                "Deviasi Halaman III DIPA": safe(nilai[7]),
+                "Penyerapan Anggaran": safe(nilai[8]),
+                "Belanja Kontraktual": safe(nilai[9]),
+                "Penyelesaian Tagihan": safe(nilai[10]),
+                "Pengelolaan UP dan TUP": safe(nilai[11]),
+                "Capaian Output": safe(nilai[12]),
+
+                "Nilai Total": safe(nilai[13]),
+                "Konversi Bobot": safe(nilai[14]),
+                "Dispensasi SPM (Pengurang)": safe(nilai[15]),
+                "Nilai Akhir (Nilai Total/Konversi Bobot)": safe(nilai[16]),
+
+                "Kualitas Perencanaan Anggaran": safe(nilai_aspek[6]),
+                "Kualitas Pelaksanaan Anggaran": safe(nilai_aspek[8]),
+                "Kualitas Hasil Pelaksanaan Anggaran": safe(nilai_aspek[12]),
+
+                "Bulan": month,
+                "Tahun": upload_year
+            })
+
+        except Exception:
+            pass
+
         i += 4
 
-    # ===============================
-    # 3️⃣ DATAFRAME FINAL
-    # ===============================
     df_final = pd.DataFrame(processed_rows)
+
+    # ===============================
+    # 🔥 PROTEKSI AKHIR
+    # ===============================
+    if df_final.empty:
+        raise ValueError("kolom IKPA tidak ditemukan (format file berubah total)")
 
     return df_final, month, upload_year
 
