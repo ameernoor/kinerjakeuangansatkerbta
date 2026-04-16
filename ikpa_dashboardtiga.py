@@ -2077,11 +2077,12 @@ def process_excel_file(uploaded_file, upload_year):
     while i < len(df_raw):
         row = df_raw.iloc[i]
 
-        # Hanya proses baris NILAI
-        ket = str(row.iloc[6]).strip().upper() if df_raw.shape[1] > 6 else ""
+        # ===============================
+        # DETEKSI BARIS NILAI (SUPER FLEXIBLE)
+        # ===============================
+        row_str = " ".join(row.astype(str)).replace("\xa0", " ").upper()
 
-        # FIX FLEXIBLE (AMAN SEMUA BULAN)
-        if not ket.startswith("NILAI"):
+        if "NILAI" not in row_str:
             i += 1
             continue
 
