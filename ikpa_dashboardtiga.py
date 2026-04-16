@@ -3381,7 +3381,7 @@ def make_column_chart(data, title, color_scale, y_min, y_max):
     fig = px.bar(
         plot_df.sort_values(nilai_col),
         x=nilai_col,
-        y="Satker",
+        y="SATKER",
         orientation="h",
         color=nilai_col,
         color_continuous_scale=color_scale,
@@ -3905,7 +3905,7 @@ def safe_chart(
     fig = px.bar(
         df_sorted,
         x=nilai_col,
-        y="Satker",
+        y="SATKER",
         orientation="h",
         color=nilai_col,
         color_continuous_scale=color,
