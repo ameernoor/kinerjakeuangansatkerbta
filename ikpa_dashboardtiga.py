@@ -9103,11 +9103,20 @@ def page_admin():
                                 folder="data"
                             )
 
+                            # ======================
+                            # 🔥 FORCE REFRESH DATA (WAJIB)
+                            # ======================
+                            st.cache_data.clear()
+
+                            st.session_state.data_storage = load_data_from_github(
+                                _cache_buster=int(time.time())
+                            )
+
                             log_activity(
                                 menu="Upload Data",
                                 action="Upload IKPA Satker",
                                 detail=f"{uploaded_file.name} | {month} {year}"
-                            )
+)
 
 
                             st.success(
