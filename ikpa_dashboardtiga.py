@@ -3543,7 +3543,6 @@ def create_internal_problem_chart_vertical(
     return fig
 
 
-
 # ===============================================
 # Helper to apply reference short names (Simplified)
 # ===============================================
@@ -3551,7 +3550,7 @@ def apply_reference_short_names(df):
     df = df.copy()
 
     # ===============================
-    # NORMALISASI KODE SATKER (FIX UTAMA 🔥)
+    # NORMALISASI KODE SATKER 🔥
     # ===============================
     def clean_kode(x):
         return str(x).strip().replace(".0", "").zfill(6)
@@ -3569,6 +3568,9 @@ def apply_reference_short_names(df):
     # ===============================
     ref = st.session_state.get("reference_df", pd.DataFrame()).copy()
 
+    # ===============================
+    # JIKA TIDAK ADA REFERENCE → FALLBACK
+    # ===============================
     if ref.empty or 'Kode Satker' not in ref.columns:
         df['Uraian Satker-RINGKAS'] = df.get('Uraian Satker', '')
         df['Satker'] = df['Uraian Satker-RINGKAS'] + " (" + df['Kode Satker'] + ")"
@@ -3582,7 +3584,12 @@ def apply_reference_short_names(df):
         return df
 
     # ===============================
-    # MERGE (PASTI MATCH SETELAH CLEAN 🔥)
+    # SIAPKAN KOLOM (ANTI ERROR 🔥)
+    # ===============================
+    df['Uraian Satker-RINGKAS'] = None
+
+    # ===============================
+    # MERGE
     # ===============================
     df = df.merge(
         ref[['Kode Satker', 'Uraian Satker-SINGKAT']]
@@ -3592,6 +3599,12 @@ def apply_reference_short_names(df):
     )
 
     # ===============================
+    # PASTIKAN KOLOM ADA (ANTI KEYERROR 🔥)
+    # ===============================
+    if 'Uraian Satker-RINGKAS' not in df.columns:
+        df['Uraian Satker-RINGKAS'] = None
+
+    # ===============================
     # FALLBACK KE NAMA ASLI
     # ===============================
     df['Uraian Satker-RINGKAS'] = df['Uraian Satker-RINGKAS'].fillna(
@@ -3599,10 +3612,11 @@ def apply_reference_short_names(df):
     )
 
     # ===============================
-    # AUTO RINGKAS TAMBAHAN (BIAR SELALU PENDEK 🔥)
+    # AUTO RINGKAS TAMBAHAN 🔥
     # ===============================
     df['Uraian Satker-RINGKAS'] = (
         df['Uraian Satker-RINGKAS']
+        .astype(str)
         .str.replace("KANTOR KEMENTERIAN AGAMA", "Kemenag", regex=False)
         .str.replace("PENGADILAN AGAMA", "PA", regex=False)
         .str.replace("RUMAH TAHANAN NEGARA", "Rutan", regex=False)
@@ -3614,7 +3628,7 @@ def apply_reference_short_names(df):
     )
 
     # ===============================
-    # KOLOM FINAL UNTUK CHART
+    # KOLOM FINAL UNTUK CHART 🔥
     # ===============================
     df['Satker'] = (
         df['Uraian Satker-RINGKAS'] +
