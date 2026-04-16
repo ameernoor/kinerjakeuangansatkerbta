@@ -4902,8 +4902,9 @@ def page_dashboard():
                 st.stop()
 
             df = df.copy()
-
-
+            
+            df = enrich_nama_satker(df)
+            
             # ===============================
             # NORMALISASI KODE BA (1x SAJA)
             # ===============================
@@ -4912,12 +4913,10 @@ def page_dashboard():
             
             df = apply_filter_ba(df)
 
-
             # ===============================
             # PAKSA KOLOM SATKER (1x SAJA)
             # ===============================
-            if 'Satker' not in df.columns:
-                df = create_satker_column(df)
+            df = create_satker_column(df)
 
             # ===============================
             # GUNAKAN JENIS SATKER DARI LOADER
