@@ -3584,12 +3584,12 @@ def apply_reference_short_names(df):
         return df
 
     # ===============================
-    # SIAPKAN KOLOM (ANTI ERROR 🔥)
+    # HAPUS KOLOM LAMA DULU
     # ===============================
-    df['Uraian Satker-RINGKAS'] = None
+    df = df.drop(columns=['Uraian Satker-RINGKAS'], errors='ignore')
 
     # ===============================
-    # MERGE
+    # MERGE AMAN
     # ===============================
     df = df.merge(
         ref[['Kode Satker', 'Uraian Satker-SINGKAT']]
@@ -3599,7 +3599,7 @@ def apply_reference_short_names(df):
     )
 
     # ===============================
-    # PASTIKAN KOLOM ADA (ANTI KEYERROR 🔥)
+    # PASTIKAN KOLOM ADA 
     # ===============================
     if 'Uraian Satker-RINGKAS' not in df.columns:
         df['Uraian Satker-RINGKAS'] = None
