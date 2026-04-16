@@ -1856,6 +1856,9 @@ def extract_kode_from_satker_field(s, width=6):
         
 def register_ikpa_satker(df_final, month, year, source="Manual"):
     
+     # 🔥 TAMBAHKAN DI SINI
+    df_final = enrich_nama_satker(df_final)
+    
     # ===============================
     # 🔥 NORMALISASI
     # ===============================
@@ -7697,6 +7700,11 @@ def menu_ews_satker():
         # 🔥 fallback biar tidak kosong
         if df_problem_up.empty:
             df_problem_up = df_latest.sort_values("Pengelolaan UP dan TUP").head(10)
+        
+        # 🔥 DEBUG (WAJIB TARUH DI SINI)
+        st.write("DEBUG UP:", df_problem_up[["Pengelolaan UP dan TUP"]].head())
+        st.write("DEBUG OUTPUT:", df_problem_out[["Capaian Output"]].head())
+
 
         fig_up = create_internal_problem_chart_vertical(
             df_problem_up,
