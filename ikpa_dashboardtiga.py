@@ -2020,163 +2020,103 @@ def fix_ikpa_satker_raw(df_raw):
     return df_raw
 
 
+# ===============================
+# PARSER IKPA SATKER (INI KUNCI)
+# ===============================
 def process_excel_file(uploaded_file, upload_year):
-    import re as _re
-    import pandas as pd
-
-    df_raw = pd.read_excel(uploaded_file, header=None, dtype=str)
-
-    df_raw = fix_ikpa_satker_raw(df_raw)
-
-    # ===============================
-    # DETEKSI FORMAT (LEBIH AMAN)
-    # ===============================
-    def _detect_format(df):
-        for i in range(min(5, len(df))):
-            row = df.iloc[i].astype(str).str.upper()
-
-            if row.str.contains("NILAI").any():
-                if len(row) >= 17:
-                    return "baru"
-                else:
-                    return "lama"
-
-        return "baru" if df.shape[1] <= 17 else "lama"
-
-    fmt = _detect_format(df_raw)
-
-    if fmt == "baru":
-        IDX_KET, IDX_KPPN, IDX_BA, IDX_SATKER, IDX_URAIAN = 5,1,2,3,4
-        IDX_REVISI, IDX_DEVIASI, IDX_SERAP = 6,7,8
-        IDX_KONTR, IDX_TAGIHAN, IDX_UP = 9,10,11
-        IDX_OUTPUT, IDX_TOTAL, IDX_KONVERSI = 12,13,14
-        IDX_DISPENS, IDX_AKHIR = 15,16
-        SKIP = 4
-        HAS_ASPEK_ROW = True
-    else:
-        IDX_KET, IDX_KPPN, IDX_BA, IDX_SATKER, IDX_URAIAN = 6,2,3,4,5
-        IDX_REVISI, IDX_DEVIASI, IDX_SERAP = 7,8,10
-        IDX_KONTR, IDX_TAGIHAN, IDX_UP = 11,12,13
-        IDX_OUTPUT, IDX_TOTAL, IDX_KONVERSI = 15,17,18
-        IDX_DISPENS, IDX_AKHIR = 19,20
-        SKIP = 3
-        HAS_ASPEK_ROW = False
+    """
+    PARSER IKPA SATKER — SATU-SATUNYA YANG BOLEH MEMBACA EXCEL MENTAH
+    (Sudah difilter baris invalid & bulan dinormalisasi)
+    """
+    df_raw = pd.read_excel(uploaded_file, header=None)
 
     # ===============================
-    # HELPER
+    # 1️⃣ AMBIL BULAN (AMAN)
     # ===============================
-    def safe_col(row, idx):
-        if idx < len(row):
-            return row.iloc[idx]
-        return "nan"
+    try:
+        month_text = str(df_raw.iloc[1, 0])
+        month_raw = month_text.split(":")[-1].strip().upper()
+    except Exception:
+        month_raw = "JULI"
 
-    def safe_num(val):
-        try:
-            s = str(val).strip().replace("%", "").replace(".", "").replace(",", ".")
-            return round(float(s), 4)
-        except:
-            return 0.0
-
-    def norm_kode(val, width):
-        digits = _re.sub(r"[^\d]", "", str(val))
-        return digits.zfill(width) if digits else ""
+    month = VALID_MONTHS.get(month_raw, "JULI")
 
     # ===============================
-    # PARSING
+    # 2️⃣ DATA MULAI BARIS KE-5
     # ===============================
+    df_data = df_raw.iloc[4:].reset_index(drop=True)
+    df_data.columns = range(len(df_data.columns))
+
     processed_rows = []
     i = 0
 
-    while i < len(df_raw):
+    while i + 3 < len(df_data):
 
-        row = df_raw.iloc[i]
+        nilai = df_data.iloc[i]
+        bobot = df_data.iloc[i + 1]
+        nilai_akhir = df_data.iloc[i + 2]
+        nilai_aspek = df_data.iloc[i + 3]
 
-        # 🔥 PROTEKSI KOLOM (FIX UTAMA)
-        if len(row) <= IDX_KET:
-            i += 1
+        # ===============================
+        # 🔴 FILTER AWAL (CEGAH NILAI/BOBOT)
+        # ===============================
+        kode_satker = (
+            str(nilai[3])
+            .replace("\u00a0", "")   # hapus NBSP (spasi tak terlihat dari Excel)
+            .strip()                # hapus spasi kiri/kanan
+        )
+
+        kode_satker = normalize_kode_satker(kode_satker)
+
+        uraian_satker = str(nilai[4]).strip()
+
+        if (
+            not kode_satker.isdigit()
+            or len(kode_satker) != 6
+            or kode_satker == "000000"
+            or uraian_satker.upper() in ["NILAI", "BOBOT", "NILAI AKHIR"]
+        ):
+            i += 4
             continue
 
-        ket_val = str(safe_col(row, IDX_KET)).replace("\xa0"," ").strip().upper()
-
-        if ket_val != "NILAI":
-            i += 1
-            continue
-
-        kode_satker = norm_kode(safe_col(row, IDX_SATKER), 6)
-
-        if not kode_satker or kode_satker == "000000":
-            i += 1
-            continue
-
-        kode_kppn = norm_kode(safe_col(row, IDX_KPPN), 6)
-        kode_ba   = norm_kode(safe_col(row, IDX_BA), 3)
-        uraian    = str(safe_col(row, IDX_URAIAN)).strip()
-
-        # ===============================
-        # ASPEK
-        # ===============================
-        if HAS_ASPEK_ROW and i + 3 < len(df_raw):
-            row_aspek = df_raw.iloc[i+3]
-
-            kual_perencanaan = safe_num(safe_col(row_aspek, IDX_REVISI))
-            kual_pelaksanaan = safe_num(safe_col(row_aspek, IDX_SERAP))
-            kual_hasil       = safe_num(safe_col(row_aspek, IDX_OUTPUT))
-        else:
-            kual_perencanaan = safe_num(safe_col(row, 9))
-            kual_pelaksanaan = safe_num(safe_col(row, 14))
-            kual_hasil       = safe_num(safe_col(row, 16))
-
-        # ===============================
-        # 🔥 NILAI AKHIR (FIX FALLBACK)
-        # ===============================
-        nilai_akhir = safe_col(row, IDX_AKHIR)
-
-        if str(nilai_akhir).strip() in ["", "nan"]:
-            nilai_akhir = safe_col(row, IDX_TOTAL)
-
-        # ===============================
-        # BUILD DATA
-        # ===============================
-        processed_rows.append({
-            "No": str(safe_col(row, 0)).strip(),
-            "Kode KPPN": kode_kppn,
-            "Kode BA": kode_ba,
+        row = {
+            "No": nilai[0],
+            "Kode KPPN": str(nilai[1]).strip("'"),
+            "Kode BA": str(nilai[2]).strip("'"),
             "Kode Satker": kode_satker,
-            "Uraian Satker": uraian,
+            "Uraian Satker": uraian_satker,
 
-            "Revisi DIPA": safe_num(safe_col(row, IDX_REVISI)),
-            "Deviasi Halaman III DIPA": safe_num(safe_col(row, IDX_DEVIASI)),
-            "Kualitas Perencanaan Anggaran": kual_perencanaan,
+            "Kualitas Perencanaan Anggaran": nilai_aspek[6],
+            "Kualitas Pelaksanaan Anggaran": nilai_aspek[8],
+            "Kualitas Hasil Pelaksanaan Anggaran": nilai_aspek[12],
 
-            "Penyerapan Anggaran": safe_num(safe_col(row, IDX_SERAP)),
-            "Belanja Kontraktual": safe_num(safe_col(row, IDX_KONTR)),
-            "Penyelesaian Tagihan": safe_num(safe_col(row, IDX_TAGIHAN)),
-            "Pengelolaan UP dan TUP": safe_num(safe_col(row, IDX_UP)),
-            "Kualitas Pelaksanaan Anggaran": kual_pelaksanaan,
+            "Revisi DIPA": nilai[6],
+            "Deviasi Halaman III DIPA": nilai[7],
+            "Penyerapan Anggaran": nilai[8],
+            "Belanja Kontraktual": nilai[9],
+            "Penyelesaian Tagihan": nilai[10],
+            "Pengelolaan UP dan TUP": nilai[11],
+            "Capaian Output": nilai[12],
 
-            "Capaian Output": safe_num(safe_col(row, IDX_OUTPUT)),
-            "Kualitas Hasil Pelaksanaan Anggaran": kual_hasil,
+            "Nilai Total": nilai[13],
+            "Konversi Bobot": nilai[14],
+            "Dispensasi SPM (Pengurang)": nilai[15],
+            "Nilai Akhir (Nilai Total/Konversi Bobot)": nilai[16],
 
-            "Nilai Total": safe_num(safe_col(row, IDX_TOTAL)),
-            "Konversi Bobot": safe_num(safe_col(row, IDX_KONVERSI)),
-            "Dispensasi SPM (Pengurang)": safe_num(safe_col(row, IDX_DISPENS)),
-            "Nilai Akhir (Nilai Total/Konversi Bobot)": safe_num(nilai_akhir),
-
-            "Bulan": "UNKNOWN",
+            "Bulan": month,
             "Tahun": upload_year
-        })
+        }
 
-        i += SKIP
+        processed_rows.append(row)
+        i += 4
 
+    # ===============================
+    # 3️⃣ DATAFRAME FINAL
+    # ===============================
     df_final = pd.DataFrame(processed_rows)
 
-    # ===============================
-    # 🔥 PROTEKSI AKHIR
-    # ===============================
-    if df_final.empty:
-        raise ValueError("kolom IKPA tidak ditemukan (format file berubah)")
+    return df_final, month, upload_year
 
-    return df_final, "UNKNOWN", upload_year
 
 
 VALID_MONTHS = {
