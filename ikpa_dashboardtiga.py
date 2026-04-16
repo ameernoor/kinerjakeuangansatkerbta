@@ -1969,54 +1969,118 @@ def process_excel_digipay(uploaded_file, upload_year):
 
 
 def fix_ikpa_satker_raw(df_raw):
-    # 🔥 FIX: scan 30 baris (bukan 15), dan cek semua kolom (bukan hanya col[6])
-    # Ini mengatasi file November yang header-nya lebih panjang dari biasa
+    # 🔥 FIX: cek col[5] DAN col[6] karena format baru (Nov 2025+) 
+    # tidak punya kolom Periode sehingga Keterangan geser ke col[5]
     for i in range(min(30, len(df_raw))):
-        # Cek kolom[6] dulu (posisi standar)
-        try:
-            val = str(df_raw.iloc[i, 6]).replace("\xa0", " ").strip().upper()
-            if "NILAI" in val:
-                return df_raw.iloc[i:].reset_index(drop=True)
-        except:
-            pass
-
-        # Fallback: cek seluruh baris kalau col[6] tidak ada / kosong
-        try:
-            row_vals = df_raw.iloc[i].astype(str).str.replace("\xa0", " ").str.strip().str.upper()
-            if row_vals.str.contains("^NILAI$", regex=True).any():
-                return df_raw.iloc[i:].reset_index(drop=True)
-        except:
-            continue
-
+        for col_idx in [5, 6]:
+            try:
+                val = str(df_raw.iloc[i, col_idx]).replace("\xa0", " ").strip().upper()
+                if val == "NILAI":
+                    return df_raw.iloc[i:].reset_index(drop=True)
+            except:
+                continue
     return df_raw
 
 
 def process_excel_file(uploaded_file, upload_year):
     """
     Parser IKPA Satker dari OMSPAN / MyIntress.
+    Mendukung DUA format secara otomatis:
 
-    Struktur raw file (header=None), per satker = 3 baris:
+    FORMAT LAMA (s/d Oktober 2025) — 21 kolom, 3 baris/satker:
       col[0]=No, col[1]=Periode(angka bulan), col[2]=Kode KPPN, col[3]=Kode BA,
-      col[4]=Kode Satker, col[5]=Uraian Satker, col[6]=Keterangan (NILAI/BOBOT/NILAI AKHIR)
-      col[7]=Revisi DIPA, col[8]=Deviasi Hal3 DIPA,
-      col[9]=Kualitas Perencanaan (Nilai Aspek),
+      col[4]=Kode Satker, col[5]=Uraian Satker, col[6]=Keterangan
+      col[7]=Revisi DIPA, col[8]=Deviasi, col[9]=Kualitas Perencanaan,
       col[10]=Penyerapan, col[11]=Belanja Kontraktual,
       col[12]=Penyelesaian Tagihan, col[13]=Pengelolaan UP/TUP,
-      col[14]=Kualitas Pelaksanaan (Nilai Aspek),
-      col[15]=Capaian Output, col[16]=Kualitas Hasil (Nilai Aspek),
-      col[17]=Nilai Total, col[18]=Konversi Bobot (%),
+      col[14]=Kualitas Pelaksanaan, col[15]=Capaian Output,
+      col[16]=Kualitas Hasil, col[17]=Nilai Total, col[18]=Konversi Bobot,
       col[19]=Dispensasi SPM, col[20]=Nilai Akhir
-    Hanya baris dengan Keterangan == 'NILAI' yang diproses.
+
+    FORMAT BARU (November 2025+) — 17 kolom, 4 baris/satker:
+      col[0]=No, col[1]=Kode KPPN, col[2]=Kode BA, col[3]=Kode Satker,
+      col[4]=Uraian Satker, col[5]=Keterangan (NILAI/BOBOT/NILAI AKHIR/NILAI ASPEK)
+      col[6]=Revisi DIPA, col[7]=Deviasi, col[8]=Penyerapan,
+      col[9]=Belanja Kontraktual, col[10]=Penyelesaian Tagihan,
+      col[11]=Pengelolaan UP/TUP, col[12]=Capaian Output,
+      col[13]=Nilai Total, col[14]=Konversi Bobot,
+      col[15]=Dispensasi SPM, col[16]=Nilai Akhir
     """
     import re as _re
 
     df_raw = pd.read_excel(uploaded_file, header=None, dtype=str)
 
-    # 🔥 FIX NOVEMBER (WAJIB)
+    # 🔥 CROP ke baris data pertama
     df_raw = fix_ikpa_satker_raw(df_raw)
 
     # ===============================
-    # DETEKSI BULAN
+    # DETEKSI FORMAT (LAMA vs BARU)
+    # Kunci: format baru = 17 kolom, Keterangan di col[5]
+    #        format lama = 21 kolom, Keterangan di col[6]
+    # ===============================
+    def _detect_format(df):
+        """Return 'baru' jika col[5] berisi NILAI, 'lama' jika col[6] berisi NILAI."""
+        for i in range(min(5, len(df))):
+            try:
+                if str(df.iloc[i, 5]).strip().upper() == "NILAI":
+                    return "baru"
+            except:
+                pass
+            try:
+                if str(df.iloc[i, 6]).strip().upper() == "NILAI":
+                    return "lama"
+            except:
+                pass
+        # fallback: jumlah kolom
+        return "baru" if df.shape[1] <= 17 else "lama"
+
+    fmt = _detect_format(df_raw)
+
+    # Posisi kolom sesuai format
+    if fmt == "baru":
+        # Format November 2025+
+        IDX_KET       = 5   # Keterangan
+        IDX_KPPN      = 1
+        IDX_BA        = 2
+        IDX_SATKER    = 3
+        IDX_URAIAN    = 4
+        IDX_REVISI    = 6
+        IDX_DEVIASI   = 7
+        IDX_SERAP     = 8
+        IDX_KONTR     = 9
+        IDX_TAGIHAN   = 10
+        IDX_UP        = 11
+        IDX_OUTPUT    = 12
+        IDX_TOTAL     = 13
+        IDX_KONVERSI  = 14
+        IDX_DISPENS   = 15
+        IDX_AKHIR     = 16
+        SKIP          = 4   # 4 baris per satker: NILAI, BOBOT, NILAI AKHIR, NILAI ASPEK
+        # Nilai aspek dihitung dari baris NILAI ASPEK (baris ke-4 setiap blok)
+        HAS_ASPEK_ROW = True
+    else:
+        # Format lama s/d Oktober 2025
+        IDX_KET       = 6
+        IDX_KPPN      = 2
+        IDX_BA        = 3
+        IDX_SATKER    = 4
+        IDX_URAIAN    = 5
+        IDX_REVISI    = 7
+        IDX_DEVIASI   = 8
+        IDX_SERAP     = 10
+        IDX_KONTR     = 11
+        IDX_TAGIHAN   = 12
+        IDX_UP        = 13
+        IDX_OUTPUT    = 15
+        IDX_TOTAL     = 17
+        IDX_KONVERSI  = 18
+        IDX_DISPENS   = 19
+        IDX_AKHIR     = 20
+        SKIP          = 3   # 3 baris per satker: NILAI, BOBOT, NILAI AKHIR
+        HAS_ASPEK_ROW = False
+
+    # ===============================
+    # DETEKSI BULAN (dari 30 baris awal file SEBELUM di-crop)
     # ===============================
     MONTH_KEYS = {
         "JANUARI": "JANUARI", "FEBRUARI": "FEBRUARI", "PEBRUARI": "FEBRUARI",
@@ -2033,27 +2097,45 @@ def process_excel_file(uploaded_file, upload_year):
 
     detected_month = "UNKNOWN"
 
-    # 1. Cari nama bulan di 15 baris pertama
-    for i in range(min(15, len(df_raw))):
-        row_text = " ".join(df_raw.iloc[i].fillna("").astype(str).str.upper())
-        for m_key, m_val in MONTH_KEYS.items():
-            if m_key in row_text:
-                detected_month = m_val
+    # Baca ulang file mentah (sebelum crop) untuk cari bulan di header
+    try:
+        if hasattr(uploaded_file, "seek"):
+            uploaded_file.seek(0)
+        df_header_scan = pd.read_excel(uploaded_file, header=None, dtype=str, nrows=30)
+        for i in range(len(df_header_scan)):
+            row_text = " ".join(df_header_scan.iloc[i].fillna("").astype(str).str.upper())
+            for m_key, m_val in MONTH_KEYS.items():
+                if m_key in row_text:
+                    detected_month = m_val
+                    break
+            if detected_month != "UNKNOWN":
                 break
-        if detected_month != "UNKNOWN":
-            break
+        if hasattr(uploaded_file, "seek"):
+            uploaded_file.seek(0)
+        df_raw = pd.read_excel(uploaded_file, header=None, dtype=str)
+        df_raw = fix_ikpa_satker_raw(df_raw)
+    except:
+        pass
 
-    # 2. Fallback: ambil kolom Periode (col[1]) dari baris data pertama
-    if detected_month == "UNKNOWN":
+    # Fallback: kolom Periode (format lama col[1]) dari baris NILAI
+    if detected_month == "UNKNOWN" and fmt == "lama":
         for i in range(len(df_raw)):
-            if df_raw.shape[1] > 6 and str(df_raw.iloc[i, 6]).strip().upper() == "NILAI":
-                periode_raw = str(df_raw.iloc[i, 1]).strip().zfill(2)
-                detected_month = PERIODE_MAP.get(periode_raw, "UNKNOWN")
-                break
+            try:
+                if str(df_raw.iloc[i, IDX_KET]).strip().upper() == "NILAI":
+                    periode_raw = str(df_raw.iloc[i, 1]).strip().zfill(2)
+                    detected_month = PERIODE_MAP.get(periode_raw, "UNKNOWN")
+                    break
+            except:
+                pass
 
-    # 3. Fallback: nama file
+    # Fallback: nama file
     if detected_month == "UNKNOWN":
-        fname = getattr(uploaded_file, "name", "").upper()
+        fname = getattr(uploaded_file, "name", "")
+        if hasattr(uploaded_file, "name"):
+            fname = uploaded_file.name
+        elif isinstance(uploaded_file, str):
+            fname = uploaded_file
+        fname = str(fname).upper()
         for m_key, m_val in MONTH_KEYS.items():
             if m_key in fname:
                 detected_month = m_val
@@ -2066,7 +2148,6 @@ def process_excel_file(uploaded_file, upload_year):
     # HELPER
     # ===============================
     def safe_num(val):
-        """Parse angka format Indonesia: '94,89' atau '90,00%' -> float."""
         try:
             s = str(val).strip().replace("%", "").replace(".", "").replace(",", ".")
             return round(float(s), 4)
@@ -2077,67 +2158,80 @@ def process_excel_file(uploaded_file, upload_year):
         digits = _re.sub(r"[^\d]", "", str(val).strip())
         return digits.zfill(width) if digits else ""
 
+    def safe_col(row, idx):
+        try:
+            return row.iloc[idx]
+        except:
+            return "nan"
+
     # ===============================
-    # PARSING
+    # PARSING — deteksi baris NILAI berdasarkan IDX_KET
     # ===============================
     processed_rows = []
-
     i = 0
+
     while i < len(df_raw):
         row = df_raw.iloc[i]
 
-        # ===============================
-        # DETEKSI BARIS NILAI (SUPER FLEXIBLE)
-        # ===============================
-        row_str = " ".join(row.astype(str)).replace("\xa0", " ").upper()
-
-        if "NILAI" not in row_str:
+        # Cek apakah ini baris NILAI
+        ket_val = str(safe_col(row, IDX_KET)).replace("\xa0", " ").strip().upper()
+        if ket_val != "NILAI":
             i += 1
             continue
 
-        # Validasi Kode Satker (col[4])
-        kode_satker = norm_kode(row.iloc[4], 6) if df_raw.shape[1] > 4 else ""
+        # Validasi Kode Satker
+        kode_satker = norm_kode(safe_col(row, IDX_SATKER), 6)
         if not kode_satker or len(kode_satker) != 6 or kode_satker == "000000":
             i += 1
             continue
 
-        kode_kppn     = norm_kode(row.iloc[2], 6) if df_raw.shape[1] > 2 else ""
-        kode_ba       = norm_kode(row.iloc[3], 3) if df_raw.shape[1] > 3 else ""
-        uraian_satker = str(row.iloc[5]).strip()   if df_raw.shape[1] > 5 else ""
+        kode_kppn     = norm_kode(safe_col(row, IDX_KPPN), 6)
+        kode_ba       = norm_kode(safe_col(row, IDX_BA), 3)
+        uraian_satker = str(safe_col(row, IDX_URAIAN)).strip()
+
+        # Untuk format baru: ambil Kualitas Aspek dari baris NILAI ASPEK (baris ke-4 blok ini)
+        if HAS_ASPEK_ROW and i + 3 < len(df_raw):
+            row_aspek = df_raw.iloc[i + 3]
+            kual_perencanaan = safe_num(safe_col(row_aspek, IDX_REVISI))
+            kual_pelaksanaan = safe_num(safe_col(row_aspek, IDX_SERAP))
+            kual_hasil       = safe_num(safe_col(row_aspek, IDX_OUTPUT))
+        else:
+            # Format lama: aspek ada di col[9], col[14], col[16]
+            kual_perencanaan = safe_num(safe_col(row, 9))
+            kual_pelaksanaan = safe_num(safe_col(row, 14))
+            kual_hasil       = safe_num(safe_col(row, 16))
 
         row_data = {
-            "No":           str(row.iloc[0]).strip(),
-            "Kode KPPN":    kode_kppn,
-            "Kode BA":      kode_ba,
-            "Kode Satker":  kode_satker,
+            "No":            str(safe_col(row, 0)).strip(),
+            "Kode KPPN":     kode_kppn,
+            "Kode BA":       kode_ba,
+            "Kode Satker":   kode_satker,
             "Uraian Satker": uraian_satker,
 
-            # ---- Indikator sub-komponen ----
-            "Revisi DIPA":                              safe_num(row.iloc[7]),
-            "Deviasi Halaman III DIPA":                 safe_num(row.iloc[8]),
-            "Kualitas Perencanaan Anggaran":            safe_num(row.iloc[9]),
+            "Revisi DIPA":                              safe_num(safe_col(row, IDX_REVISI)),
+            "Deviasi Halaman III DIPA":                 safe_num(safe_col(row, IDX_DEVIASI)),
+            "Kualitas Perencanaan Anggaran":            kual_perencanaan,
 
-            "Penyerapan Anggaran":                      safe_num(row.iloc[10]),
-            "Belanja Kontraktual":                      safe_num(row.iloc[11]),
-            "Penyelesaian Tagihan":                     safe_num(row.iloc[12]),
-            "Pengelolaan UP dan TUP":                   safe_num(row.iloc[13]),
-            "Kualitas Pelaksanaan Anggaran":            safe_num(row.iloc[14]),
+            "Penyerapan Anggaran":                      safe_num(safe_col(row, IDX_SERAP)),
+            "Belanja Kontraktual":                      safe_num(safe_col(row, IDX_KONTR)),
+            "Penyelesaian Tagihan":                     safe_num(safe_col(row, IDX_TAGIHAN)),
+            "Pengelolaan UP dan TUP":                   safe_num(safe_col(row, IDX_UP)),
+            "Kualitas Pelaksanaan Anggaran":            kual_pelaksanaan,
 
-            "Capaian Output":                           safe_num(row.iloc[15]),
-            "Kualitas Hasil Pelaksanaan Anggaran":      safe_num(row.iloc[16]),
+            "Capaian Output":                           safe_num(safe_col(row, IDX_OUTPUT)),
+            "Kualitas Hasil Pelaksanaan Anggaran":      kual_hasil,
 
-            # ---- Nilai akhir ----
-            "Nilai Total":                              safe_num(row.iloc[17]),
-            "Konversi Bobot":                           safe_num(row.iloc[18]),
-            "Dispensasi SPM (Pengurang)":               safe_num(row.iloc[19]),
-            "Nilai Akhir (Nilai Total/Konversi Bobot)": safe_num(row.iloc[20]) if df_raw.shape[1] > 20 else 0.0,
+            "Nilai Total":                              safe_num(safe_col(row, IDX_TOTAL)),
+            "Konversi Bobot":                           safe_num(safe_col(row, IDX_KONVERSI)),
+            "Dispensasi SPM (Pengurang)":               safe_num(safe_col(row, IDX_DISPENS)),
+            "Nilai Akhir (Nilai Total/Konversi Bobot)": safe_num(safe_col(row, IDX_AKHIR)),
 
-            "Bulan":  detected_month,
-            "Tahun":  upload_year,
+            "Bulan": detected_month,
+            "Tahun": upload_year,
         }
 
         processed_rows.append(row_data)
-        i += 3  # lompat 3 baris per satker (NILAI → BOBOT → NILAI AKHIR)
+        i += SKIP   # lompat sesuai format (3 atau 4 baris per satker)
 
     df_final = pd.DataFrame(processed_rows)
     return df_final, detected_month, upload_year
@@ -2838,56 +2932,44 @@ def load_data_from_github(_cache_buster: int = 0):
             decoded = base64.b64decode(file.content)
 
             # ===============================
-            # 🔥 LOAD FILE (BERSIH ATAU RAW)
+            # 🔥 LOAD LANGSUNG (FILE SUDAH BERSIH)
             # ===============================
             df = pd.read_excel(io.BytesIO(decoded))
             df.columns = [str(c).strip() for c in df.columns]
 
             # ===============================
-            # VALIDASI KOLOM WAJIB: Kode Satker
+            # VALIDASI KOLOM WAJIB
             # ===============================
             if "Kode Satker" not in df.columns:
-                st.warning(f"⚠️ Skip {file.name}: tidak ada Kode Satker")
-                continue
-
-            # ===============================
-            # 🔥 FIX UTAMA: Jika kolom IKPA tidak ada,
-            # berarti file di GitHub masih format RAW OMSPAN
-            # → parse ulang secara otomatis
-            # ===============================
-            ikpa_col = next(
-                (c for c in df.columns if "Nilai Akhir" in str(c)),
-                None
-            )
-
-            if ikpa_col is None:
-                # Coba parse ulang sebagai file mentah OMSPAN
+                # Coba parse sebagai file raw OMSPAN (format baru maupun lama)
                 try:
-                    # Ambil tahun dari nama file untuk parse ulang
-                    _m = re.search(r"IKPA_\w+_(\d{4})", file.name, re.IGNORECASE)
-                    _year_raw = int(_m.group(1)) if _m else datetime.now().year
-
-                    _raw2 = pd.read_excel(io.BytesIO(decoded), header=None, dtype=str)
-                    _raw2 = fix_ikpa_satker_raw(_raw2)
-                    _f_like = io.BytesIO(decoded)
-
-                    df_retry, _month_retry, _year_retry = process_excel_file(
-                        _f_like, _year_raw
-                    )
-
+                    _m_year = re.search(r"IKPA_\w+_(\d{4})", file.name, re.IGNORECASE)
+                    _yr = int(_m_year.group(1)) if _m_year else datetime.now().year
+                    df_retry, _, _ = process_excel_file(io.BytesIO(decoded), _yr)
                     if df_retry is not None and not df_retry.empty:
                         df = post_process_ikpa_satker(df_retry, source="GitHub")
                     else:
-                        st.warning(f"⚠️ Skip {file.name}: kolom IKPA tidak ditemukan (parse ulang juga gagal)")
+                        st.warning(f"⚠️ Skip {file.name}: tidak ada Kode Satker")
                         continue
-
-                except Exception as _e_retry:
-                    st.warning(f"⚠️ Skip {file.name}: kolom IKPA tidak ditemukan ({_e_retry})")
+                except Exception as _e:
+                    st.warning(f"⚠️ Skip {file.name}: tidak ada Kode Satker ({_e})")
                     continue
 
-            # Rename jika nama kolom sedikit berbeda
-            if ikpa_col and ikpa_col != "Nilai Akhir (Nilai Total/Konversi Bobot)":
-                df = df.rename(columns={ikpa_col: "Nilai Akhir (Nilai Total/Konversi Bobot)"})
+            # 🔥 FIX UTAMA: Jika kolom IKPA tidak ada → file masih format raw OMSPAN
+            # → parse ulang otomatis (mendukung format lama 3-baris DAN baru 4-baris)
+            if "Nilai Akhir (Nilai Total/Konversi Bobot)" not in df.columns:
+                try:
+                    _m_year = re.search(r"IKPA_\w+_(\d{4})", file.name, re.IGNORECASE)
+                    _yr = int(_m_year.group(1)) if _m_year else datetime.now().year
+                    df_retry, _, _ = process_excel_file(io.BytesIO(decoded), _yr)
+                    if df_retry is not None and not df_retry.empty:
+                        df = post_process_ikpa_satker(df_retry, source="GitHub")
+                    else:
+                        st.warning(f"⚠️ Skip {file.name}: kolom IKPA tidak ditemukan (parse ulang gagal)")
+                        continue
+                except Exception as _e2:
+                    st.warning(f"⚠️ Skip {file.name}: kolom IKPA tidak ditemukan ({_e2})")
+                    continue
 
             # ===============================
             # NORMALISASI KODE SATKER
