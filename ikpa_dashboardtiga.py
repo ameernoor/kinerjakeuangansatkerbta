@@ -2834,16 +2834,6 @@ def load_data_from_github(_cache_buster: int = 0):
             df = pd.read_excel(io.BytesIO(decoded))
             df.columns = [str(c).strip() for c in df.columns]
 
-            # ===============================
-            # VALIDASI KOLOM WAJIB
-            # ===============================
-            if "Kode Satker" not in df.columns:
-                st.warning(f"⚠️ Skip {file.name}: tidak ada Kode Satker")
-                continue
-
-            if "Nilai Akhir (Nilai Total/Konversi Bobot)" not in df.columns:
-                st.warning(f"⚠️ Skip {file.name}: kolom IKPA tidak ditemukan")
-                continue
 
             # ===============================
             # NORMALISASI KODE SATKER
@@ -2925,7 +2915,6 @@ def load_data_from_github(_cache_buster: int = 0):
             data_storage[key] = df
 
         except Exception as e:
-            st.warning(f"⚠️ Skip {file.name}: {e}")
             continue
 
     return data_storage
@@ -4885,12 +4874,6 @@ def page_dashboard():
                 st.warning("Data IKPA belum tersedia.")
                 st.stop()
 
-            df = df.copy()
-            st.write("DF:")
-            st.write(df["Kode Satker"].head(10))
-
-            st.write("REF:")
-            st.write(st.session_state.reference_df["Kode Satker"].head(10))
             
             df = apply_reference_short_names(df)
             
@@ -8736,10 +8719,7 @@ def merge_ikpa_dipa_auto():
         st.warning("❌ Tidak ada DIPA valid")
         return
 
-    # ===============================
-    # 🔥 DEBUG KEY DIPA
-    # ===============================
-    st.write("📊 DIPA LOADED:", list(valid_dipa_years.keys()))
+
 
     # ===============================
     # 🔥 LOOP IKPA
@@ -9042,7 +9022,7 @@ def page_admin():
                                 upload_year
                             )
                             
-                            st.write("DEBUG JUMLAH DATA:", len(df_final))
+
 
                             
                             if df_final is None or df_final.empty or month == "UNKNOWN":
@@ -9694,7 +9674,7 @@ def page_admin():
                     # ===============================
                     st.session_state.kkp_master = final_df.reset_index(drop=True)
 
-                    st.write("MASTER setelah merge:", len(final_df))
+  
 
                     # =====================================================
                     # SIMPAN KE GITHUB (1 FILE MASTER)
