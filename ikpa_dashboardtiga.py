@@ -3548,108 +3548,81 @@ def create_internal_problem_chart_vertical(
 # Helper to apply reference short names (Simplified)
 # ===============================================
 def apply_reference_short_names(df):
-    """
-    Simple version: apply reference short names to dataframe.
-    - Adds 'Uraian Satker-RINGKAS' (from reference 'Uraian Satker-SINGKAT' when available,
-      otherwise falls back to original 'Uraian Satker').
-    - Performs basic normalization on 'Kode Satker' before merging.
-    - Minimal user messages (no Excel/CSV creation, no verbose debugging).
-    """
-    # Defensive copy
     df = df.copy()
 
-    # Ensure period columns exist
-    if 'Bulan' not in df.columns:
-        df['Bulan'] = ''
-    if 'Tahun' not in df.columns:
-        df['Tahun'] = ''
+    # ===============================
+    # NORMALISASI KODE SATKER (FIX UTAMA 🔥)
+    # ===============================
+    def clean_kode(x):
+        return str(x).strip().replace(".0", "").zfill(6)
 
-    # If no reference in session, fallback silently to original names
-    if 'reference_df' not in st.session_state or st.session_state.reference_df is None:
-        if 'Uraian Satker-RINGKAS' not in df.columns:
-            df['Uraian Satker-RINGKAS'] = df.get('Uraian Satker', '')
-        # also keep a final fallback column for compatibility
-        df['Uraian Satker Final'] = df.get('Uraian Satker', '')
-        return df
-
-    # Copy reference
-    ref = st.session_state.reference_df.copy()
-
-    # Normalize Kode Satker if column exists; else create empty codes to avoid crashes
-    if 'Kode Satker' in df.columns:
-        df['Kode Satker'] = df['Kode Satker'].apply(normalize_kode_satker)
-    else:
+    # ===============================
+    # VALIDASI KOLOM
+    # ===============================
+    if 'Kode Satker' not in df.columns:
         df['Kode Satker'] = ''
 
-    if 'Kode Satker' in ref.columns:
-        ref['Kode Satker'] = ref['Kode Satker'].apply(normalize_kode_satker)
-    else:
-        # If reference has no Kode Satker, cannot match — fallback
-        if 'Uraian Satker-RINGKAS' not in df.columns:
-            df['Uraian Satker-RINGKAS'] = df.get('Uraian Satker', '')
-        df['Uraian Satker Final'] = df.get('Uraian Satker', '')
-        return df
+    df['Kode Satker'] = df['Kode Satker'].apply(clean_kode)
 
-    # Ensure kode fields are strings and stripped
-    df['Kode Satker'] = df['Kode Satker'].astype(str).str.strip()
-    ref['Kode Satker'] = ref['Kode Satker'].astype(str).str.strip()
+    # ===============================
+    # LOAD REFERENCE
+    # ===============================
+    ref = st.session_state.get("reference_df", pd.DataFrame()).copy()
 
-    # If the reference does not contain the expected short-name column, fallback
-    if 'Uraian Satker-SINGKAT' not in ref.columns:
-        if 'Uraian Satker-RINGKAS' not in df.columns:
-            df['Uraian Satker-RINGKAS'] = df.get('Uraian Satker', '')
-        df['Uraian Satker Final'] = df.get('Uraian Satker', '')
-        return df
-
-    # Perform the merge and create final short-name column; keep it simple and robust
-    try:
-        df_merged = df.merge(
-            ref[['Kode Satker', 'Uraian Satker-SINGKAT']].rename(columns={'Uraian Satker-SINGKAT': 'Uraian Satker-RINGKAS'}),
-            on='Kode Satker',
-            how='left',
-            indicator=False
-        )
-
-        # Create final name column using reference when available, otherwise fallback to original
-        df_merged['Uraian Satker-RINGKAS'] = df_merged['Uraian Satker-RINGKAS'].fillna(
-            df_merged.get('Uraian Satker', '')
-        )
-
-        # ======================================================
-        # AUTO-RINGKAS: jika ringkas == nama panjang
-        # ======================================================
-        orig = df_merged.get('Uraian Satker', '').fillna('').astype(str)
-        ring = df_merged['Uraian Satker-RINGKAS'].fillna('').astype(str)
-
-        mask = ring == orig
-
-
-        df_merged.loc[mask, 'Uraian Satker-RINGKAS'] = (
-            df_merged.loc[mask, 'Uraian Satker-RINGKAS']
-                .str.replace("KANTOR KEMENTERIAN AGAMA", "Kemenag", regex=False)
-                .str.replace("PENGADILAN AGAMA", "PA", regex=False)
-                .str.replace("RUMAH TAHANAN NEGARA", "Rutan", regex=False)
-                .str.replace("LEMBAGA PEMASYARAKATAN", "Lapas", regex=False)
-                .str.replace("BADAN PUSAT STATISTIK", "BPS", regex=False)
-                .str.replace("KANTOR PELAYANAN PERBENDAHARAAN NEGARA", "KPPN", regex=False)
-                .str.replace("KANTOR PELAYANAN PAJAK PRATAMA", "KPP Pratama", regex=False)
-                .str.replace("KABUPATEN", "Kab.", regex=False)
-                .str.replace("KOTA", "Kota", regex=False)
-        )
-
-        # Keep a generic final field for backward compatibility
-        df_merged['Uraian Satker Final'] = df_merged['Uraian Satker-RINGKAS']
-
-        # Drop the reference short-name column in case it remains under other names
-        df_merged = df_merged.drop(columns=['Uraian Satker-SINGKAT'], errors='ignore')
-
-        return df_merged
-
-    except Exception as e:
-        # Silent fallback (tanpa warning)
+    if ref.empty or 'Kode Satker' not in ref.columns:
         df['Uraian Satker-RINGKAS'] = df.get('Uraian Satker', '')
-        df['Uraian Satker Final'] = df['Uraian Satker-RINGKAS']
+        df['Satker'] = df['Uraian Satker-RINGKAS'] + " (" + df['Kode Satker'] + ")"
         return df
+
+    ref['Kode Satker'] = ref['Kode Satker'].apply(clean_kode)
+
+    if 'Uraian Satker-SINGKAT' not in ref.columns:
+        df['Uraian Satker-RINGKAS'] = df.get('Uraian Satker', '')
+        df['Satker'] = df['Uraian Satker-RINGKAS'] + " (" + df['Kode Satker'] + ")"
+        return df
+
+    # ===============================
+    # MERGE (PASTI MATCH SETELAH CLEAN 🔥)
+    # ===============================
+    df = df.merge(
+        ref[['Kode Satker', 'Uraian Satker-SINGKAT']]
+        .rename(columns={'Uraian Satker-SINGKAT': 'Uraian Satker-RINGKAS'}),
+        on='Kode Satker',
+        how='left'
+    )
+
+    # ===============================
+    # FALLBACK KE NAMA ASLI
+    # ===============================
+    df['Uraian Satker-RINGKAS'] = df['Uraian Satker-RINGKAS'].fillna(
+        df.get('Uraian Satker', '')
+    )
+
+    # ===============================
+    # AUTO RINGKAS TAMBAHAN (BIAR SELALU PENDEK 🔥)
+    # ===============================
+    df['Uraian Satker-RINGKAS'] = (
+        df['Uraian Satker-RINGKAS']
+        .str.replace("KANTOR KEMENTERIAN AGAMA", "Kemenag", regex=False)
+        .str.replace("PENGADILAN AGAMA", "PA", regex=False)
+        .str.replace("RUMAH TAHANAN NEGARA", "Rutan", regex=False)
+        .str.replace("LEMBAGA PEMASYARAKATAN", "Lapas", regex=False)
+        .str.replace("BADAN PUSAT STATISTIK", "BPS", regex=False)
+        .str.replace("KANTOR PELAYANAN PERBENDAHARAAN NEGARA", "KPPN", regex=False)
+        .str.replace("KANTOR PELAYANAN PAJAK PRATAMA", "KPP Pratama", regex=False)
+        .str.replace("KABUPATEN", "Kab.", regex=False)
+    )
+
+    # ===============================
+    # KOLOM FINAL UNTUK CHART
+    # ===============================
+    df['Satker'] = (
+        df['Uraian Satker-RINGKAS'] +
+        " (" + df['Kode Satker'] + ")"
+    )
+
+    return df
+
 
 # ===============================================
 # UPDATED: Helper function to create Satker column consistently
@@ -3841,6 +3814,8 @@ def safe_chart(
     if df_part is None or df_part.empty:
         st.info("Tidak ada data.")
         return
+    
+    df_part = apply_reference_short_names(df_part)
 
 
     if "Satker" not in df_part.columns:
@@ -4887,11 +4862,6 @@ def page_dashboard():
                 df['Kode BA'] = df['Kode BA'].apply(normalize_kode_ba)
             
             df = apply_filter_ba(df)
-
-            # ===============================
-            # PAKSA KOLOM SATKER (1x SAJA)
-            # ===============================
-            df = create_satker_column(df)
 
             # ===============================
             # GUNAKAN JENIS SATKER DARI LOADER
