@@ -3511,21 +3511,29 @@ def create_internal_problem_chart_vertical(
     df[column] = pd.to_numeric(df[column], errors="coerce")
     df = df.dropna(subset=[column])
 
+    # ===============================
+    # 🔥 FILTER < 100
+    # ===============================
     if comparison == 'less':
-        df = df[df[column] < threshold]
+        df_problem = df[df[column] < threshold]
     elif comparison == 'greater':
-        df = df[df[column] > threshold]
+        df_problem = df[df[column] > threshold]
+    else:
+        df_problem = df
 
     # ===============================
-    # 🔥 JIKA KOSONG → DUMMY DATA
+    # 🔥 JIKA ADA DATA <100 → tampilkan itu
     # ===============================
-    if df.empty:
-        df = pd.DataFrame({
-            "Satker": ["Tidak ada data"],
-            column: [0]
-        })
+    if not df_problem.empty:
+        df = df_problem
+        note_text = ""
+    else:
+        # 🔥 fallback: tetap tampilkan 5 terendah biar tidak kosong
+        df = df.sort_values(by=column, ascending=True).head(5)
+        note_text = " (Semua ≥ 100)"
 
     df = df.sort_values(by=column, ascending=False)
+
     jumlah_satker = len(df)
 
     # ===============================
@@ -3542,7 +3550,7 @@ def create_internal_problem_chart_vertical(
         height = min(max(height, 420), MAX_HEIGHT)
 
     # ===============================
-    # 📊 BUILD FIGURE
+    # 📊 FIGURE
     # ===============================
     fig = go.Figure()
 
@@ -3563,7 +3571,7 @@ def create_internal_problem_chart_vertical(
         hovertemplate="<b>%{x}</b><br>Nilai: %{y:.2f}<extra></extra>"
     )
 
-    # 🔥 garis threshold tetap muncul
+    # 🔥 garis target
     fig.add_hline(
         y=threshold,
         line_dash="dash",
@@ -3572,11 +3580,9 @@ def create_internal_problem_chart_vertical(
         annotation_position="top right"
     )
 
-    # ===============================
-    # 🔧 LAYOUT
-    # ===============================
+    # 🔥 kalau semua ≥100 → kasih info di title
     fig.update_layout(
-        title=title,
+        title=title + note_text,
         height=height,
         margin=dict(l=50, r=20, t=80, b=200),
         xaxis_tickangle=-45,
@@ -3587,7 +3593,6 @@ def create_internal_problem_chart_vertical(
         fig.update_yaxes(showticklabels=False)
 
     return fig
-
 
 # ===============================================
 # Helper to apply reference short names (Simplified)
