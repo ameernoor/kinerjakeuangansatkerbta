@@ -1969,15 +1969,24 @@ def process_excel_digipay(uploaded_file, upload_year):
 
 
 def fix_ikpa_satker_raw(df_raw):
-    
-    for i in range(min(15, len(df_raw))):
+    # 🔥 FIX: scan 30 baris (bukan 15), dan cek semua kolom (bukan hanya col[6])
+    # Ini mengatasi file November yang header-nya lebih panjang dari biasa
+    for i in range(min(30, len(df_raw))):
+        # Cek kolom[6] dulu (posisi standar)
         try:
             val = str(df_raw.iloc[i, 6]).replace("\xa0", " ").strip().upper()
+            if "NILAI" in val:
+                return df_raw.iloc[i:].reset_index(drop=True)
+        except:
+            pass
+
+        # Fallback: cek seluruh baris kalau col[6] tidak ada / kosong
+        try:
+            row_vals = df_raw.iloc[i].astype(str).str.replace("\xa0", " ").str.strip().str.upper()
+            if row_vals.str.contains("^NILAI$", regex=True).any():
+                return df_raw.iloc[i:].reset_index(drop=True)
         except:
             continue
-
-        if "NILAI" in val:
-            return df_raw.iloc[i:].reset_index(drop=True)
 
     return df_raw
 
@@ -2829,21 +2838,56 @@ def load_data_from_github(_cache_buster: int = 0):
             decoded = base64.b64decode(file.content)
 
             # ===============================
-            # 🔥 LOAD LANGSUNG (FILE SUDAH BERSIH)
+            # 🔥 LOAD FILE (BERSIH ATAU RAW)
             # ===============================
             df = pd.read_excel(io.BytesIO(decoded))
             df.columns = [str(c).strip() for c in df.columns]
 
             # ===============================
-            # VALIDASI KOLOM WAJIB
+            # VALIDASI KOLOM WAJIB: Kode Satker
             # ===============================
             if "Kode Satker" not in df.columns:
                 st.warning(f"⚠️ Skip {file.name}: tidak ada Kode Satker")
                 continue
 
-            if "Nilai Akhir (Nilai Total/Konversi Bobot)" not in df.columns:
-                st.warning(f"⚠️ Skip {file.name}: kolom IKPA tidak ditemukan")
-                continue
+            # ===============================
+            # 🔥 FIX UTAMA: Jika kolom IKPA tidak ada,
+            # berarti file di GitHub masih format RAW OMSPAN
+            # → parse ulang secara otomatis
+            # ===============================
+            ikpa_col = next(
+                (c for c in df.columns if "Nilai Akhir" in str(c)),
+                None
+            )
+
+            if ikpa_col is None:
+                # Coba parse ulang sebagai file mentah OMSPAN
+                try:
+                    # Ambil tahun dari nama file untuk parse ulang
+                    _m = re.search(r"IKPA_\w+_(\d{4})", file.name, re.IGNORECASE)
+                    _year_raw = int(_m.group(1)) if _m else datetime.now().year
+
+                    _raw2 = pd.read_excel(io.BytesIO(decoded), header=None, dtype=str)
+                    _raw2 = fix_ikpa_satker_raw(_raw2)
+                    _f_like = io.BytesIO(decoded)
+
+                    df_retry, _month_retry, _year_retry = process_excel_file(
+                        _f_like, _year_raw
+                    )
+
+                    if df_retry is not None and not df_retry.empty:
+                        df = post_process_ikpa_satker(df_retry, source="GitHub")
+                    else:
+                        st.warning(f"⚠️ Skip {file.name}: kolom IKPA tidak ditemukan (parse ulang juga gagal)")
+                        continue
+
+                except Exception as _e_retry:
+                    st.warning(f"⚠️ Skip {file.name}: kolom IKPA tidak ditemukan ({_e_retry})")
+                    continue
+
+            # Rename jika nama kolom sedikit berbeda
+            if ikpa_col and ikpa_col != "Nilai Akhir (Nilai Total/Konversi Bobot)":
+                df = df.rename(columns={ikpa_col: "Nilai Akhir (Nilai Total/Konversi Bobot)"})
 
             # ===============================
             # NORMALISASI KODE SATKER
