@@ -773,29 +773,6 @@ def normalize_kode_satker(k, width=6):
     return kode.zfill(width)
 
 
-def enrich_nama_satker(df):
-    ref = st.session_state.get("reference_df", pd.DataFrame())
-
-    if ref.empty:
-        return df
-
-    ref_map = dict(zip(
-        ref["Kode Satker"].astype(str),
-        ref["Uraian Satker-SINGKAT"]
-    ))
-
-    df["Uraian Satker-RINGKAS"] = (
-        df["Kode Satker"]
-        .astype(str)
-        .map(ref_map)
-    )
-
-    df["Uraian Satker-RINGKAS"] = df["Uraian Satker-RINGKAS"].fillna(
-        "SATKER " + df["Kode Satker"].astype(str)
-    )
-
-    return df
-
 
 @st.cache_data(show_spinner=False)
 def load_reference_satker():
@@ -1991,6 +1968,20 @@ def process_excel_digipay(uploaded_file, upload_year):
     return df_final
 
 
+def fix_ikpa_satker_raw(df_raw):
+    
+    for i in range(min(15, len(df_raw))):
+        try:
+            val = str(df_raw.iloc[i, 6]).replace("\xa0", " ").strip().upper()
+        except:
+            continue
+
+        if "NILAI" in val:
+            return df_raw.iloc[i:].reset_index(drop=True)
+
+    return df_raw
+
+
 def process_excel_file(uploaded_file, upload_year):
     """
     Parser IKPA Satker dari OMSPAN / MyIntress.
@@ -2011,6 +2002,9 @@ def process_excel_file(uploaded_file, upload_year):
     import re as _re
 
     df_raw = pd.read_excel(uploaded_file, header=None, dtype=str)
+
+    # 🔥 FIX NOVEMBER (WAJIB)
+    df_raw = fix_ikpa_satker_raw(df_raw)
 
     # ===============================
     # DETEKSI BULAN
@@ -2083,9 +2077,12 @@ def process_excel_file(uploaded_file, upload_year):
     while i < len(df_raw):
         row = df_raw.iloc[i]
 
-        # Hanya proses baris NILAI
-        ket = str(row.iloc[6]).strip().upper() if df_raw.shape[1] > 6 else ""
-        if ket != "NILAI":
+        # ===============================
+        # DETEKSI BARIS NILAI (SUPER FLEXIBLE)
+        # ===============================
+        row_str = " ".join(row.astype(str)).replace("\xa0", " ").upper()
+
+        if "NILAI" not in row_str:
             i += 1
             continue
 
@@ -2252,10 +2249,6 @@ def post_process_ikpa_satker(df, source="Upload"):
     except Exception:
         df["Jenis Satker"] = "SEDANG"
 
-    # =========================
-    # 🔥 8. FIX NAMA SATKER (WAJIB BANGET)
-    # =========================
-    df = enrich_nama_satker(df)
 
     # =========================
     # 🔥 9. FINAL KOLOM
@@ -2762,6 +2755,11 @@ def update_template_referensi_github(df_updated, repo, existing_file, message):
 from github.GithubException import GithubException
 
 def save_file_to_github(content_bytes, filename, folder):
+    
+    from github import Github, Auth
+    from github.GithubException import GithubException
+    import streamlit as st
+
     token = st.secrets["GITHUB_TOKEN"]
     repo_name = st.secrets["GITHUB_REPO"]
 
@@ -2780,7 +2778,7 @@ def save_file_to_github(content_bytes, filename, folder):
             existing.sha
         )
 
-        st.success(f"✅ UPDATE: {path}")
+        st.success(f"🔄 UPDATE BERHASIL: {path}")
 
     except GithubException as e:
         if e.status == 404:
@@ -2789,7 +2787,7 @@ def save_file_to_github(content_bytes, filename, folder):
                 f"Create {filename}",
                 content_bytes
             )
-            st.success(f"✅ CREATE: {path}")
+            st.success(f"✅ CREATE BERHASIL: {path}")
         else:
             st.error(f"❌ GitHub ERROR: {e}")
             raise
@@ -3383,6 +3381,7 @@ def make_column_chart(data, title, color_scale, y_min, y_max):
     if "Satker" not in plot_df.columns:
         return None
 
+    
     fig = px.bar(
         plot_df.sort_values(nilai_col),
         x=nilai_col,
@@ -3569,113 +3568,100 @@ def create_internal_problem_chart_vertical(
     return fig
 
 
-
 # ===============================================
 # Helper to apply reference short names (Simplified)
 # ===============================================
 def apply_reference_short_names(df):
-    """
-    Simple version: apply reference short names to dataframe.
-    - Adds 'Uraian Satker-RINGKAS' (from reference 'Uraian Satker-SINGKAT' when available,
-      otherwise falls back to original 'Uraian Satker').
-    - Performs basic normalization on 'Kode Satker' before merging.
-    - Minimal user messages (no Excel/CSV creation, no verbose debugging).
-    """
-    # Defensive copy
     df = df.copy()
 
-    # Ensure period columns exist
-    if 'Bulan' not in df.columns:
-        df['Bulan'] = ''
-    if 'Tahun' not in df.columns:
-        df['Tahun'] = ''
+    # ===============================
+    # NORMALISASI KODE SATKER 🔥
+    # ===============================
+    def clean_kode(x):
+        return str(x).strip().replace(".0", "").zfill(6)
 
-    # If no reference in session, fallback silently to original names
-    if 'reference_df' not in st.session_state or st.session_state.reference_df is None:
-        if 'Uraian Satker-RINGKAS' not in df.columns:
-            df['Uraian Satker-RINGKAS'] = df.get('Uraian Satker', '')
-        # also keep a final fallback column for compatibility
-        df['Uraian Satker Final'] = df.get('Uraian Satker', '')
-        return df
-
-    # Copy reference
-    ref = st.session_state.reference_df.copy()
-
-    # Normalize Kode Satker if column exists; else create empty codes to avoid crashes
-    if 'Kode Satker' in df.columns:
-        df['Kode Satker'] = df['Kode Satker'].apply(normalize_kode_satker)
-    else:
+    # ===============================
+    # VALIDASI KOLOM
+    # ===============================
+    if 'Kode Satker' not in df.columns:
         df['Kode Satker'] = ''
 
-    if 'Kode Satker' in ref.columns:
-        ref['Kode Satker'] = ref['Kode Satker'].apply(normalize_kode_satker)
-    else:
-        # If reference has no Kode Satker, cannot match — fallback
-        if 'Uraian Satker-RINGKAS' not in df.columns:
-            df['Uraian Satker-RINGKAS'] = df.get('Uraian Satker', '')
-        df['Uraian Satker Final'] = df.get('Uraian Satker', '')
-        return df
+    df['Kode Satker'] = df['Kode Satker'].apply(clean_kode)
 
-    # Ensure kode fields are strings and stripped
-    df['Kode Satker'] = df['Kode Satker'].astype(str).str.strip()
-    ref['Kode Satker'] = ref['Kode Satker'].astype(str).str.strip()
+    # ===============================
+    # LOAD REFERENCE
+    # ===============================
+    ref = st.session_state.get("reference_df", pd.DataFrame()).copy()
 
-    # If the reference does not contain the expected short-name column, fallback
-    if 'Uraian Satker-SINGKAT' not in ref.columns:
-        if 'Uraian Satker-RINGKAS' not in df.columns:
-            df['Uraian Satker-RINGKAS'] = df.get('Uraian Satker', '')
-        df['Uraian Satker Final'] = df.get('Uraian Satker', '')
-        return df
-
-    # Perform the merge and create final short-name column; keep it simple and robust
-    try:
-        df_merged = df.merge(
-            ref[['Kode Satker', 'Uraian Satker-SINGKAT']].rename(columns={'Uraian Satker-SINGKAT': 'Uraian Satker-RINGKAS'}),
-            on='Kode Satker',
-            how='left',
-            indicator=False
-        )
-
-        # Create final name column using reference when available, otherwise fallback to original
-        df_merged['Uraian Satker-RINGKAS'] = df_merged['Uraian Satker-RINGKAS'].fillna(
-            df_merged.get('Uraian Satker', '')
-        )
-
-        # ======================================================
-        # AUTO-RINGKAS: jika ringkas == nama panjang
-        # ======================================================
-        orig = df_merged.get('Uraian Satker', '').fillna('').astype(str)
-        ring = df_merged['Uraian Satker-RINGKAS'].fillna('').astype(str)
-
-        mask = ring == orig
-
-
-        df_merged.loc[mask, 'Uraian Satker-RINGKAS'] = (
-            df_merged.loc[mask, 'Uraian Satker-RINGKAS']
-                .str.replace("KANTOR KEMENTERIAN AGAMA", "Kemenag", regex=False)
-                .str.replace("PENGADILAN AGAMA", "PA", regex=False)
-                .str.replace("RUMAH TAHANAN NEGARA", "Rutan", regex=False)
-                .str.replace("LEMBAGA PEMASYARAKATAN", "Lapas", regex=False)
-                .str.replace("BADAN PUSAT STATISTIK", "BPS", regex=False)
-                .str.replace("KANTOR PELAYANAN PERBENDAHARAAN NEGARA", "KPPN", regex=False)
-                .str.replace("KANTOR PELAYANAN PAJAK PRATAMA", "KPP Pratama", regex=False)
-                .str.replace("KABUPATEN", "Kab.", regex=False)
-                .str.replace("KOTA", "Kota", regex=False)
-        )
-
-        # Keep a generic final field for backward compatibility
-        df_merged['Uraian Satker Final'] = df_merged['Uraian Satker-RINGKAS']
-
-        # Drop the reference short-name column in case it remains under other names
-        df_merged = df_merged.drop(columns=['Uraian Satker-SINGKAT'], errors='ignore')
-
-        return df_merged
-
-    except Exception as e:
-        # Silent fallback (tanpa warning)
+    # ===============================
+    # JIKA TIDAK ADA REFERENCE → FALLBACK
+    # ===============================
+    if ref.empty or 'Kode Satker' not in ref.columns:
         df['Uraian Satker-RINGKAS'] = df.get('Uraian Satker', '')
-        df['Uraian Satker Final'] = df['Uraian Satker-RINGKAS']
+        df['Satker'] = df['Uraian Satker-RINGKAS'] + " (" + df['Kode Satker'] + ")"
         return df
+
+    ref['Kode Satker'] = ref['Kode Satker'].apply(clean_kode)
+
+    if 'Uraian Satker-SINGKAT' not in ref.columns:
+        df['Uraian Satker-RINGKAS'] = df.get('Uraian Satker', '')
+        df['Satker'] = df['Uraian Satker-RINGKAS'] + " (" + df['Kode Satker'] + ")"
+        return df
+
+    # ===============================
+    # HAPUS KOLOM LAMA DULU
+    # ===============================
+    df = df.drop(columns=['Uraian Satker-RINGKAS'], errors='ignore')
+
+    # ===============================
+    # MERGE AMAN
+    # ===============================
+    df = df.merge(
+        ref[['Kode Satker', 'Uraian Satker-SINGKAT']]
+        .rename(columns={'Uraian Satker-SINGKAT': 'Uraian Satker-RINGKAS'}),
+        on='Kode Satker',
+        how='left'
+    )
+
+    # ===============================
+    # PASTIKAN KOLOM ADA 
+    # ===============================
+    if 'Uraian Satker-RINGKAS' not in df.columns:
+        df['Uraian Satker-RINGKAS'] = None
+
+    # ===============================
+    # FALLBACK KE NAMA ASLI
+    # ===============================
+    df['Uraian Satker-RINGKAS'] = df['Uraian Satker-RINGKAS'].fillna(
+        df.get('Uraian Satker', '')
+    )
+
+    # ===============================
+    # AUTO RINGKAS TAMBAHAN 🔥
+    # ===============================
+    df['Uraian Satker-RINGKAS'] = (
+        df['Uraian Satker-RINGKAS']
+        .astype(str)
+        .str.replace("KANTOR KEMENTERIAN AGAMA", "Kemenag", regex=False)
+        .str.replace("PENGADILAN AGAMA", "PA", regex=False)
+        .str.replace("RUMAH TAHANAN NEGARA", "Rutan", regex=False)
+        .str.replace("LEMBAGA PEMASYARAKATAN", "Lapas", regex=False)
+        .str.replace("BADAN PUSAT STATISTIK", "BPS", regex=False)
+        .str.replace("KANTOR PELAYANAN PERBENDAHARAAN NEGARA", "KPPN", regex=False)
+        .str.replace("KANTOR PELAYANAN PAJAK PRATAMA", "KPP Pratama", regex=False)
+        .str.replace("KABUPATEN", "Kab.", regex=False)
+    )
+
+    # ===============================
+    # KOLOM FINAL UNTUK CHART 🔥
+    # ===============================
+    df['Satker'] = (
+        df['Uraian Satker-RINGKAS'] +
+        " (" + df['Kode Satker'] + ")"
+    )
+
+    return df
+
 
 # ===============================================
 # UPDATED: Helper function to create Satker column consistently
@@ -3867,6 +3853,9 @@ def safe_chart(
     if df_part is None or df_part.empty:
         st.info("Tidak ada data.")
         return
+    
+    df_part = apply_reference_short_names(df_part)
+
 
     if "Satker" not in df_part.columns:
         st.warning("Kolom Satker belum siap.")
@@ -3895,7 +3884,7 @@ def safe_chart(
     )
 
     # ===============================
-    # 🔐 PROTEKSI PLOTLY (INI YANG HILANG)
+    # PROTEKSI PLOTLY
     # ===============================
     df_sorted["Satker"] = df_sorted["Satker"].astype(str).str.strip()
     df_sorted = df_sorted[df_sorted["Satker"] != ""]
@@ -3935,6 +3924,7 @@ def safe_chart(
     )
 
     st.plotly_chart(fig, use_container_width=True)
+    
 
 def get_top_bottom_unique(
     df,
@@ -4896,8 +4886,14 @@ def page_dashboard():
                 st.stop()
 
             df = df.copy()
+            st.write("DF:")
+            st.write(df["Kode Satker"].head(10))
 
-
+            st.write("REF:")
+            st.write(st.session_state.reference_df["Kode Satker"].head(10))
+            
+            df = apply_reference_short_names(df)
+            
             # ===============================
             # NORMALISASI KODE BA (1x SAJA)
             # ===============================
@@ -4905,13 +4901,6 @@ def page_dashboard():
                 df['Kode BA'] = df['Kode BA'].apply(normalize_kode_ba)
             
             df = apply_filter_ba(df)
-
-
-            # ===============================
-            # PAKSA KOLOM SATKER (1x SAJA)
-            # ===============================
-            if 'Satker' not in df.columns:
-                df = create_satker_column(df)
 
             # ===============================
             # GUNAKAN JENIS SATKER DARI LOADER
@@ -9052,11 +9041,14 @@ def page_admin():
                                 uploaded_file,
                                 upload_year
                             )
+                            
+                            st.write("DEBUG JUMLAH DATA:", len(df_final))
 
-                            if df_final is None or month == "UNKNOWN":
+                            
+                            if df_final is None or df_final.empty or month == "UNKNOWN":
                                 st.warning(
                                     f"⚠️ {uploaded_file.name} gagal diproses "
-                                    f"(bulan tidak terdeteksi)"
+                                    f"(data kosong / bulan tidak terdeteksi)"
                                 )
                                 continue
 
@@ -9117,11 +9109,20 @@ def page_admin():
                                 folder="data"
                             )
 
+                            # ======================
+                            # 🔥 FORCE REFRESH DATA (WAJIB)
+                            # ======================
+                            st.cache_data.clear()
+
+                            st.session_state.data_storage = load_data_from_github(
+                                _cache_buster=int(time.time())
+                            )
+
                             log_activity(
                                 menu="Upload Data",
                                 action="Upload IKPA Satker",
                                 detail=f"{uploaded_file.name} | {month} {year}"
-                            )
+)
 
 
                             st.success(
