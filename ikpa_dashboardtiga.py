@@ -887,6 +887,14 @@ def clean_numeric(val):
         return float(val)
     except:
         return 0
+    
+def safe_float(val, default=0):
+    try:
+        if val is None:
+            return default
+        return float(str(val).replace(",", "."))
+    except:
+        return default
 
 def safe_upper(val):
     if pd.isna(val):
@@ -3824,6 +3832,7 @@ def classify_jenis_satker(df):
     df["Jenis Satker"] = df["Jenis Satker"].astype(str)
 
     return df
+
 
 
 # BAGIAN 4 CHART DASHBOARD UTAMA
@@ -7647,6 +7656,11 @@ def menu_ews_satker():
     shared_height = BASE_HEIGHT + (effective_items * BAR_HEIGHT)
     shared_height = min(max(shared_height, 380), 700)
 
+    # 🔥 pastikan kolom numeric bersih
+    col_up = "Pengelolaan UP dan TUP"
+
+    if col_up in df.columns:
+        df[col_up] = df[col_up].apply(clean_numeric).fillna(0)
 
     # ======================================================
     # 🔥 KOLOM KIRI — UP TUP
@@ -7666,29 +7680,55 @@ def menu_ews_satker():
 
         df_problem_up = get_problem(df_latest, "Pengelolaan UP dan TUP")
 
-        # 🔥 fallback biar tidak kosong
         if df_problem_up.empty:
             df_problem_up = df_latest.sort_values("Pengelolaan UP dan TUP").head(10)
 
-        fig_up = create_internal_problem_chart_vertical(
-            df_problem_up,
-            column='Pengelolaan UP dan TUP',
-            threshold=100,
-            title="Pengelolaan UP dan TUP",
-            comparison='less',
-            show_yaxis=True,
-            show_colorbar=True,
-            fixed_height=shared_height
+        # 🔥 FIX NUMERIC WAJIB
+        df_problem_up["Pengelolaan UP dan TUP"] = (
+            df_problem_up["Pengelolaan UP dan TUP"]
+            .apply(clean_numeric)
+            .fillna(0)
         )
 
-        st.plotly_chart(fig_up, use_container_width=True)
+        # 🔥 AMBIL Y-AXIS DARI SLIDER
+        y_min = safe_float(y_min_int, 0)
+        y_max = safe_float(y_max_int, 110)
+
+        if y_min >= y_max:
+            y_min, y_max = 0, 110
+
+        try:
+            fig_up = create_internal_problem_chart_vertical(
+                df_problem_up,
+                column='Pengelolaan UP dan TUP',
+                threshold=100,
+                title="Pengelolaan UP dan TUP",
+                comparison='less',
+                show_yaxis=True,
+                show_colorbar=True,
+                fixed_height=shared_height
+            )
+
+            # 🔥 FIX AXIS DI SINI (INI YANG BIKIN ERROR SEBELUMNYA)
+            fig_up.update_layout(
+                yaxis=dict(range=[y_min, y_max])
+            )
+
+        except Exception as e:
+            st.error(f"❌ Grafik UP/TUP error: {e}")
+            fig_up = None
+
+        # 🔥 ANTI CRASH STREAMLIT
+        if fig_up is not None:
+            st.plotly_chart(fig_up, use_container_width=True)
+        else:
+            st.warning("Grafik Pengelolaan UP/TUP tidak tersedia")
 
 
     # ======================================================
     # 🔥 KOLOM KANAN — CAPAIAN OUTPUT
     # ======================================================
     with col2:
-
         st.markdown("""
         <div style="margin-bottom:6px;">
             <span style="font-size:16px; font-weight:600;">
@@ -7702,22 +7742,46 @@ def menu_ews_satker():
 
         df_problem_out = get_problem(df_latest, "Capaian Output")
 
-        # 🔥 fallback biar tidak kosong
         if df_problem_out.empty:
             df_problem_out = df_latest.sort_values("Capaian Output").head(10)
 
-        fig_output = create_internal_problem_chart_vertical(
-            df_problem_out,
-            column='Capaian Output',
-            threshold=100,
-            title="Capaian Output",
-            comparison='less',
-            show_yaxis=False,
-            show_colorbar=False,
-            fixed_height=shared_height
+        # 🔥 FIX NUMERIC
+        df_problem_out["Capaian Output"] = (
+            df_problem_out["Capaian Output"]
+            .apply(clean_numeric)
+            .fillna(0)
         )
 
-        st.plotly_chart(fig_output, use_container_width=True)
+        y_min = safe_float(y_min_int, 0)
+        y_max = safe_float(y_max_int, 110)
+
+        if y_min >= y_max:
+            y_min, y_max = 0, 110
+
+        try:
+            fig_output = create_internal_problem_chart_vertical(
+                df_problem_out,
+                column='Capaian Output',
+                threshold=100,
+                title="Capaian Output",
+                comparison='less',
+                show_yaxis=False,
+                show_colorbar=False,
+                fixed_height=shared_height
+            )
+
+            fig_output.update_layout(
+                yaxis=dict(range=[y_min, y_max])
+            )
+
+        except Exception as e:
+            st.error(f"❌ Grafik Output error: {e}")
+            fig_output = None
+
+        if fig_output is not None:
+            st.plotly_chart(fig_output, use_container_width=True)
+        else:
+            st.warning("Grafik Capaian Output tidak tersedia")
 
 
     warnings = []
