@@ -2080,7 +2080,9 @@ def process_excel_file(uploaded_file, upload_year):
 
         # Hanya proses baris NILAI
         ket = str(row.iloc[6]).strip().upper() if df_raw.shape[1] > 6 else ""
-        if ket != "NILAI":
+
+        # FIX FLEXIBLE (AMAN SEMUA BULAN)
+        if not ket.startswith("NILAI"):
             i += 1
             continue
 
