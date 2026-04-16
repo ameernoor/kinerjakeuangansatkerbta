@@ -9060,6 +9060,8 @@ def page_admin():
                                 uploaded_file,
                                 upload_year
                             )
+                            
+                            df_final = post_process_ikpa_satker(df_final)
 
                             if df_final is None or month == "UNKNOWN":
                                 st.warning(
