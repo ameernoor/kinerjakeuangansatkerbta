@@ -905,6 +905,19 @@ def normalize_month(val):
     val = str(val).strip()
     return MONTH_MAP.get(val, safe_upper(val))
 
+def fix_ikpa_header(df_raw):
+    for i in range(15):
+        row = df_raw.iloc[i].astype(str).str.upper()
+
+        if (
+            row.str.contains("SATKER").any() and
+            row.str.contains("KPPN").any()
+        ):
+            df = df_raw.iloc[i+1:].copy()
+            df.columns = df_raw.iloc[i]
+            return df.reset_index(drop=True)
+
+    return df_raw
 
 def fix_dipa_header(df_raw):
     """
@@ -1393,86 +1406,124 @@ def adapt_dipa_omspan(df_raw):
 
     return out.dropna(subset=["Kode Satker"])
 
+
 def standardize_ikpa_format(df):
     """
-    Standardisasi DataFrame IKPA dari GitHub (format sudah header=row).
-    Mendeteksi kolom Kode KPPN, Kode BA, Kode Satker, Uraian Satker,
-    dan semua indikator IKPA secara otomatis berdasarkan nama kolom.
+    Standardisasi DataFrame IKPA (ANTI FORMAT ERROR).
+    Support:
+    - Format lama (≤ Okt 2025)
+    - Format baru (Nov 2025+)
+    - Format GitHub / hasil parsing
+
+    TANPA bergantung ke 'NILAI'
     """
+
     import re as _re
-
     df = df.copy()
-    df.columns = [str(c).strip() for c in df.columns]
 
     # =========================
-    # FILTER HANYA BARIS "NILAI" (jika ada kolom Keterangan)
+    # CLEAN HEADER
     # =========================
-    ket_col = next((c for c in df.columns if "KETERANGAN" in str(c).upper()), None)
-    if ket_col:
-        df = df[df[ket_col].astype(str).str.upper().str.contains("NILAI", na=False)]
+    df.columns = [str(c).strip() for c in df.columns]
 
     if df.empty:
         return df
 
     # =========================
-    # DETEKSI KODE SATKER (6 digit)
+    # HELPER DETEKSI KOLOM
     # =========================
-    kode_satker_col = None
-    for c in df.columns:
-        ratio = df[c].astype(str).str.match(r"^\d{6}$").mean()
-        if ratio > 0.4:
-            kode_satker_col = c
-            break
-    if kode_satker_col is None and len(df.columns) >= 5:
-        kode_satker_col = df.columns[4]
-
-    # =========================
-    # DETEKSI KODE BA (3 digit) & KODE KPPN (3-6 digit)
-    # Cari dari nama kolom dulu, fallback dari posisi
-    # =========================
-    def find_col(*names):
+    def find_col(keywords):
         for c in df.columns:
             cu = str(c).upper()
-            for n in names:
-                if n in cu:
-                    return c
+            if any(k in cu for k in keywords):
+                return c
         return None
 
-    kode_ba_col   = find_col("KODE BA", "BA") 
-    kode_kppn_col = find_col("KODE KPPN", "KPPN")
-    uraian_col    = find_col("URAIAN SATKER", "NAMA SATKER")
+    # =========================
+    # DETEKSI KOLOM UTAMA
+    # =========================
+    col_satker = find_col(["KODE SATKER", "SATKER"])
+    col_ba     = find_col(["KODE BA", "BA"])
+    col_kppn   = find_col(["KODE KPPN", "KPPN"])
+    col_nama   = find_col(["URAIAN SATKER", "NAMA SATKER"])
+
+    col_nilai = find_col([
+        "NILAI AKHIR",
+        "IKPA",
+        "NILAI TOTAL"
+    ])
+
+    # =========================
+    # FALLBACK SATKER (pakai deteksi angka 6 digit)
+    # =========================
+    if col_satker is None:
+        for c in df.columns:
+            ratio = df[c].astype(str).str.match(r"^\d{6}$").mean()
+            if ratio > 0.4:
+                col_satker = c
+                break
+
+    # =========================
+    # VALIDASI WAJIB
+    # =========================
+    if col_satker is None:
+        print("❌ Kode Satker tidak ditemukan")
+        return pd.DataFrame()
 
     # =========================
     # NORMALISASI KODE SATKER
     # =========================
     df["Kode Satker"] = (
-        df[kode_satker_col]
+        df[col_satker]
         .astype(str)
         .str.extract(r"(\d{6})")[0]
         .fillna("")
     )
-    
+
     df["Kode Satker"] = df["Kode Satker"].apply(normalize_kode_satker)
 
-    if kode_ba_col and kode_ba_col != "Kode BA":
-        df["Kode BA"] = df[kode_ba_col].astype(str).str.strip()
-    elif "Kode BA" not in df.columns:
-        df["Kode BA"] = ""
+    # =========================
+    # BA & KPPN
+    # =========================
+    df["Kode BA"] = (
+        df[col_ba].astype(str).str.strip()
+        if col_ba else ""
+    )
 
-    if kode_kppn_col and kode_kppn_col != "Kode KPPN":
-        df["Kode KPPN"] = df[kode_kppn_col].astype(str).str.strip()
-    elif "Kode KPPN" not in df.columns:
-        df["Kode KPPN"] = ""
+    df["Kode KPPN"] = (
+        df[col_kppn].astype(str).str.strip()
+        if col_kppn else ""
+    )
 
-    if uraian_col and uraian_col != "Uraian Satker":
-        df["Uraian Satker"] = df[uraian_col].astype(str)
-    elif "Uraian Satker" not in df.columns:
-        df["Uraian Satker"] = ""
+    # =========================
+    # NAMA SATKER
+    # =========================
+    df["Uraian Satker"] = (
+        df[col_nama].astype(str)
+        if col_nama else ""
+    )
+
+    # =========================
+    # NILAI IKPA (FLEKSIBEL)
+    # =========================
+    if col_nilai:
+        df["Nilai IKPA"] = pd.to_numeric(df[col_nilai], errors="coerce")
+    else:
+        df["Nilai IKPA"] = None
 
     # =========================
     # BUANG BARIS TIDAK VALID
     # =========================
-    df = df[df["Kode Satker"].ne("") & df["Kode Satker"].ne("000000")]
+    df = df[
+        df["Kode Satker"].notna() &
+        (df["Kode Satker"] != "") &
+        (df["Kode Satker"] != "000000")
+    ]
+
+    # 🔥 optional: buang nilai kosong
+    if "Nilai IKPA" in df.columns:
+        df = df[df["Nilai IKPA"].notna()]
+
     df = df.reset_index(drop=True)
 
     return df
@@ -1969,16 +2020,17 @@ def process_excel_digipay(uploaded_file, upload_year):
 
 
 def fix_ikpa_satker_raw(df_raw):
-    # 🔥 FIX: cek col[5] DAN col[6] karena format baru (Nov 2025+) 
-    # tidak punya kolom Periode sehingga Keterangan geser ke col[5]
-    for i in range(min(30, len(df_raw))):
-        for col_idx in [5, 6]:
-            try:
-                val = str(df_raw.iloc[i, col_idx]).replace("\xa0", " ").strip().upper()
-                if val == "NILAI":
-                    return df_raw.iloc[i:].reset_index(drop=True)
-            except:
-                continue
+    for i in range(15):
+        row = df_raw.iloc[i].astype(str).str.upper()
+
+        if (
+            row.str.contains("SATKER").any() and
+            row.str.contains("KPPN").any()
+        ):
+            df = df_raw.iloc[i+1:].copy()
+            df.columns = df_raw.iloc[i]
+            return df.reset_index(drop=True)
+
     return df_raw
 
 
