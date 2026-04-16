@@ -9035,11 +9035,14 @@ def page_admin():
                                 uploaded_file,
                                 upload_year
                             )
+                            
+                            st.write("DEBUG JUMLAH DATA:", len(df_final))
 
-                            if df_final is None or month == "UNKNOWN":
+                            
+                            if df_final is None or df_final.empty or month == "UNKNOWN":
                                 st.warning(
                                     f"⚠️ {uploaded_file.name} gagal diproses "
-                                    f"(bulan tidak terdeteksi)"
+                                    f"(data kosong / bulan tidak terdeteksi)"
                                 )
                                 continue
 
