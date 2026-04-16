@@ -2754,6 +2754,11 @@ def update_template_referensi_github(df_updated, repo, existing_file, message):
 from github.GithubException import GithubException
 
 def save_file_to_github(content_bytes, filename, folder):
+    
+    from github import Github, Auth
+    from github.GithubException import GithubException
+    import streamlit as st
+
     token = st.secrets["GITHUB_TOKEN"]
     repo_name = st.secrets["GITHUB_REPO"]
 
@@ -2772,7 +2777,7 @@ def save_file_to_github(content_bytes, filename, folder):
             existing.sha
         )
 
-        st.success(f"✅ UPDATE: {path}")
+        st.success(f"🔄 UPDATE BERHASIL: {path}")
 
     except GithubException as e:
         if e.status == 404:
@@ -2781,7 +2786,7 @@ def save_file_to_github(content_bytes, filename, folder):
                 f"Create {filename}",
                 content_bytes
             )
-            st.success(f"✅ CREATE: {path}")
+            st.success(f"✅ CREATE BERHASIL: {path}")
         else:
             st.error(f"❌ GitHub ERROR: {e}")
             raise
