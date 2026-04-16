@@ -3497,30 +3497,53 @@ def create_internal_problem_chart_vertical(
     import plotly.graph_objects as go
     import pandas as pd
 
+    # ===============================
+    # 🔥 VALIDASI AWAL
+    # ===============================
     if df is None or column not in df.columns:
-        return None
+        df = pd.DataFrame(columns=["Satker", column])
 
     df = df.copy()
+
+    # ===============================
+    # 🔥 CLEAN DATA
+    # ===============================
     df[column] = pd.to_numeric(df[column], errors="coerce")
     df = df.dropna(subset=[column])
 
-    # 🔥 FILTER STRICT <100
     if comparison == 'less':
         df = df[df[column] < threshold]
     elif comparison == 'greater':
         df = df[df[column] > threshold]
 
-    # 🔥 kalau kosong → return None (tidak pakai fallback)
+    # ===============================
+    # 🔥 JIKA KOSONG → DUMMY DATA
+    # ===============================
     if df.empty:
-        return None
+        df = pd.DataFrame({
+            "Satker": ["Tidak ada data"],
+            column: [0]
+        })
 
     df = df.sort_values(by=column, ascending=False)
+    jumlah_satker = len(df)
 
+    # ===============================
+    # 🎯 HEIGHT
+    # ===============================
     BAR_HEIGHT = 38
     BASE_HEIGHT = 260
+    MAX_HEIGHT = 1200
 
-    height = fixed_height if fixed_height else BASE_HEIGHT + len(df) * BAR_HEIGHT
+    if fixed_height is not None:
+        height = fixed_height
+    else:
+        height = BASE_HEIGHT + (jumlah_satker * BAR_HEIGHT)
+        height = min(max(height, 420), MAX_HEIGHT)
 
+    # ===============================
+    # 📊 BUILD FIGURE
+    # ===============================
     fig = go.Figure()
 
     fig.add_bar(
@@ -3529,18 +3552,29 @@ def create_internal_problem_chart_vertical(
         marker=dict(
             color=df[column],
             colorscale="OrRd_r",
-            showscale=show_colorbar
+            showscale=show_colorbar,
+            colorbar=dict(
+                thickness=12,
+                len=0.85
+            ) if show_colorbar else None
         ),
         text=df[column].round(2),
-        textposition="outside"
+        textposition="outside",
+        hovertemplate="<b>%{x}</b><br>Nilai: %{y:.2f}<extra></extra>"
     )
 
+    # 🔥 garis threshold tetap muncul
     fig.add_hline(
         y=threshold,
         line_dash="dash",
-        line_color="red"
+        line_color="red",
+        annotation_text=f"Target: {threshold}",
+        annotation_position="top right"
     )
 
+    # ===============================
+    # 🔧 LAYOUT
+    # ===============================
     fig.update_layout(
         title=title,
         height=height,
@@ -3553,6 +3587,7 @@ def create_internal_problem_chart_vertical(
         fig.update_yaxes(showticklabels=False)
 
     return fig
+
 
 # ===============================================
 # Helper to apply reference short names (Simplified)
