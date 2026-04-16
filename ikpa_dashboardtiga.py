@@ -9041,10 +9041,10 @@ def page_admin():
 
         st.caption(
             "Sistem dapat memproses Data IKPA SATKER yang bersumber dari :\n"
-            "1. Aplikasi OM-SPAN, Menu Monev PA → Indikator Pelaksanaan Anggaran → Indikator Pelaksanaan Anggaran SATKER\n"
-            "2. Aplikasi MyIntress, Menu Tematik → Indikator Pelaksanaan Anggaran → Indikator Pelaksanaan Anggaran SATKER."
+            "1. Aplikasi OM-SPAN\n"
+            "2. Aplikasi MyIntress"
         )
-      
+
         uploaded_files = st.file_uploader(
             "Pilih satu atau beberapa file Excel IKPA Satker",
             type=["xlsx", "xls"],
@@ -9063,24 +9063,33 @@ def page_admin():
 
                     for uploaded_file in uploaded_files:
                         try:
-                            # ======================
-                            # 🔄 PROSES FILE 
-                            # ======================
                             uploaded_file.seek(0)
+
+                            # ======================
+                            # 🔄 PARSE FILE
+                            # ======================
                             df_final, month, year = process_excel_file(
                                 uploaded_file,
                                 upload_year
                             )
-                            
-                            st.write("DEBUG JUMLAH DATA:", len(df_final))
 
-                            
-                            if df_final is None or df_final.empty or month == "UNKNOWN":
+                            # 🔥 DEBUG WAJIB
+                            st.write(f"DEBUG {uploaded_file.name} → rows:", len(df_final))
+                            st.write(f"DEBUG bulan:", month)
+
+                            # ======================
+                            # 🔥 VALIDASI (FIX UTAMA)
+                            # ======================
+                            if df_final is None or df_final.empty:
                                 st.warning(
-                                    f"⚠️ {uploaded_file.name} gagal diproses "
-                                    f"(data kosong / bulan tidak terdeteksi)"
+                                    f"⚠️ {uploaded_file.name} gagal diproses (data kosong)"
                                 )
                                 continue
+
+                            # 🔥 FIX: jangan skip kalau bulan UNKNOWN
+                            if month == "UNKNOWN":
+                                st.warning(f"⚠️ Bulan tidak terdeteksi → default JULI")
+                                month = "JULI"
 
                             # ======================
                             # NORMALISASI KODE SATKER
@@ -9093,19 +9102,19 @@ def page_admin():
                                 )
 
                             # ======================
-                            #  FULL POST PROCESS 
+                            # POST PROCESS
                             # ======================
                             df_final = post_process_ikpa_satker(df_final)
 
                             # ======================
-                            # OVERRIDE JIKA BULAN SAMA
+                            # OVERRIDE DATA LAMA
                             # ======================
                             st.session_state.data_storage.pop(
                                 (month, str(year)), None
                             )
 
                             # ======================
-                            # REGISTRASI KE SISTEM (KUNCI)
+                            # REGISTER DATA
                             # ======================
                             register_ikpa_satker(
                                 df_final,
@@ -9114,23 +9123,15 @@ def page_admin():
                                 source="Manual"
                             )
 
-                            # tandai perlu merge ulang
-                            need_merge = True
                             st.session_state.ikpa_dipa_merged = False
 
                             # ======================
-                            # 💾 SIMPAN KE GITHUB
+                            # SIMPAN KE GITHUB
                             # ======================
                             excel_bytes = io.BytesIO()
-                            with pd.ExcelWriter(
-                                excel_bytes,
-                                engine="openpyxl"
-                            ) as writer:
-                                df_final.to_excel(
-                                    writer,
-                                    index=False,
-                                    sheet_name="Data IKPA"
-                                )
+                            with pd.ExcelWriter(excel_bytes, engine="openpyxl") as writer:
+                                df_final.to_excel(writer, index=False, sheet_name="Data IKPA")
+
                             excel_bytes.seek(0)
 
                             save_file_to_github(
@@ -9140,7 +9141,7 @@ def page_admin():
                             )
 
                             # ======================
-                            # 🔥 FORCE REFRESH DATA (WAJIB)
+                            # REFRESH DATA
                             # ======================
                             st.cache_data.clear()
 
@@ -9148,32 +9149,25 @@ def page_admin():
                                 _cache_buster=int(time.time())
                             )
 
-                            log_activity(
-                                menu="Upload Data",
-                                action="Upload IKPA Satker",
-                                detail=f"{uploaded_file.name} | {month} {year}"
-)
-
-
                             st.success(
-                                f"✅ {uploaded_file.name} → "
-                                f"{month} {year} berhasil diproses"
+                                f"✅ {uploaded_file.name} → {month} {year} berhasil diproses"
                             )
 
                         except Exception as e:
-                            st.error(f"❌ Error {uploaded_file.name}: {e}")
+                            st.error(f"❌ ERROR ASLI {uploaded_file.name}: {e}")
 
-                    # Merge IKPA + DIPA setelah upload (ikpa_dipa_merged sudah di-reset False di atas)
-                    if not st.session_state.get("ikpa_dipa_merged", False) and st.session_state.get("DATA_DIPA_by_year"):
+                    # ======================
+                    # MERGE IKPA + DIPA
+                    # ======================
+                    if (
+                        not st.session_state.get("ikpa_dipa_merged", False)
+                        and st.session_state.get("DATA_DIPA_by_year")
+                    ):
                         with st.spinner("🔄 Menggabungkan IKPA & DIPA..."):
                             merge_ikpa_dipa_auto()
-                    
+
                     st.session_state["_just_uploaded"] = True
 
-                    # 🔥 WAJIB: proses ulang semua data (ambil dari GitHub)
-                   # reprocess_all_ikpa_satker()
-
-                    # refresh UI
                     st.rerun()
 
         
