@@ -3870,6 +3870,9 @@ def safe_chart(
         st.info("Tidak ada data.")
         return
 
+    # 🔥 FIX: enrich dulu di awal
+    df_part = enrich_nama_satker(df_part)
+
     if "Satker" not in df_part.columns:
         st.warning("Kolom Satker belum siap.")
         return
@@ -3897,7 +3900,7 @@ def safe_chart(
     )
 
     # ===============================
-    # 🔐 PROTEKSI PLOTLY (INI YANG HILANG)
+    # PROTEKSI PLOTLY
     # ===============================
     df_sorted["Satker"] = df_sorted["Satker"].astype(str).str.strip()
     df_sorted = df_sorted[df_sorted["Satker"] != ""]
@@ -3905,9 +3908,7 @@ def safe_chart(
     if df_sorted.empty:
         st.info("Tidak ada data valid untuk ditampilkan.")
         return
-    
-    df = enrich_nama_satker(df)
-    
+
     # ===============================
     # PLOT
     # ===============================
@@ -3939,6 +3940,7 @@ def safe_chart(
     )
 
     st.plotly_chart(fig, use_container_width=True)
+    
 
 def get_top_bottom_unique(
     df,
