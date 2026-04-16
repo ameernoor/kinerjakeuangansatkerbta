@@ -2835,45 +2835,59 @@ def load_data_from_github(_cache_buster: int = 0):
         try:
             decoded = base64.b64decode(file.content)
 
-            # ===============================
-            # 🔥 LOAD LANGSUNG (FILE SUDAH BERSIH)
-            # ===============================
             df = pd.read_excel(io.BytesIO(decoded))
             df.columns = [str(c).strip() for c in df.columns]
 
             # ===============================
-            # VALIDASI KOLOM WAJIB
+            # 🔥 FIX 1: KODE SATKER WAJIB ADA
             # ===============================
             if "Kode Satker" not in df.columns:
-                # Coba parse sebagai file raw OMSPAN (format baru maupun lama)
                 try:
                     _m_year = re.search(r"IKPA_\w+_(\d{4})", file.name, re.IGNORECASE)
                     _yr = int(_m_year.group(1)) if _m_year else datetime.now().year
-                    df_retry, _, _ = process_excel_file(io.BytesIO(decoded), _yr)
-                    if df_retry is not None and not df_retry.empty:
-                        df = post_process_ikpa_satker(df_retry, source="GitHub")
-                    else:
-                        st.warning(f"⚠️ Skip {file.name}: tidak ada Kode Satker")
-                        continue
-                except Exception as _e:
-                    st.warning(f"⚠️ Skip {file.name}: tidak ada Kode Satker ({_e})")
-                    continue
 
-            # 🔥 FIX UTAMA: Jika kolom IKPA tidak ada → file masih format raw OMSPAN
-            # → parse ulang otomatis (mendukung format lama 3-baris DAN baru 4-baris)
-            if "Nilai Akhir (Nilai Total/Konversi Bobot)" not in df.columns:
-                try:
-                    _m_year = re.search(r"IKPA_\w+_(\d{4})", file.name, re.IGNORECASE)
-                    _yr = int(_m_year.group(1)) if _m_year else datetime.now().year
                     df_retry, _, _ = process_excel_file(io.BytesIO(decoded), _yr)
+
                     if df_retry is not None and not df_retry.empty:
                         df = post_process_ikpa_satker(df_retry, source="GitHub")
                     else:
-                        st.warning(f"⚠️ Skip {file.name}: kolom IKPA tidak ditemukan (parse ulang gagal)")
-                        continue
+                        st.warning(f"⚠️ {file.name} diproses tanpa struktur standar")
+                        df["Kode Satker"] = ""
+
+                except Exception as _e:
+                    st.warning(f"⚠️ {file.name} tetap dimuat meskipun parsing gagal: {_e}")
+                    df["Kode Satker"] = ""
+
+            # ===============================
+            # 🔥 FIX 2: KOLOM IKPA WAJIB ADA (ANTI SKIP)
+            # ===============================
+            nilai_col = "Nilai Akhir (Nilai Total/Konversi Bobot)"
+
+            if nilai_col not in df.columns:
+                try:
+                    _m_year = re.search(r"IKPA_\w+_(\d{4})", file.name, re.IGNORECASE)
+                    _yr = int(_m_year.group(1)) if _m_year else datetime.now().year
+
+                    df_retry, _, _ = process_excel_file(io.BytesIO(decoded), _yr)
+
+                    if df_retry is not None and not df_retry.empty:
+                        df = post_process_ikpa_satker(df_retry, source="GitHub")
+                    else:
+                        st.warning(f"⚠️ {file.name} tanpa kolom IKPA → default 0")
+                        df[nilai_col] = 0
+
                 except Exception as _e2:
-                    st.warning(f"⚠️ Skip {file.name}: kolom IKPA tidak ditemukan ({_e2})")
-                    continue
+                    st.warning(f"⚠️ {file.name} tetap dipakai meskipun gagal parsing: {_e2}")
+                    df[nilai_col] = 0
+
+            # ===============================
+            # 🔥 FINAL SAFETY
+            # ===============================
+            if "Kode Satker" not in df.columns:
+                df["Kode Satker"] = ""
+
+            if nilai_col not in df.columns:
+                df[nilai_col] = 0
 
             # ===============================
             # NORMALISASI KODE SATKER
@@ -2889,24 +2903,26 @@ def load_data_from_github(_cache_buster: int = 0):
             df = df[(df["Kode Satker"] != "") & (df["Kode Satker"] != "000000")]
 
             if df.empty:
+                st.warning(f"⚠️ {file.name} kosong setelah normalisasi")
                 continue
 
             # ===============================
-            # AMBIL BULAN & TAHUN DARI NAMA FILE
+            # BULAN & TAHUN
             # ===============================
             match = re.search(r"IKPA_(\w+)_(\d{4})", file.name)
 
-            if not match:
-                continue
-
-            month = match.group(1).upper()
-            year = match.group(2)
+            if match:
+                month = match.group(1).upper()
+                year = match.group(2)
+            else:
+                month = "JULI"
+                year = str(datetime.now().year)
 
             df["Bulan"] = month
             df["Tahun"] = year
 
             # ===============================
-            # POST PROCESS (WAJIB)
+            # POST PROCESS
             # ===============================
             df = post_process_ikpa_satker(df)
 
@@ -2920,9 +2936,9 @@ def load_data_from_github(_cache_buster: int = 0):
             df["Period_Sort"] = f"{int(year):04d}-{month_num:02d}"
 
             # ===============================
-            # RANKING
+            # RANKING (ANTI ERROR)
             # ===============================
-            nilai_col = "Nilai Akhir (Nilai Total/Konversi Bobot)"
+            df[nilai_col] = pd.to_numeric(df[nilai_col], errors="coerce").fillna(0)
 
             df = df.sort_values(nilai_col, ascending=False)
 
@@ -2933,7 +2949,7 @@ def load_data_from_github(_cache_buster: int = 0):
             )
 
             # ===============================
-            # MERGE DIPA (AUTO)
+            # MERGE DIPA
             # ===============================
             if st.session_state.get("DATA_DIPA_by_year"):
                 df = merge_ikpa_with_dipa(df)
@@ -2955,7 +2971,7 @@ def load_data_from_github(_cache_buster: int = 0):
             data_storage[key] = df
 
         except Exception as e:
-            st.warning(f"⚠️ Skip {file.name}: {e}")
+            st.warning(f"⚠️ ERROR {file.name}: {e}")
             continue
 
     return data_storage
