@@ -773,29 +773,6 @@ def normalize_kode_satker(k, width=6):
     return kode.zfill(width)
 
 
-def enrich_nama_satker(df):
-    ref = st.session_state.get("reference_df", pd.DataFrame())
-
-    if ref.empty:
-        return df
-
-    ref_map = dict(zip(
-        ref["Kode Satker"].astype(str),
-        ref["Uraian Satker-SINGKAT"]
-    ))
-
-    df["Uraian Satker-RINGKAS"] = (
-        df["Kode Satker"]
-        .astype(str)
-        .map(ref_map)
-    )
-
-    df["Uraian Satker-RINGKAS"] = df["Uraian Satker-RINGKAS"].fillna(
-        "SATKER " + df["Kode Satker"].astype(str)
-    )
-
-    return df
-
 
 @st.cache_data(show_spinner=False)
 def load_reference_satker():
@@ -2252,10 +2229,6 @@ def post_process_ikpa_satker(df, source="Upload"):
     except Exception:
         df["Jenis Satker"] = "SEDANG"
 
-    # =========================
-    # 🔥 8. FIX NAMA SATKER (WAJIB BANGET)
-    # =========================
-    df = enrich_nama_satker(df)
 
     # =========================
     # 🔥 9. FINAL KOLOM
@@ -3382,8 +3355,7 @@ def make_column_chart(data, title, color_scale, y_min, y_max):
 
     if "Satker" not in plot_df.columns:
         return None
-    
-    df = enrich_nama_satker(df)
+
     
     fig = px.bar(
         plot_df.sort_values(nilai_col),
@@ -3870,8 +3842,6 @@ def safe_chart(
         st.info("Tidak ada data.")
         return
 
-    # 🔥 FIX: enrich dulu di awal
-    df_part = enrich_nama_satker(df_part)
 
     if "Satker" not in df_part.columns:
         st.warning("Kolom Satker belum siap.")
@@ -4902,8 +4872,7 @@ def page_dashboard():
                 st.stop()
 
             df = df.copy()
-            
-            df = enrich_nama_satker(df)
+            df = apply_reference_short_names(df)
             
             # ===============================
             # NORMALISASI KODE BA (1x SAJA)
