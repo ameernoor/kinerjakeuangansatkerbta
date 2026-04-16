@@ -3483,6 +3483,7 @@ def create_problem_chart(df, column, threshold, title, comparison='less', y_min=
 
     return fig
 
+
 def create_internal_problem_chart_vertical(
     df,
     column,
@@ -3490,13 +3491,23 @@ def create_internal_problem_chart_vertical(
     title,
     comparison='less',
     show_yaxis=True,
-    show_colorbar=True,      # 🔹 kontrol colorbar
-    fixed_height=None        # 🔹 untuk samakan tinggi antar chart
+    show_colorbar=True,
+    fixed_height=None
 ):
-    if df.empty or column not in df.columns:
-        return None
+    import plotly.graph_objects as go
+    import pandas as pd
+
+    # ===============================
+    # 🔥 VALIDASI AWAL
+    # ===============================
+    if df is None or column not in df.columns:
+        df = pd.DataFrame(columns=["Satker", column])
 
     df = df.copy()
+
+    # ===============================
+    # 🔥 CLEAN DATA
+    # ===============================
     df[column] = pd.to_numeric(df[column], errors="coerce")
     df = df.dropna(subset=[column])
 
@@ -3505,14 +3516,20 @@ def create_internal_problem_chart_vertical(
     elif comparison == 'greater':
         df = df[df[column] > threshold]
 
+    # ===============================
+    # 🔥 JIKA KOSONG → DUMMY DATA
+    # ===============================
     if df.empty:
-        return None
+        df = pd.DataFrame({
+            "Satker": ["Tidak ada data"],
+            column: [0]
+        })
 
     df = df.sort_values(by=column, ascending=False)
     jumlah_satker = len(df)
 
     # ===============================
-    # 🎯 AUTO HEIGHT KHUSUS INTERNAL
+    # 🎯 HEIGHT
     # ===============================
     BAR_HEIGHT = 38
     BASE_HEIGHT = 260
@@ -3524,6 +3541,9 @@ def create_internal_problem_chart_vertical(
         height = BASE_HEIGHT + (jumlah_satker * BAR_HEIGHT)
         height = min(max(height, 420), MAX_HEIGHT)
 
+    # ===============================
+    # 📊 BUILD FIGURE
+    # ===============================
     fig = go.Figure()
 
     fig.add_bar(
@@ -3543,6 +3563,7 @@ def create_internal_problem_chart_vertical(
         hovertemplate="<b>%{x}</b><br>Nilai: %{y:.2f}<extra></extra>"
     )
 
+    # 🔥 garis threshold tetap muncul
     fig.add_hline(
         y=threshold,
         line_dash="dash",
@@ -3551,6 +3572,9 @@ def create_internal_problem_chart_vertical(
         annotation_position="top right"
     )
 
+    # ===============================
+    # 🔧 LAYOUT
+    # ===============================
     fig.update_layout(
         title=title,
         height=height,
