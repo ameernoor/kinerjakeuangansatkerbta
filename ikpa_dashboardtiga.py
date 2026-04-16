@@ -4872,6 +4872,12 @@ def page_dashboard():
                 st.stop()
 
             df = df.copy()
+            st.write("DF:")
+            st.write(df["Kode Satker"].head(10))
+
+            st.write("REF:")
+            st.write(st.session_state.reference_df["Kode Satker"].head(10))
+            
             df = apply_reference_short_names(df)
             
             # ===============================
