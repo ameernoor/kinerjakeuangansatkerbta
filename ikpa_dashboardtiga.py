@@ -1409,72 +1409,70 @@ def adapt_dipa_omspan(df_raw):
 
 def standardize_ikpa_format(df):
     """
-    Standardisasi DataFrame IKPA (ANTI FORMAT ERROR).
-    Support:
-    - Format lama (≤ Okt 2025)
-    - Format baru (Nov 2025+)
-    - Format GitHub / hasil parsing
-
-    TANPA bergantung ke 'NILAI'
+    Versi STABIL (tidak merusak parser lama)
+    + Support format baru OMSPAN
     """
 
-    import re as _re
     df = df.copy()
+    df.columns = [str(c).strip() for c in df.columns]
 
     # =========================
-    # CLEAN HEADER
+    # 🔥 FILTER NILAI (TETAP DIPAKAI)
     # =========================
-    df.columns = [str(c).strip() for c in df.columns]
+    ket_col = next((c for c in df.columns if "KETERANGAN" in str(c).upper()), None)
+
+    if ket_col:
+        df_nilai = df[df[ket_col].astype(str).str.upper().str.contains("NILAI", na=False)]
+
+        # 🔥 kalau gagal → fallback (format baru kadang beda)
+        if df_nilai.empty:
+            df_nilai = df
+
+        df = df_nilai
 
     if df.empty:
         return df
 
     # =========================
-    # HELPER DETEKSI KOLOM
+    # DETEKSI KODE SATKER (TETAP)
     # =========================
-    def find_col(keywords):
+    kode_satker_col = None
+    for c in df.columns:
+        ratio = df[c].astype(str).str.match(r"^\d{6}$").mean()
+        if ratio > 0.4:
+            kode_satker_col = c
+            break
+
+    if kode_satker_col is None and len(df.columns) >= 5:
+        kode_satker_col = df.columns[4]
+
+    # =========================
+    # DETEKSI KOLOM
+    # =========================
+    def find_col(*names):
         for c in df.columns:
             cu = str(c).upper()
-            if any(k in cu for k in keywords):
-                return c
+            for n in names:
+                if n in cu:
+                    return c
         return None
 
-    # =========================
-    # DETEKSI KOLOM UTAMA
-    # =========================
-    col_satker = find_col(["KODE SATKER", "SATKER"])
-    col_ba     = find_col(["KODE BA", "BA"])
-    col_kppn   = find_col(["KODE KPPN", "KPPN"])
-    col_nama   = find_col(["URAIAN SATKER", "NAMA SATKER"])
+    kode_ba_col   = find_col("KODE BA", "BA")
+    kode_kppn_col = find_col("KODE KPPN", "KPPN")
+    uraian_col    = find_col("URAIAN SATKER", "NAMA SATKER")
 
-    col_nilai = find_col([
+    # 🔥 TAMBAHAN PENTING (INI FIX ERROR NOVEMBER)
+    nilai_col = find_col(
         "NILAI AKHIR",
         "IKPA",
         "NILAI TOTAL"
-    ])
+    )
 
     # =========================
-    # FALLBACK SATKER (pakai deteksi angka 6 digit)
-    # =========================
-    if col_satker is None:
-        for c in df.columns:
-            ratio = df[c].astype(str).str.match(r"^\d{6}$").mean()
-            if ratio > 0.4:
-                col_satker = c
-                break
-
-    # =========================
-    # VALIDASI WAJIB
-    # =========================
-    if col_satker is None:
-        print("❌ Kode Satker tidak ditemukan")
-        return pd.DataFrame()
-
-    # =========================
-    # NORMALISASI KODE SATKER
+    # NORMALISASI
     # =========================
     df["Kode Satker"] = (
-        df[col_satker]
+        df[kode_satker_col]
         .astype(str)
         .str.extract(r"(\d{6})")[0]
         .fillna("")
@@ -1482,45 +1480,33 @@ def standardize_ikpa_format(df):
 
     df["Kode Satker"] = df["Kode Satker"].apply(normalize_kode_satker)
 
-    # =========================
-    # BA & KPPN
-    # =========================
-    df["Kode BA"] = (
-        df[col_ba].astype(str).str.strip()
-        if col_ba else ""
-    )
-
-    df["Kode KPPN"] = (
-        df[col_kppn].astype(str).str.strip()
-        if col_kppn else ""
-    )
-
-    # =========================
-    # NAMA SATKER
-    # =========================
-    df["Uraian Satker"] = (
-        df[col_nama].astype(str)
-        if col_nama else ""
-    )
-
-    # =========================
-    # NILAI IKPA (FLEKSIBEL)
-    # =========================
-    if col_nilai:
-        df["Nilai IKPA"] = pd.to_numeric(df[col_nilai], errors="coerce")
+    if kode_ba_col:
+        df["Kode BA"] = df[kode_ba_col].astype(str).str.strip()
     else:
-        df["Nilai IKPA"] = None
+        df["Kode BA"] = ""
+
+    if kode_kppn_col:
+        df["Kode KPPN"] = df[kode_kppn_col].astype(str).str.strip()
+    else:
+        df["Kode KPPN"] = ""
+
+    if uraian_col:
+        df["Uraian Satker"] = df[uraian_col].astype(str)
+    else:
+        df["Uraian Satker"] = ""
 
     # =========================
-    # BUANG BARIS TIDAK VALID
+    # 🔥 NILAI IKPA (FIX UTAMA)
     # =========================
-    df = df[
-        df["Kode Satker"].notna() &
-        (df["Kode Satker"] != "") &
-        (df["Kode Satker"] != "000000")
-    ]
+    if nilai_col:
+        df["Nilai IKPA"] = pd.to_numeric(df[nilai_col], errors="coerce")
 
-    # 🔥 optional: buang nilai kosong
+    # =========================
+    # CLEAN
+    # =========================
+    df = df[df["Kode Satker"].ne("") & df["Kode Satker"].ne("000000")]
+
+    # 🔥 opsional: buang yang nilai kosong
     if "Nilai IKPA" in df.columns:
         df = df[df["Nilai IKPA"].notna()]
 
