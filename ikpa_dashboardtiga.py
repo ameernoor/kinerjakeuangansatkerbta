@@ -1967,19 +1967,16 @@ def process_excel_digipay(uploaded_file, upload_year):
 
     return df_final
 
-def fix_ikpa_satker_raw(df_raw):
-    """
-    Geser dataframe sampai ketemu baris awal data IKPA
-    (baris yang mengandung 'NILAI' di kolom ke-6)
-    """
 
+def fix_ikpa_satker_raw(df_raw):
+    
     for i in range(min(15, len(df_raw))):
         try:
-            val = str(df_raw.iloc[i, 6]).strip().upper()
+            val = str(df_raw.iloc[i, 6]).replace("\xa0", " ").strip().upper()
         except:
             continue
 
-        if val == "NILAI":
+        if "NILAI" in val:
             return df_raw.iloc[i:].reset_index(drop=True)
 
     return df_raw
@@ -2005,6 +2002,8 @@ def process_excel_file(uploaded_file, upload_year):
     import re as _re
 
     df_raw = pd.read_excel(uploaded_file, header=None, dtype=str)
+
+    # 🔥 FIX NOVEMBER (WAJIB)
     df_raw = fix_ikpa_satker_raw(df_raw)
 
     # ===============================
