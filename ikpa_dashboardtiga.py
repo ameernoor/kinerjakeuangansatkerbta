@@ -3497,61 +3497,30 @@ def create_internal_problem_chart_vertical(
     import plotly.graph_objects as go
     import pandas as pd
 
-    # ===============================
-    # 🔥 VALIDASI AWAL
-    # ===============================
     if df is None or column not in df.columns:
-        df = pd.DataFrame(columns=["Satker", column])
+        return None
 
     df = df.copy()
-
-    # ===============================
-    # 🔥 CLEAN DATA
-    # ===============================
     df[column] = pd.to_numeric(df[column], errors="coerce")
     df = df.dropna(subset=[column])
 
-    # ===============================
-    # 🔥 FILTER < 100
-    # ===============================
+    # 🔥 FILTER STRICT <100
     if comparison == 'less':
-        df_problem = df[df[column] < threshold]
+        df = df[df[column] < threshold]
     elif comparison == 'greater':
-        df_problem = df[df[column] > threshold]
-    else:
-        df_problem = df
+        df = df[df[column] > threshold]
 
-    # ===============================
-    # 🔥 JIKA ADA DATA <100 → tampilkan itu
-    # ===============================
-    if not df_problem.empty:
-        df = df_problem
-        note_text = ""
-    else:
-        # 🔥 fallback: tetap tampilkan 5 terendah biar tidak kosong
-        df = df.sort_values(by=column, ascending=True).head(5)
-        note_text = " (Semua ≥ 100)"
+    # 🔥 kalau kosong → return None (tidak pakai fallback)
+    if df.empty:
+        return None
 
     df = df.sort_values(by=column, ascending=False)
 
-    jumlah_satker = len(df)
-
-    # ===============================
-    # 🎯 HEIGHT
-    # ===============================
     BAR_HEIGHT = 38
     BASE_HEIGHT = 260
-    MAX_HEIGHT = 1200
 
-    if fixed_height is not None:
-        height = fixed_height
-    else:
-        height = BASE_HEIGHT + (jumlah_satker * BAR_HEIGHT)
-        height = min(max(height, 420), MAX_HEIGHT)
+    height = fixed_height if fixed_height else BASE_HEIGHT + len(df) * BAR_HEIGHT
 
-    # ===============================
-    # 📊 FIGURE
-    # ===============================
     fig = go.Figure()
 
     fig.add_bar(
@@ -3560,29 +3529,20 @@ def create_internal_problem_chart_vertical(
         marker=dict(
             color=df[column],
             colorscale="OrRd_r",
-            showscale=show_colorbar,
-            colorbar=dict(
-                thickness=12,
-                len=0.85
-            ) if show_colorbar else None
+            showscale=show_colorbar
         ),
         text=df[column].round(2),
-        textposition="outside",
-        hovertemplate="<b>%{x}</b><br>Nilai: %{y:.2f}<extra></extra>"
+        textposition="outside"
     )
 
-    # 🔥 garis target
     fig.add_hline(
         y=threshold,
         line_dash="dash",
-        line_color="red",
-        annotation_text=f"Target: {threshold}",
-        annotation_position="top right"
+        line_color="red"
     )
 
-    # 🔥 kalau semua ≥100 → kasih info di title
     fig.update_layout(
-        title=title + note_text,
+        title=title,
         height=height,
         margin=dict(l=50, r=20, t=80, b=200),
         xaxis_tickangle=-45,
