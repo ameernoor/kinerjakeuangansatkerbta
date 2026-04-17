@@ -2000,16 +2000,27 @@ def fix_ikpa_satker_raw(df_raw):
 
 
 def process_excel_file(uploaded_file, upload_year):
-    import pandas as pd
+    """
+    Parser IKPA Satker dari OMSPAN / MyIntress.
+
+    Struktur raw file (header=None), per satker = 3 baris:
+      col[0]=No, col[1]=Periode(angka bulan), col[2]=Kode KPPN, col[3]=Kode BA,
+      col[4]=Kode Satker, col[5]=Uraian Satker, col[6]=Keterangan (NILAI/BOBOT/NILAI AKHIR)
+      col[7]=Revisi DIPA, col[8]=Deviasi Hal3 DIPA,
+      col[9]=Kualitas Perencanaan (Nilai Aspek),
+      col[10]=Penyerapan, col[11]=Belanja Kontraktual,
+      col[12]=Penyelesaian Tagihan, col[13]=Pengelolaan UP/TUP,
+      col[14]=Kualitas Pelaksanaan (Nilai Aspek),
+      col[15]=Capaian Output, col[16]=Kualitas Hasil (Nilai Aspek),
+      col[17]=Nilai Total, col[18]=Konversi Bobot (%),
+      col[19]=Dispensasi SPM, col[20]=Nilai Akhir
+    Hanya baris dengan Keterangan == 'NILAI' yang diproses.
+    """
     import re as _re
 
-    # ===============================
-    # LOAD DATA
-    # ===============================
     df_raw = pd.read_excel(uploaded_file, header=None, dtype=str)
-    df_raw = df_raw.fillna("")  # 🔥 biar aman & cepat
 
-    # 🔥 FIX KHUSUS (kalau ada)
+    # 🔥 FIX NOVEMBER (WAJIB)
     df_raw = fix_ikpa_satker_raw(df_raw)
 
     # ===============================
@@ -2022,39 +2033,38 @@ def process_excel_file(uploaded_file, upload_year):
         "SEPTEMBER": "SEPTEMBER", "OKTOBER": "OKTOBER",
         "NOVEMBER": "NOVEMBER", "NOPEMBER": "NOVEMBER", "DESEMBER": "DESEMBER",
     }
-
     PERIODE_MAP = {
         "01": "JANUARI", "02": "FEBRUARI", "03": "MARET", "04": "APRIL",
-        "05": "MEI", "06": "JUNI", "07": "JULI", "08": "AGUSTUS",
-        "09": "SEPTEMBER", "10": "OKTOBER", "11": "NOVEMBER", "12": "DESEMBER",
+        "05": "MEI",     "06": "JUNI",     "07": "JULI",  "08": "AGUSTUS",
+        "09": "SEPTEMBER","10": "OKTOBER", "11": "NOVEMBER","12": "DESEMBER",
     }
 
     detected_month = "UNKNOWN"
 
-    # 🔍 DETEKSI DARI ISI FILE
+    # 1. Cari nama bulan di 15 baris pertama
     for i in range(min(15, len(df_raw))):
-        row_text = " ".join(df_raw.iloc[i].astype(str).str.upper())
-        for k, v in MONTH_KEYS.items():
-            if k in row_text:
-                detected_month = v
+        row_text = " ".join(df_raw.iloc[i].fillna("").astype(str).str.upper())
+        for m_key, m_val in MONTH_KEYS.items():
+            if m_key in row_text:
+                detected_month = m_val
                 break
         if detected_month != "UNKNOWN":
             break
 
-    # 🔍 FALLBACK PERIODE
+    # 2. Fallback: ambil kolom Periode (col[1]) dari baris data pertama
     if detected_month == "UNKNOWN":
         for i in range(len(df_raw)):
-            if str(df_raw.iloc[i, 6]).strip().upper() == "NILAI":
-                periode = str(df_raw.iloc[i, 1]).strip().zfill(2)
-                detected_month = PERIODE_MAP.get(periode, "UNKNOWN")
+            if df_raw.shape[1] > 6 and str(df_raw.iloc[i, 6]).strip().upper() == "NILAI":
+                periode_raw = str(df_raw.iloc[i, 1]).strip().zfill(2)
+                detected_month = PERIODE_MAP.get(periode_raw, "UNKNOWN")
                 break
 
-    # 🔍 FALLBACK NAMA FILE
+    # 3. Fallback: nama file
     if detected_month == "UNKNOWN":
         fname = getattr(uploaded_file, "name", "").upper()
-        for k, v in MONTH_KEYS.items():
-            if k in fname:
-                detected_month = v
+        for m_key, m_val in MONTH_KEYS.items():
+            if m_key in fname:
+                detected_month = m_val
                 break
 
     if detected_month == "UNKNOWN":
@@ -2064,70 +2074,80 @@ def process_excel_file(uploaded_file, upload_year):
     # HELPER
     # ===============================
     def safe_num(val):
+        """Parse angka format Indonesia: '94,89' atau '90,00%' -> float."""
         try:
-            s = str(val).replace("%", "").replace(".", "").replace(",", ".")
+            s = str(val).strip().replace("%", "").replace(".", "").replace(",", ".")
             return round(float(s), 4)
-        except:
+        except Exception:
             return 0.0
 
     def norm_kode(val, width):
-        digits = _re.sub(r"[^\d]", "", str(val))
+        digits = _re.sub(r"[^\d]", "", str(val).strip())
         return digits.zfill(width) if digits else ""
 
     # ===============================
-    # 🔥 FILTER LANGSUNG BARIS NILAI
+    # PARSING
     # ===============================
-    df_filtered = df_raw[
-        df_raw.apply(
-            lambda row: row.astype(str).str.contains("NILAI", case=False).any(),
-            axis=1
-        )
-    ]
-
     processed_rows = []
 
-    for _, row in df_filtered.iterrows():
-        try:
-            kode_satker = norm_kode(row.iloc[4], 6)
-            if not kode_satker or kode_satker == "000000":
-                continue
+    i = 0
+    while i < len(df_raw):
+        row = df_raw.iloc[i]
 
-            row_data = {
-                "No": str(row.iloc[0]).strip(),
-                "Kode KPPN": norm_kode(row.iloc[2], 6),
-                "Kode BA": norm_kode(row.iloc[3], 3),
-                "Kode Satker": kode_satker,
-                "Uraian Satker": str(row.iloc[5]).strip(),
+        # ===============================
+        # DETEKSI BARIS NILAI (SUPER FLEXIBLE)
+        # ===============================
+        row_str = " ".join(row.astype(str)).replace("\xa0", " ").upper()
 
-                "Revisi DIPA": safe_num(row.iloc[7]),
-                "Deviasi Halaman III DIPA": safe_num(row.iloc[8]),
-                "Kualitas Perencanaan Anggaran": safe_num(row.iloc[9]),
-
-                "Penyerapan Anggaran": safe_num(row.iloc[10]),
-                "Belanja Kontraktual": safe_num(row.iloc[11]),
-                "Penyelesaian Tagihan": safe_num(row.iloc[12]),
-                "Pengelolaan UP dan TUP": safe_num(row.iloc[13]),
-                "Kualitas Pelaksanaan Anggaran": safe_num(row.iloc[14]),
-
-                "Capaian Output": safe_num(row.iloc[15]),
-                "Kualitas Hasil Pelaksanaan Anggaran": safe_num(row.iloc[16]),
-
-                "Nilai Total": safe_num(row.iloc[17]),
-                "Konversi Bobot": safe_num(row.iloc[18]),
-                "Dispensasi SPM (Pengurang)": safe_num(row.iloc[19]),
-                "Nilai Akhir (Nilai Total/Konversi Bobot)": safe_num(row.iloc[20]) if len(row) > 20 else 0.0,
-
-                "Bulan": detected_month,
-                "Tahun": upload_year,
-            }
-
-            processed_rows.append(row_data)
-
-        except Exception:
+        if "NILAI" not in row_str:
+            i += 1
             continue
 
-    df_final = pd.DataFrame(processed_rows)
+        # Validasi Kode Satker (col[4])
+        kode_satker = norm_kode(row.iloc[4], 6) if df_raw.shape[1] > 4 else ""
+        if not kode_satker or len(kode_satker) != 6 or kode_satker == "000000":
+            i += 1
+            continue
 
+        kode_kppn     = norm_kode(row.iloc[2], 6) if df_raw.shape[1] > 2 else ""
+        kode_ba       = norm_kode(row.iloc[3], 3) if df_raw.shape[1] > 3 else ""
+        uraian_satker = str(row.iloc[5]).strip()   if df_raw.shape[1] > 5 else ""
+
+        row_data = {
+            "No":           str(row.iloc[0]).strip(),
+            "Kode KPPN":    kode_kppn,
+            "Kode BA":      kode_ba,
+            "Kode Satker":  kode_satker,
+            "Uraian Satker": uraian_satker,
+
+            # ---- Indikator sub-komponen ----
+            "Revisi DIPA":                              safe_num(row.iloc[7]),
+            "Deviasi Halaman III DIPA":                 safe_num(row.iloc[8]),
+            "Kualitas Perencanaan Anggaran":            safe_num(row.iloc[9]),
+
+            "Penyerapan Anggaran":                      safe_num(row.iloc[10]),
+            "Belanja Kontraktual":                      safe_num(row.iloc[11]),
+            "Penyelesaian Tagihan":                     safe_num(row.iloc[12]),
+            "Pengelolaan UP dan TUP":                   safe_num(row.iloc[13]),
+            "Kualitas Pelaksanaan Anggaran":            safe_num(row.iloc[14]),
+
+            "Capaian Output":                           safe_num(row.iloc[15]),
+            "Kualitas Hasil Pelaksanaan Anggaran":      safe_num(row.iloc[16]),
+
+            # ---- Nilai akhir ----
+            "Nilai Total":                              safe_num(row.iloc[17]),
+            "Konversi Bobot":                           safe_num(row.iloc[18]),
+            "Dispensasi SPM (Pengurang)":               safe_num(row.iloc[19]),
+            "Nilai Akhir (Nilai Total/Konversi Bobot)": safe_num(row.iloc[20]) if df_raw.shape[1] > 20 else 0.0,
+
+            "Bulan":  detected_month,
+            "Tahun":  upload_year,
+        }
+
+        processed_rows.append(row_data)
+        i += 3  # lompat 3 baris per satker (NILAI → BOBOT → NILAI AKHIR)
+
+    df_final = pd.DataFrame(processed_rows)
     return df_final, detected_month, upload_year
 
 
@@ -3703,7 +3723,7 @@ def create_satker_column(df):
     return df
 
 
-#def merge_ikpa_with_dipa(df):
+def merge_ikpa_with_dipa(df):
     df = df.copy()
 
     # ===============================
@@ -9088,70 +9108,50 @@ def page_admin():
 
         st.caption(
             "Sistem dapat memproses Data IKPA SATKER yang bersumber dari :\n"
-            "1. Aplikasi OM-SPAN...\n"
-            "2. Aplikasi MyIntress..."
+            "1. Aplikasi OM-SPAN, Menu Monev PA → Indikator Pelaksanaan Anggaran → Indikator Pelaksanaan Anggaran SATKER\n"
+            "2. Aplikasi MyIntress, Menu Tematik → Indikator Pelaksanaan Anggaran → Indikator Pelaksanaan Anggaran SATKER."
         )
-
+      
         uploaded_files = st.file_uploader(
             "Pilih satu atau beberapa file Excel IKPA Satker",
             type=["xlsx", "xls"],
             accept_multiple_files=True
         )
 
-        # ===============================
-        # DEBUG
-        # ===============================
-        st.write("DEBUG uploaded_files:", uploaded_files)
-
         if uploaded_files:
 
-            st.success(f"{len(uploaded_files)} file siap diproses")
+            st.info("📄 File yang diupload:")
+            for f in uploaded_files:
+                st.write("•", f.name)
 
             if st.button("🔄 Proses Semua Data IKPA", type="primary"):
-
-                st.write("🚀 Tombol ditekan")
 
                 with st.spinner("Memproses semua file IKPA Satker..."):
 
                     for uploaded_file in uploaded_files:
-
-                        st.write("➡️ Proses:", uploaded_file.name)
-
                         try:
+                            # ======================
+                            # 🔄 PROSES FILE 
+                            # ======================
                             uploaded_file.seek(0)
-
-                            # 🔥 TEST BACA FILE
-                            df_test = pd.read_excel(uploaded_file)
-                            st.write("✅ File terbaca:", df_test.shape)
-
-                            uploaded_file.seek(0)
-
-                            # 🔥 PARSING
                             df_final, month, year = process_excel_file(
                                 uploaded_file,
                                 upload_year
                             )
+                            
 
-                            st.write("📊 Hasil parsing:", len(df_final), "baris")
 
-                            # ===============================
-                            # 🔥 VALIDASI SUPER JELAS
-                            # ===============================
-                            if df_final is None:
-                                st.error(f"❌ {uploaded_file.name} → df None")
+                            
+                            if df_final is None or df_final.empty or month == "UNKNOWN":
+                                st.warning(
+                                    f"⚠️ {uploaded_file.name} gagal diproses "
+                                    f"(data kosong / bulan tidak terdeteksi)"
+                                )
                                 continue
 
-                            if df_final.empty:
-                                st.error(f"❌ {uploaded_file.name} → TIDAK ADA DATA TERBACA")
-                                st.dataframe(df_test.head(20))  # 🔥 LIHAT DATA RAW
-                                continue
-
-                            if month == "UNKNOWN":
-                                st.warning("⚠️ Bulan tidak terdeteksi → tetap lanjut")
-
-                            # ===============================
-                            # NORMALISASI
-                            # ===============================
+                            # ======================
+                            # NORMALISASI KODE SATKER
+                            # ======================
                             if "Kode Satker" in df_final.columns:
                                 df_final["Kode Satker"] = (
                                     df_final["Kode Satker"]
@@ -9159,15 +9159,21 @@ def page_admin():
                                     .apply(normalize_kode_satker)
                                 )
 
+                            # ======================
+                            #  FULL POST PROCESS 
+                            # ======================
                             df_final = post_process_ikpa_satker(df_final)
 
-                            # ===============================
-                            # SIMPAN KE SYSTEM
-                            # ===============================
+                            # ======================
+                            # OVERRIDE JIKA BULAN SAMA
+                            # ======================
                             st.session_state.data_storage.pop(
                                 (month, str(year)), None
                             )
 
+                            # ======================
+                            # REGISTRASI KE SISTEM (KUNCI)
+                            # ======================
                             register_ikpa_satker(
                                 df_final,
                                 month,
@@ -9175,13 +9181,23 @@ def page_admin():
                                 source="Manual"
                             )
 
-                            # ===============================
-                            # SIMPAN KE GITHUB
-                            # ===============================
-                            excel_bytes = io.BytesIO()
-                            with pd.ExcelWriter(excel_bytes, engine="openpyxl") as writer:
-                                df_final.to_excel(writer, index=False)
+                            # tandai perlu merge ulang
+                            need_merge = True
+                            st.session_state.ikpa_dipa_merged = False
 
+                            # ======================
+                            # 💾 SIMPAN KE GITHUB
+                            # ======================
+                            excel_bytes = io.BytesIO()
+                            with pd.ExcelWriter(
+                                excel_bytes,
+                                engine="openpyxl"
+                            ) as writer:
+                                df_final.to_excel(
+                                    writer,
+                                    index=False,
+                                    sheet_name="Data IKPA"
+                                )
                             excel_bytes.seek(0)
 
                             save_file_to_github(
@@ -9190,11 +9206,9 @@ def page_admin():
                                 folder="data"
                             )
 
-                            st.success(f"💾 Berhasil upload ke GitHub: IKPA_{month}_{year}.xlsx")
-
-                            # ===============================
-                            # REFRESH DATA
-                            # ===============================
+                            # ======================
+                            # 🔥 FORCE REFRESH DATA (WAJIB)
+                            # ======================
                             st.cache_data.clear()
 
                             st.session_state.data_storage = load_data_from_github(
@@ -9205,27 +9219,28 @@ def page_admin():
                                 menu="Upload Data",
                                 action="Upload IKPA Satker",
                                 detail=f"{uploaded_file.name} | {month} {year}"
-                            )
+)
+
 
                             st.success(
-                                f"✅ {uploaded_file.name} → {month} {year} selesai"
+                                f"✅ {uploaded_file.name} → "
+                                f"{month} {year} berhasil diproses"
                             )
 
                         except Exception as e:
-                            st.error(f"❌ ERROR BESAR {uploaded_file.name}: {e}")
+                            st.error(f"❌ Error {uploaded_file.name}: {e}")
 
-                            import traceback
-                            st.text(traceback.format_exc())
-
-                    # ===============================
-                    # MERGE IKPA + DIPA
-                    # ===============================
+                    # Merge IKPA + DIPA setelah upload (ikpa_dipa_merged sudah di-reset False di atas)
                     if not st.session_state.get("ikpa_dipa_merged", False) and st.session_state.get("DATA_DIPA_by_year"):
                         with st.spinner("🔄 Menggabungkan IKPA & DIPA..."):
                             merge_ikpa_dipa_auto()
-
+                    
                     st.session_state["_just_uploaded"] = True
 
+                    # 🔥 WAJIB: proses ulang semua data (ambil dari GitHub)
+                   # reprocess_all_ikpa_satker()
+
+                    # refresh UI
                     st.rerun()
 
         
