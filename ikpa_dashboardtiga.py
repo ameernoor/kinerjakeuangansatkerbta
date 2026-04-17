@@ -2007,9 +2007,9 @@ def process_excel_file(uploaded_file, upload_year):
     # LOAD DATA
     # ===============================
     df_raw = pd.read_excel(uploaded_file, header=None, dtype=str)
-    df_raw = df_raw.fillna("").astype(str)
+    df_raw = df_raw.fillna("")  # 🔥 biar aman & cepat
 
-    # FIX KHUSUS (kalau ada)
+    # 🔥 FIX KHUSUS (kalau ada)
     df_raw = fix_ikpa_satker_raw(df_raw)
 
     # ===============================
@@ -2031,9 +2031,9 @@ def process_excel_file(uploaded_file, upload_year):
 
     detected_month = "UNKNOWN"
 
-    # DETEKSI DARI HEADER
+    # 🔍 DETEKSI DARI ISI FILE
     for i in range(min(15, len(df_raw))):
-        row_text = " ".join(df_raw.iloc[i]).upper()
+        row_text = " ".join(df_raw.iloc[i].astype(str).str.upper())
         for k, v in MONTH_KEYS.items():
             if k in row_text:
                 detected_month = v
@@ -2041,15 +2041,15 @@ def process_excel_file(uploaded_file, upload_year):
         if detected_month != "UNKNOWN":
             break
 
-    # FALLBACK PERIODE
+    # 🔍 FALLBACK PERIODE
     if detected_month == "UNKNOWN":
         for i in range(len(df_raw)):
-            if "NILAI" in " ".join(df_raw.iloc[i]).upper():
+            if str(df_raw.iloc[i, 6]).strip().upper() == "NILAI":
                 periode = str(df_raw.iloc[i, 1]).strip().zfill(2)
                 detected_month = PERIODE_MAP.get(periode, "UNKNOWN")
                 break
 
-    # FALLBACK NAMA FILE
+    # 🔍 FALLBACK NAMA FILE
     if detected_month == "UNKNOWN":
         fname = getattr(uploaded_file, "name", "").upper()
         for k, v in MONTH_KEYS.items():
@@ -2075,121 +2075,56 @@ def process_excel_file(uploaded_file, upload_year):
         return digits.zfill(width) if digits else ""
 
     # ===============================
-    # 🔥 DETEKSI FORMAT
+    # 🔥 FILTER LANGSUNG BARIS NILAI
     # ===============================
-    sample_text = " ".join(df_raw.head(20).values.flatten()).upper()
-    use_nilai_format = "NILAI" in sample_text
+    df_filtered = df_raw[
+        df_raw.apply(
+            lambda row: row.astype(str).str.contains("NILAI", case=False).any(),
+            axis=1
+        )
+    ]
 
     processed_rows = []
 
-    # ======================================================
-    # FORMAT 1: NILAI
-    # ======================================================
-    if use_nilai_format:
-
-        i = 0
-        while i < len(df_raw):
-
-            row = df_raw.iloc[i]
-            row_str = " ".join(row).upper()
-
-            if "NILAI" not in row_str:
-                i += 1
+    for _, row in df_filtered.iterrows():
+        try:
+            kode_satker = norm_kode(row.iloc[4], 6)
+            if not kode_satker or kode_satker == "000000":
                 continue
 
-            try:
-                kode_satker = norm_kode(row.iloc[4], 6)
-                if not kode_satker or kode_satker == "000000":
-                    i += 1
-                    continue
+            row_data = {
+                "No": str(row.iloc[0]).strip(),
+                "Kode KPPN": norm_kode(row.iloc[2], 6),
+                "Kode BA": norm_kode(row.iloc[3], 3),
+                "Kode Satker": kode_satker,
+                "Uraian Satker": str(row.iloc[5]).strip(),
 
-                row_data = {
-                    "No": str(row.iloc[0]).strip(),
-                    "Kode KPPN": norm_kode(row.iloc[2], 6),
-                    "Kode BA": norm_kode(row.iloc[3], 3),
-                    "Kode Satker": kode_satker,
-                    "Uraian Satker": str(row.iloc[5]).strip(),
+                "Revisi DIPA": safe_num(row.iloc[7]),
+                "Deviasi Halaman III DIPA": safe_num(row.iloc[8]),
+                "Kualitas Perencanaan Anggaran": safe_num(row.iloc[9]),
 
-                    "Revisi DIPA": safe_num(row.iloc[7]),
-                    "Deviasi Halaman III DIPA": safe_num(row.iloc[8]),
-                    "Kualitas Perencanaan Anggaran": safe_num(row.iloc[9]),
+                "Penyerapan Anggaran": safe_num(row.iloc[10]),
+                "Belanja Kontraktual": safe_num(row.iloc[11]),
+                "Penyelesaian Tagihan": safe_num(row.iloc[12]),
+                "Pengelolaan UP dan TUP": safe_num(row.iloc[13]),
+                "Kualitas Pelaksanaan Anggaran": safe_num(row.iloc[14]),
 
-                    "Penyerapan Anggaran": safe_num(row.iloc[10]),
-                    "Belanja Kontraktual": safe_num(row.iloc[11]),
-                    "Penyelesaian Tagihan": safe_num(row.iloc[12]),
-                    "Pengelolaan UP dan TUP": safe_num(row.iloc[13]),
-                    "Kualitas Pelaksanaan Anggaran": safe_num(row.iloc[14]),
+                "Capaian Output": safe_num(row.iloc[15]),
+                "Kualitas Hasil Pelaksanaan Anggaran": safe_num(row.iloc[16]),
 
-                    "Capaian Output": safe_num(row.iloc[15]),
-                    "Kualitas Hasil Pelaksanaan Anggaran": safe_num(row.iloc[16]),
+                "Nilai Total": safe_num(row.iloc[17]),
+                "Konversi Bobot": safe_num(row.iloc[18]),
+                "Dispensasi SPM (Pengurang)": safe_num(row.iloc[19]),
+                "Nilai Akhir (Nilai Total/Konversi Bobot)": safe_num(row.iloc[20]) if len(row) > 20 else 0.0,
 
-                    "Nilai Total": safe_num(row.iloc[17]) if len(row) > 17 else 0,
-                    "Konversi Bobot": safe_num(row.iloc[18]) if len(row) > 18 else 0,
-                    "Dispensasi SPM (Pengurang)": safe_num(row.iloc[19]) if len(row) > 19 else 0,
-                    "Nilai Akhir (Nilai Total/Konversi Bobot)": safe_num(row.iloc[20]) if len(row) > 20 else 0,
+                "Bulan": detected_month,
+                "Tahun": upload_year,
+            }
 
-                    "Bulan": detected_month,
-                    "Tahun": upload_year,
-                }
+            processed_rows.append(row_data)
 
-                processed_rows.append(row_data)
-                i += 3
-
-            except:
-                i += 1
-
-    # ======================================================
-    # FORMAT 2: NON NILAI
-    # ======================================================
-    else:
-
-        for i in range(len(df_raw)):
-
-            row = df_raw.iloc[i]
-
-            try:
-                no_val = str(row.iloc[0]).strip()
-
-                if not no_val.isdigit():
-                    continue
-
-                kode_satker = norm_kode(row.iloc[4], 6)
-                if not kode_satker or kode_satker == "000000":
-                    continue
-
-                row_data = {
-                    "No": no_val,
-                    "Kode KPPN": norm_kode(row.iloc[2], 6),
-                    "Kode BA": norm_kode(row.iloc[3], 3),
-                    "Kode Satker": kode_satker,
-                    "Uraian Satker": str(row.iloc[5]).strip(),
-
-                    "Revisi DIPA": safe_num(row.iloc[7]),
-                    "Deviasi Halaman III DIPA": safe_num(row.iloc[8]),
-                    "Kualitas Perencanaan Anggaran": safe_num(row.iloc[9]),
-
-                    "Penyerapan Anggaran": safe_num(row.iloc[10]),
-                    "Belanja Kontraktual": safe_num(row.iloc[11]),
-                    "Penyelesaian Tagihan": safe_num(row.iloc[12]),
-                    "Pengelolaan UP dan TUP": safe_num(row.iloc[13]),
-                    "Kualitas Pelaksanaan Anggaran": safe_num(row.iloc[14]),
-
-                    "Capaian Output": safe_num(row.iloc[15]),
-                    "Kualitas Hasil Pelaksanaan Anggaran": safe_num(row.iloc[16]),
-
-                    "Nilai Total": safe_num(row.iloc[17]) if len(row) > 17 else 0,
-                    "Konversi Bobot": safe_num(row.iloc[18]) if len(row) > 18 else 0,
-                    "Dispensasi SPM (Pengurang)": safe_num(row.iloc[19]) if len(row) > 19 else 0,
-                    "Nilai Akhir (Nilai Total/Konversi Bobot)": safe_num(row.iloc[20]) if len(row) > 20 else 0,
-
-                    "Bulan": detected_month,
-                    "Tahun": upload_year,
-                }
-
-                processed_rows.append(row_data)
-
-            except:
-                continue
+        except Exception:
+            continue
 
     df_final = pd.DataFrame(processed_rows)
 
@@ -3778,10 +3713,19 @@ def create_satker_column(df):
         df["Total Pagu"] = 0
         return df
 
+    # ===============================
+    # NORMALISASI TAHUN
+    # ===============================
     df["Tahun"] = pd.to_numeric(df["Tahun"], errors="coerce").fillna(0).astype(int)
-    tahun = int(df["Tahun"].iloc[0])
+
+    tahun_list = df["Tahun"].unique()
+    tahun = int(tahun_list[0])
 
     dipa_dict = st.session_state.get("DATA_DIPA_by_year", {})
+
+    # ===============================
+    # AMBIL DIPA
+    # ===============================
     df_dipa = dipa_dict.get(tahun)
 
     if df_dipa is None or df_dipa.empty:
@@ -3790,25 +3734,17 @@ def create_satker_column(df):
 
     df_dipa = df_dipa.copy()
 
-    # ==========================================
-    # 🔥 FIX KOLOM PAGU (AUTO DETECT)
-    # ==========================================
-    df_dipa.columns = df_dipa.columns.str.strip().str.upper()
+    # ===============================
+    # 🔥 SAFETY KOLOM PAGU
+    # ===============================
+    if "Total Pagu" not in df_dipa.columns:
+        df_dipa["Total Pagu"] = 0
 
-    pagu_col = None
-    for col in df_dipa.columns:
-        if "PAGU" in col:
-            pagu_col = col
-            break
-
-    if pagu_col is None:
-        st.warning("❌ Kolom PAGU tidak ditemukan di DIPA")
-        st.write("Kolom tersedia:", list(df_dipa.columns))
-        df["Total Pagu"] = 0
-        return df
-
+    # ===============================
+    # 🔥 CLEAN PAGU (FORMAT INDONESIA)
+    # ===============================
     df_dipa["Total Pagu"] = (
-        df_dipa[pagu_col]
+        df_dipa["Total Pagu"]
         .astype(str)
         .str.replace(".", "", regex=False)
         .str.replace(",", ".", regex=False)
@@ -3818,58 +3754,47 @@ def create_satker_column(df):
         df_dipa["Total Pagu"], errors="coerce"
     ).fillna(0)
 
-    # ==========================================
-    # 🔥 FIX KODE SATKER
-    # ==========================================
+    # ===============================
+    # 🔥 NORMALISASI KODE SATKER (FINAL FIX)
+    # ===============================
     def normalize_satker(x):
         if pd.isna(x):
             return ""
         x = ''.join(filter(str.isdigit, str(x)))
-        return x[-6:].zfill(6) if x else ""
-
-    # IKPA
-    if "Kode Satker" not in df.columns:
-        alt_cols = [c for c in df.columns if "Satker" in c]
-        if alt_cols:
-            df["Kode Satker"] = df[alt_cols[0]]
-        else:
-            df["Total Pagu"] = 0
-            return df
+        if x == "":
+            return ""
+        return x[-6:].zfill(6)
 
     df["Kode Satker"] = df["Kode Satker"].apply(normalize_satker)
+    df_dipa["Kode Satker"] = df_dipa["Kode Satker"].apply(normalize_satker)
 
-    # DIPA
-    kode_col = None
-    for col in df_dipa.columns:
-        if "SATKER" in col:
-            kode_col = col
-            break
-
-    if kode_col is None:
-        st.warning("❌ Kolom SATKER tidak ditemukan di DIPA")
-        df["Total Pagu"] = 0
-        return df
-
-    df_dipa["Kode Satker"] = df_dipa[kode_col].apply(normalize_satker)
-
-    # ==========================================
-    # AGREGASI
-    # ==========================================
+    # ===============================
+    # 🔥 AGREGASI DIPA (ANTI DUPLIKAT)
+    # ===============================
     df_dipa = (
         df_dipa
         .groupby("Kode Satker", as_index=False)["Total Pagu"]
         .max()
     )
 
-    # ==========================================
+    # ===============================
+    # 🔥 FINAL FORCE MATCH (WAJIB)
+    # ===============================
+    df["Kode Satker"] = df["Kode Satker"].astype(str).str[-6:]
+    df_dipa["Kode Satker"] = df_dipa["Kode Satker"].astype(str).str[-6:]
+
+    # ===============================
     # MERGE
-    # ==========================================
+    # ===============================
     df_merge = df.merge(
         df_dipa,
         on="Kode Satker",
         how="left"
     )
 
+    # ===============================
+    # HANDLE NILAI KOSONG
+    # ===============================
     df_merge["Total Pagu"] = pd.to_numeric(
         df_merge["Total Pagu"], errors="coerce"
     ).fillna(0)
@@ -8855,11 +8780,11 @@ def merge_ikpa_dipa_auto():
     if "DATA_DIPA_by_year" not in st.session_state:
         return
 
+    # ===============================
+    # 🔥 BUILD DIPA (TANPA FILTER PAGU)
+    # ===============================
     valid_dipa_years = {}
 
-    # ==========================================
-    # 🔥 BUILD DIPA
-    # ==========================================
     for yr, dipa_df in st.session_state.DATA_DIPA_by_year.items():
 
         if dipa_df is None or dipa_df.empty:
@@ -8867,40 +8792,14 @@ def merge_ikpa_dipa_auto():
 
         dipa_df = dipa_df.copy()
 
-        # 🔥 NORMALISASI KOLOM
-        dipa_df.columns = dipa_df.columns.str.strip().str.upper()
-
         # ===============================
-        # 🔥 FIX KODE SATKER
+        # 🔥 FIX FORMAT PAGU (INDONESIA)
         # ===============================
-        kode_col = None
-        for col in dipa_df.columns:
-            if "SATKER" in col:
-                kode_col = col
-                break
-
-        if kode_col is None:
-            st.warning(f"⚠️ Tahun {yr} tidak ada kolom SATKER")
-            st.write("Kolom tersedia:", list(dipa_df.columns))
-            continue
-
-        dipa_df["Kode Satker"] = dipa_df[kode_col]
-
-        # ===============================
-        # 🔥 FIX PAGU
-        # ===============================
-        pagu_col = None
-        for col in dipa_df.columns:
-            if "PAGU" in col:
-                pagu_col = col
-                break
-
-        if pagu_col is None:
-            st.warning(f"⚠️ Tahun {yr} tidak ada kolom PAGU")
-            continue
+        if "Total Pagu" not in dipa_df.columns:
+            dipa_df["Total Pagu"] = 0
 
         dipa_df["Total Pagu"] = (
-            dipa_df[pagu_col]
+            dipa_df["Total Pagu"]
             .astype(str)
             .str.replace(".", "", regex=False)
             .str.replace(",", ".", regex=False)
@@ -8910,39 +8809,28 @@ def merge_ikpa_dipa_auto():
             dipa_df["Total Pagu"], errors="coerce"
         ).fillna(0)
 
+        # 🔥 LANGSUNG MASUK (TANPA FILTER)
         valid_dipa_years[int(yr)] = dipa_df
 
     if not valid_dipa_years:
         st.warning("❌ Tidak ada DIPA valid")
         return
 
-    # ==========================================
+
+
+    # ===============================
     # 🔥 LOOP IKPA
-    # ==========================================
+    # ===============================
     for (bulan, tahun), df_ikpa in st.session_state.data_storage.items():
 
         if df_ikpa is None or df_ikpa.empty:
             continue
 
-        df_final = df_ikpa.copy()
-
-        # ===============================
-        # 🔥 FIX KODE SATKER IKPA
-        # ===============================
-        df_final.columns = df_final.columns.str.strip()
-
-        if "Kode Satker" not in df_final.columns:
-            alt_cols = [c for c in df_final.columns if "Satker" in c]
-            if alt_cols:
-                df_final["Kode Satker"] = df_final[alt_cols[0]]
-            else:
-                st.error("❌ IKPA tidak punya kolom Kode Satker")
-                return
-
         tahun_int = int(tahun)
 
         dipa = valid_dipa_years.get(tahun_int)
 
+        # fallback ke tahun terdekat
         if dipa is None:
             nearest = min(valid_dipa_years.keys(), key=lambda y: abs(y - tahun_int))
             dipa = valid_dipa_years[nearest]
@@ -8951,8 +8839,10 @@ def merge_ikpa_dipa_auto():
         if dipa is None or dipa.empty:
             continue
 
+        df_final = df_ikpa.copy()
+
         # ===============================
-        # 🔥 NORMALISASI KODE
+        # 🔥 NORMALISASI KODE SATKER
         # ===============================
         df_final["Kode Satker"] = (
             df_final["Kode Satker"]
@@ -8971,7 +8861,7 @@ def merge_ikpa_dipa_auto():
         )
 
         # ===============================
-        # 🔥 AGREGASI PAGU
+        # 🔥 AGREGASI DIPA (AMAN)
         # ===============================
         dipa_by_kode = (
             dipa
@@ -8979,8 +8869,17 @@ def merge_ikpa_dipa_auto():
             .max()
         )
 
+        # ===============================
+        # 🔥 HAPUS KOLOM LAMA BIAR GA TABRAKAN
+        # ===============================
         df_final = df_final.drop(columns=["Total Pagu"], errors="ignore")
 
+        # ===============================
+        # 🔥 FINAL NORMALIZATION (WAJIB)
+        # ===============================
+        df_final["Kode Satker"] = df_final["Kode Satker"].astype(str).str[-6:]
+        dipa_by_kode["Kode Satker"] = dipa_by_kode["Kode Satker"].astype(str).str[-6:]
+        
         # ===============================
         # 🔥 MERGE
         # ===============================
@@ -8992,7 +8891,7 @@ def merge_ikpa_dipa_auto():
         )
 
         # ===============================
-        # 🔥 FIX DUPLIKAT
+        # 🔥 FIX KOLOM DUPLIKAT
         # ===============================
         if "Total Pagu_y" in df_merged.columns:
             df_merged["Total Pagu"] = df_merged["Total Pagu_y"]
@@ -9024,6 +8923,9 @@ def merge_ikpa_dipa_auto():
         df_merged = apply_reference_short_names(df_merged)
         df_merged = create_satker_column(df_merged)
 
+        # ===============================
+        # SIMPAN
+        # ===============================
         st.session_state.data_storage[(bulan, tahun)] = df_merged
 
     st.session_state.ikpa_dipa_merged = True
