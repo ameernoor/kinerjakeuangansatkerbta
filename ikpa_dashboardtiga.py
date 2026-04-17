@@ -7473,7 +7473,6 @@ def page_dashboard():
         
 
 # HALAMAN 2: DASHBOARD INTERNAL KPPN (Protected)  
-# HALAMAN 2: DASHBOARD INTERNAL KPPN (Protected)    
 def menu_ews_satker():
     st.subheader("🏛️ Early Warning System Kinerja Keuangan Satker")
 
@@ -7622,59 +7621,216 @@ def menu_ews_satker():
 
 
     # ======================================================
-    # KOLOM KIRI — Pengelolaan UP dan TUP
+    # 🔥 FIX NUMERIC WAJIB (ANTI STRING ERROR)
     # ======================================================
-    df_uptup = df[df["Pengelolaan UP dan TUP"] < 100]
+    def ensure_numeric(df, cols):
+        df = df.copy()
+        for col in cols:
+            if col in df.columns:
+                df[col] = df[col].apply(clean_numeric)
+        return df
 
-    if df_uptup.empty:
+
+    # ======================================================
+    # 🔥 FILTER AMAN (<100)
+    # ======================================================
+    def get_problem(df, col):
+        if col not in df.columns:
+            return pd.DataFrame()
+
+        df = df.copy()
+        df[col] = df[col].apply(clean_numeric)
+
+        return df[df[col] < 100]
+
+
+    # ======================================================
+    # 🔥 PREP DATA
+    # ======================================================
+    df_latest = ensure_numeric(
+        df_latest,
+        ["Pengelolaan UP dan TUP", "Capaian Output"]
+    )
+
+    df_latest["Satker"] = df_latest["Satker_Internal"]
+
+
+    # ======================================================
+    # 🔥 HITUNG JUMLAH DATA
+    # ======================================================
+    n_up = len(get_problem(df_latest, "Pengelolaan UP dan TUP"))
+    n_out = len(get_problem(df_latest, "Capaian Output"))
+
+
+    # ======================================================
+    # 🔥 LAYOUT DINAMIS
+    # ======================================================
+    if n_up >= 15:
+        col1, col2 = st.columns([3.5, 1.2])
+    elif n_up >= 8:
+        col1, col2 = st.columns([3, 1.5])
+    else:
+        col1, col2 = st.columns([2.5, 1.5])
+
+
+    # ======================================================
+    # 🔥 SHARED HEIGHT
+    # ======================================================
+    BAR_HEIGHT = 38
+    BASE_HEIGHT = 260
+    MAX_VISIBLE_ITEMS = 10
+
+    effective_items = min(max(n_up, n_out), MAX_VISIBLE_ITEMS)
+
+    shared_height = BASE_HEIGHT + (effective_items * BAR_HEIGHT)
+    shared_height = min(max(shared_height, 380), 700)
+
+    # 🔥 pastikan kolom numeric bersih
+    col_up = "Pengelolaan UP dan TUP"
+
+    if col_up in df.columns:
+        df[col_up] = df[col_up].apply(clean_numeric).fillna(0)
+
+    # ======================================================
+    # 🔥 KOLOM KIRI — UP TUP
+    # ======================================================
+    with col1:
+
         st.markdown("""
-        <div style='padding:16px;
-                    background:#ecfdf5;
-                    border-radius:12px;
-                    color:#065f46;
-                    font-weight:600;
-                    text-align:center'>
-        ✅ Pengelolaan UP/TUP seluruh satker sudah optimal (≥ 100)
+        <div style="margin-bottom:6px;">
+            <span style="font-size:16px; font-weight:600;">
+                ⚠️ Pengelolaan UP dan TUP
+            </span><br>
+            <span style="font-size:13px; color:#666;">
+                Pengelolaan UP dan TUP Belum Optimal (&lt; 100)
+            </span>
         </div>
         """, unsafe_allow_html=True)
 
-    else:
-        fig = px.bar(
-            df_uptup,
-            x="Uraian Satker-RINGKAS",
-            y="Pengelolaan UP dan TUP"
-        )
-        st.plotly_chart(fig, use_container_width=True)
+        df_problem_up = get_problem(df_latest, "Pengelolaan UP dan TUP")
+
+        # 🔥 JIKA SUDAH OPTIMAL → TAMPILKAN NOTIF
+        if df_problem_up.empty:
+
+            st.markdown("""
+            <div style='padding:16px;
+                        background:#ecfdf5;
+                        border-radius:12px;
+                        color:#065f46;
+                        font-weight:600;
+                        text-align:center'>
+            ✅ Pengelolaan UP/TUP seluruh satker sudah optimal (≥ 100)
+            </div>
+            """, unsafe_allow_html=True)
+
+        else:
+
+            # 🔥 FIX NUMERIC
+            df_problem_up["Pengelolaan UP dan TUP"] = (
+                df_problem_up["Pengelolaan UP dan TUP"]
+                .apply(clean_numeric)
+                .fillna(0)
+            )
+
+            y_min = safe_float(y_min_int, 0)
+            y_max = safe_float(y_max_int, 110)
+
+            if y_min >= y_max:
+                y_min, y_max = 0, 110
+
+            try:
+                fig_up = create_internal_problem_chart_vertical(
+                    df_problem_up,
+                    column='Pengelolaan UP dan TUP',
+                    threshold=100,
+                    title="Pengelolaan UP dan TUP",
+                    comparison='less',
+                    show_yaxis=True,
+                    show_colorbar=True,
+                    fixed_height=shared_height
+                )
+
+                fig_up.update_layout(
+                    yaxis=dict(range=[y_min, y_max])
+                )
+
+                st.plotly_chart(fig_up, use_container_width=True)
+
+            except Exception as e:
+                st.error(f"❌ Grafik UP/TUP error: {e}")
 
 
     # ======================================================
-    # KOLOM KANAN — Capaian Output
+    # 🔥 KOLOM KANAN — CAPAIAN OUTPUT
     # ======================================================
-    df_output = df[df["Capaian Output"] < 100]
+    with col2:
 
-    if df_output.empty:
         st.markdown("""
-        <div style='padding:16px;
-                    background:#ecfdf5;
-                    border-radius:12px;
-                    color:#065f46;
-                    font-weight:600;
-                    text-align:center'>
-        ✅ Capaian Output seluruh satker sudah optimal (≥ 100)
+        <div style="margin-bottom:6px;">
+            <span style="font-size:16px; font-weight:600;">
+                ⚠️ Capaian Output
+            </span><br>
+            <span style="font-size:13px; color:#666;">
+                Capaian Output Belum Optimal (&lt; 100)
+            </span>
         </div>
         """, unsafe_allow_html=True)
 
-    else:
-        fig = px.bar(
-            df_output,
-            x="Uraian Satker-RINGKAS",
-            y="Capaian Output"
-        )
-        st.plotly_chart(fig, use_container_width=True)
+        df_problem_out = get_problem(df_latest, "Capaian Output")
+
+        # 🔥 JIKA SUDAH OPTIMAL → NOTIF
+        if df_problem_out.empty:
+
+            st.markdown("""
+            <div style='padding:16px;
+                        background:#ecfdf5;
+                        border-radius:12px;
+                        color:#065f46;
+                        font-weight:600;
+                        text-align:center'>
+            ✅ Capaian Output seluruh satker sudah optimal (≥ 100)
+            </div>
+            """, unsafe_allow_html=True)
+
+        else:
+
+            # 🔥 FIX NUMERIC
+            df_problem_out["Capaian Output"] = (
+                df_problem_out["Capaian Output"]
+                .apply(clean_numeric)
+                .fillna(0)
+            )
+
+            y_min = safe_float(y_min_int, 0)
+            y_max = safe_float(y_max_int, 110)
+
+            if y_min >= y_max:
+                y_min, y_max = 0, 110
+
+            try:
+                fig_output = create_internal_problem_chart_vertical(
+                    df_problem_out,
+                    column='Capaian Output',
+                    threshold=100,
+                    title="Capaian Output",
+                    comparison='less',
+                    show_yaxis=False,
+                    show_colorbar=False,
+                    fixed_height=shared_height
+                )
+
+                fig_output.update_layout(
+                    yaxis=dict(range=[y_min, y_max])
+                )
+
+                st.plotly_chart(fig_output, use_container_width=True)
+
+            except Exception as e:
+                st.error(f"❌ Grafik Output error: {e}")
 
 
     warnings = []
-    
+
     
     # ===============================
     # 📈 ANALISIS TREN
