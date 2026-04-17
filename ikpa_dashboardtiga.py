@@ -591,7 +591,7 @@ def render_table_pin_satker(df):
         resizable=True,
         sortable=True,
         filter=True,
-        minWidth=130   # 🔥 supaya lebar & tetap bisa scroll
+        minWidth=130   
     )
 
     # =====================================================
@@ -9131,6 +9131,15 @@ def page_admin():
                     for uploaded_file in uploaded_files:
                         try:
                             # ======================
+                            # 🔍 PREVIEW RAW (DEBUG)
+                            # ======================
+                            uploaded_file.seek(0)
+                            preview = pd.read_excel(uploaded_file, header=None)
+
+                            st.write("📄 PREVIEW RAW:", uploaded_file.name)
+                            st.write(preview.head(10))
+
+                            # ======================
                             # 🔄 PROSES FILE 
                             # ======================
                             uploaded_file.seek(0)
@@ -9138,15 +9147,32 @@ def page_admin():
                                 uploaded_file,
                                 upload_year
                             )
-                            
 
+                            # ======================
+                            # 🔍 DEBUG HASIL PARSE
+                            # ======================
+                            st.write("DEBUG FILE:", uploaded_file.name)
+                            st.write("Month:", month)
+                            st.write("Year:", year)
 
-                            
+                            if df_final is not None:
+                                st.write("Shape:", df_final.shape)
+                                st.write("Columns:", df_final.columns)
+                            else:
+                                st.write("df_final = None")
+
+                            # ======================
+                            # ❌ HANDLE GAGAL (DETAIL)
+                            # ======================
                             if df_final is None or df_final.empty or month == "UNKNOWN":
-                                st.warning(
-                                    f"⚠️ {uploaded_file.name} gagal diproses "
-                                    f"(data kosong / bulan tidak terdeteksi)"
+
+                                st.error(
+                                    f"GAGAL PROSES:\n"
+                                    f"File: {uploaded_file.name}\n"
+                                    f"Month: {month}\n"
+                                    f"Kosong: {df_final is None or (df_final is not None and df_final.empty)}"
                                 )
+
                                 continue
 
                             # ======================
@@ -9160,7 +9186,7 @@ def page_admin():
                                 )
 
                             # ======================
-                            #  FULL POST PROCESS 
+                            # FULL POST PROCESS 
                             # ======================
                             df_final = post_process_ikpa_satker(df_final)
 
@@ -9172,7 +9198,7 @@ def page_admin():
                             )
 
                             # ======================
-                            # REGISTRASI KE SISTEM (KUNCI)
+                            # REGISTRASI KE SISTEM
                             # ======================
                             register_ikpa_satker(
                                 df_final,
@@ -9181,18 +9207,11 @@ def page_admin():
                                 source="Manual"
                             )
 
-                            # tandai perlu merge ulang
-                            need_merge = True
-                            st.session_state.ikpa_dipa_merged = False
-
                             # ======================
                             # 💾 SIMPAN KE GITHUB
                             # ======================
                             excel_bytes = io.BytesIO()
-                            with pd.ExcelWriter(
-                                excel_bytes,
-                                engine="openpyxl"
-                            ) as writer:
+                            with pd.ExcelWriter(excel_bytes, engine="openpyxl") as writer:
                                 df_final.to_excel(
                                     writer,
                                     index=False,
@@ -9207,20 +9226,13 @@ def page_admin():
                             )
 
                             # ======================
-                            # 🔥 FORCE REFRESH DATA (WAJIB)
+                            # 🔥 REFRESH DATA
                             # ======================
                             st.cache_data.clear()
 
                             st.session_state.data_storage = load_data_from_github(
                                 _cache_buster=int(time.time())
                             )
-
-                            log_activity(
-                                menu="Upload Data",
-                                action="Upload IKPA Satker",
-                                detail=f"{uploaded_file.name} | {month} {year}"
-)
-
 
                             st.success(
                                 f"✅ {uploaded_file.name} → "
