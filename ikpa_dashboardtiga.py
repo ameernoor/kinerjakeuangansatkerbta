@@ -584,34 +584,39 @@ def render_table_pin_satker(df):
         cellStyle={"textAlign": "center"}
     )
 
+    # =====================================================
+    # DEFAULT COLUMN (🔥 FIX UTAMA)
+    # =====================================================
     gb.configure_default_column(
         resizable=True,
         sortable=True,
         filter=True,
-        flex=1  
+        minWidth=130   # 🔥 supaya lebar & tetap bisa scroll
     )
-    
+
+    # =====================================================
+    # KOLOM BULAN (KECIL)
+    # =====================================================
     bulan_cols = [
-    "Jan","Feb","Mar","Apr","Mei","Jun",
-    "Jul","Agu","Sep","Okt","Nov","Des"
+        "Jan","Feb","Mar","Apr","Mei","Jun",
+        "Jul","Agu","Sep","Okt","Nov","Des"
     ]
 
     for col in bulan_cols:
         if col in df.columns:
             gb.configure_column(
                 col,
-                minWidth=60,
-                maxWidth=80,   # 🔥 bikin kecil
+                width=70,   # 🔥 FIX (pakai width, bukan min/max)
                 cellStyle={"textAlign": "right"}
             )
-    
+
     # =====================================================
-    # KOLOM KECIL (PERINGKAT & KODE BA)
+    # KOLOM KECIL (PERINGKAT & BA)
     # =====================================================
     small_cols = [
         "Peringkat",
         "Kode BA",
-        "Kode_BA",   # jaga-jaga kalau beda nama
+        "Kode_BA",
         "BA"
     ]
 
@@ -619,14 +624,13 @@ def render_table_pin_satker(df):
         if col in df.columns:
             gb.configure_column(
                 col,
-                minWidth=100,
-                maxWidth=120,   # 🔥 kecil & rapat
+                width=110,
                 cellStyle={"textAlign": "center"}
             )
-    
-    # ===============================
-    # KOLOM TEKS RATA KIRI
-    # ===============================
+
+    # =====================================================
+    # KOLOM TEKS
+    # =====================================================
     text_columns = [
         "Kode Satker",
         "Uraian Satker-RINGKAS",
@@ -640,21 +644,27 @@ def render_table_pin_satker(df):
                 cellStyle={"textAlign": "left"}
             )
 
+    # =====================================================
+    # KOLOM PINNED
+    # =====================================================
     if "Uraian Satker-RINGKAS" in df.columns:
         gb.configure_column(
             "Uraian Satker-RINGKAS",
             headerName="Nama Satker",
             pinned="left",
-            width=180
+            width=220   # 🔥 lebih lega
         )
 
     if "Kode Satker" in df.columns:
         gb.configure_column(
             "Kode Satker",
             pinned="left",
-            width=80
+            width=100
         )
 
+    # =====================================================
+    # ZEBRA STYLE
+    # =====================================================
     zebra_dark = JsCode("""
     function(params) {
         return {
@@ -664,19 +674,20 @@ def render_table_pin_satker(df):
     }
     """)
 
+    # =====================================================
+    # GRID OPTIONS (🔥 SCROLL AKTIF)
+    # =====================================================
     gb.configure_grid_options(
         domLayout="normal",
         alwaysShowHorizontalScroll=True,
+        suppressHorizontalScroll=False,
         getRowStyle=zebra_dark,
-        headerHeight=40,
-        onGridReady=JsCode("""
-            function(params) {}
-        """)
+        headerHeight=40
     )
 
-    # ===============================
-    # GRID + EXPORT
-    # ===============================
+    # =====================================================
+    # GRID
+    # =====================================================
     grid_response = AgGrid(
         df,
         gridOptions=gb.build(),
