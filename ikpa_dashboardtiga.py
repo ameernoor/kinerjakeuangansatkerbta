@@ -63,6 +63,31 @@ def add_notification(msg):
     if msg not in st.session_state.loading_notifications:
         st.session_state.loading_notifications.append(msg)
 
+st.markdown("""
+<style>
+
+/* FULL WIDTH TOTAL */
+.block-container {
+    padding-left: 0rem !important;
+    padding-right: 0rem !important;
+    max-width: 100% !important;
+}
+
+/* HILANGKAN LIMIT CONTAINER */
+section.main > div {
+    max-width: 100% !important;
+    padding-left: 0rem !important;
+    padding-right: 0rem !important;
+}
+
+/* AGGRID FULL */
+.ag-theme-streamlit {
+    width: 100% !important;
+    margin: 0 !important;
+}
+
+</style>
+""", unsafe_allow_html=True)
 
 def render_table_pin_satker(df):
     df = df.copy()
@@ -7778,7 +7803,6 @@ def menu_ews_satker():
 
         df_problem_out = get_problem(df_latest, "Capaian Output")
 
-        # 🔥 JIKA SUDAH OPTIMAL → NOTIF
         if df_problem_out.empty:
 
             st.markdown("""
