@@ -3768,7 +3768,7 @@ def create_satker_column(df):
     return df
 
 
-def merge_ikpa_with_dipa(df):
+#def merge_ikpa_with_dipa(df):
     df = df.copy()
 
     # ===============================
