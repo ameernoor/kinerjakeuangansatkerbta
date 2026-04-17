@@ -7624,79 +7624,53 @@ def menu_ews_satker():
     # ======================================================
     # KOLOM KIRI — Pengelolaan UP dan TUP
     # ======================================================
-    with col1:
-        st.markdown(
-            """
-            <div style="margin-bottom:6px;">
-                <span style="font-size:16px; font-weight:600;">
-                    ⚠️ Pengelolaan UP dan TUP
-                </span><br>
-                <span style="font-size:13px; color:#666;">
-                    Pengelolaan UP dan TUP Belum Optimal (&lt; 100)
-                </span>
-            </div>
-            """,
-            unsafe_allow_html=True
+    df_uptup = df[df["Pengelolaan UP dan TUP"] < 100]
+
+    if df_uptup.empty:
+        st.markdown("""
+        <div style='padding:16px;
+                    background:#ecfdf5;
+                    border-radius:12px;
+                    color:#065f46;
+                    font-weight:600;
+                    text-align:center'>
+        ✅ Pengelolaan UP/TUP seluruh satker sudah optimal (≥ 100)
+        </div>
+        """, unsafe_allow_html=True)
+
+    else:
+        fig = px.bar(
+            df_uptup,
+            x="Uraian Satker-RINGKAS",
+            y="Pengelolaan UP dan TUP"
         )
-
-        df_latest_up = df_latest.copy()
-        df_latest_up["Satker"] = df_latest_up["Satker_Internal"]
-
-        fig_up = create_internal_problem_chart_vertical(
-            df_latest_up,
-            column='Pengelolaan UP dan TUP',
-            threshold=100,
-            title="Pengelolaan UP dan TUP Belum Optimal (< 100)",
-            comparison='less',
-            show_yaxis=True,
-            show_colorbar=True,
-            fixed_height=shared_height
-        )
-
-
-        if fig_up:
-            st.plotly_chart(fig_up, use_container_width=True)
-        else:
-            st.success("✅ Semua satker sudah optimal untuk Pengelolaan UP dan TUP")
+        st.plotly_chart(fig, use_container_width=True)
 
 
     # ======================================================
     # KOLOM KANAN — Capaian Output
     # ======================================================
-    with col2:
-        st.markdown(
-            """
-            <div style="margin-bottom:6px;">
-                <span style="font-size:16px; font-weight:600;">
-                    ⚠️ Capaian Output
-                </span><br>
-                <span style="font-size:13px; color:#666;">
-                    Capaian Output Belum Optimal (&lt; 100)
-                </span>
-            </div>
-            """,
-            unsafe_allow_html=True
+    df_output = df[df["Capaian Output"] < 100]
+
+    if df_output.empty:
+        st.markdown("""
+        <div style='padding:16px;
+                    background:#ecfdf5;
+                    border-radius:12px;
+                    color:#065f46;
+                    font-weight:600;
+                    text-align:center'>
+        ✅ Capaian Output seluruh satker sudah optimal (≥ 100)
+        </div>
+        """, unsafe_allow_html=True)
+
+    else:
+        fig = px.bar(
+            df_output,
+            x="Uraian Satker-RINGKAS",
+            y="Capaian Output"
         )
-
-        df_latest_out = df_latest.copy()
-        df_latest_out["Satker"] = df_latest_out["Satker_Internal"]
-
-        fig_output = create_internal_problem_chart_vertical(
-            df_latest_out,
-            column='Capaian Output',
-            threshold=100,
-            title="Capaian Output Belum Optimal (< 100)",
-            comparison='less',
-            show_yaxis=False,
-            show_colorbar=False,
-            fixed_height=shared_height
-        )
-
-
-        if fig_output:
-            st.plotly_chart(fig_output, use_container_width=True)
-        else:
-            st.success("✅ Semua satker sudah optimal untuk Capaian Output")
+        st.plotly_chart(fig, use_container_width=True)
 
 
     warnings = []
