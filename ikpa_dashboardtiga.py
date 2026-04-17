@@ -8845,9 +8845,6 @@ def merge_ikpa_dipa_auto():
     if "DATA_DIPA_by_year" not in st.session_state:
         return
 
-    # ===============================
-    # 🔥 BUILD DIPA (TANPA FILTER PAGU)
-    # ===============================
     valid_dipa_years = {}
 
     for yr, dipa_df in st.session_state.DATA_DIPA_by_year.items():
@@ -8857,14 +8854,25 @@ def merge_ikpa_dipa_auto():
 
         dipa_df = dipa_df.copy()
 
-        # ===============================
-        # 🔥 FIX FORMAT PAGU (INDONESIA)
-        # ===============================
-        if "Total Pagu" not in dipa_df.columns:
-            dipa_df["Total Pagu"] = 0
+        # ==========================================
+        # 🔥 FIX KOLOM PAGU (AUTO DETECT)
+        # ==========================================
+        dipa_df.columns = dipa_df.columns.str.strip().str.upper()
 
+        pagu_col = None
+        for col in dipa_df.columns:
+            if "PAGU" in col:
+                pagu_col = col
+                break
+
+        if pagu_col is None:
+            st.warning(f"⚠️ Tahun {yr} tidak ada kolom PAGU")
+            st.write("Kolom tersedia:", list(dipa_df.columns))
+            continue
+
+        # 🔥 rename ke standar
         dipa_df["Total Pagu"] = (
-            dipa_df["Total Pagu"]
+            dipa_df[pagu_col]
             .astype(str)
             .str.replace(".", "", regex=False)
             .str.replace(",", ".", regex=False)
@@ -8874,18 +8882,15 @@ def merge_ikpa_dipa_auto():
             dipa_df["Total Pagu"], errors="coerce"
         ).fillna(0)
 
-        # 🔥 LANGSUNG MASUK (TANPA FILTER)
         valid_dipa_years[int(yr)] = dipa_df
 
     if not valid_dipa_years:
         st.warning("❌ Tidak ada DIPA valid")
         return
 
-
-
-    # ===============================
+    # ==========================================
     # 🔥 LOOP IKPA
-    # ===============================
+    # ==========================================
     for (bulan, tahun), df_ikpa in st.session_state.data_storage.items():
 
         if df_ikpa is None or df_ikpa.empty:
@@ -8895,7 +8900,6 @@ def merge_ikpa_dipa_auto():
 
         dipa = valid_dipa_years.get(tahun_int)
 
-        # fallback ke tahun terdekat
         if dipa is None:
             nearest = min(valid_dipa_years.keys(), key=lambda y: abs(y - tahun_int))
             dipa = valid_dipa_years[nearest]
@@ -8906,9 +8910,9 @@ def merge_ikpa_dipa_auto():
 
         df_final = df_ikpa.copy()
 
-        # ===============================
-        # 🔥 NORMALISASI KODE SATKER
-        # ===============================
+        # ==========================================
+        # NORMALISASI KODE
+        # ==========================================
         df_final["Kode Satker"] = (
             df_final["Kode Satker"]
             .astype(str)
@@ -8925,29 +8929,20 @@ def merge_ikpa_dipa_auto():
             .str.zfill(6)
         )
 
-        # ===============================
-        # 🔥 AGREGASI DIPA (AMAN)
-        # ===============================
+        # ==========================================
+        # AGREGASI PAGU
+        # ==========================================
         dipa_by_kode = (
             dipa
             .groupby("Kode Satker", as_index=False)["Total Pagu"]
             .max()
         )
 
-        # ===============================
-        # 🔥 HAPUS KOLOM LAMA BIAR GA TABRAKAN
-        # ===============================
         df_final = df_final.drop(columns=["Total Pagu"], errors="ignore")
 
-        # ===============================
-        # 🔥 FINAL NORMALIZATION (WAJIB)
-        # ===============================
-        df_final["Kode Satker"] = df_final["Kode Satker"].astype(str).str[-6:]
-        dipa_by_kode["Kode Satker"] = dipa_by_kode["Kode Satker"].astype(str).str[-6:]
-        
-        # ===============================
-        # 🔥 MERGE
-        # ===============================
+        # ==========================================
+        # MERGE
+        # ==========================================
         df_merged = pd.merge(
             df_final,
             dipa_by_kode,
@@ -8955,9 +8950,9 @@ def merge_ikpa_dipa_auto():
             how="left"
         )
 
-        # ===============================
-        # 🔥 FIX KOLOM DUPLIKAT
-        # ===============================
+        # ==========================================
+        # FIX DUPLIKAT
+        # ==========================================
         if "Total Pagu_y" in df_merged.columns:
             df_merged["Total Pagu"] = df_merged["Total Pagu_y"]
         elif "Total Pagu_x" in df_merged.columns:
@@ -8968,29 +8963,26 @@ def merge_ikpa_dipa_auto():
             errors="ignore"
         )
 
-        # ===============================
-        # 🔥 DEBUG MATCH
-        # ===============================
+        # ==========================================
+        # DEBUG MATCH
+        # ==========================================
         match_ratio = df_merged["Total Pagu"].notna().mean()
         st.write(f"📊 {bulan}-{tahun} Match Ratio:", round(match_ratio, 3))
 
-        # ===============================
-        # 🔥 FINAL CLEAN
-        # ===============================
+        # ==========================================
+        # FINAL CLEAN
+        # ==========================================
         df_merged["Total Pagu"] = pd.to_numeric(
             df_merged["Total Pagu"], errors="coerce"
         ).fillna(0)
 
-        # ===============================
-        # 🔥 POST PROCESS
-        # ===============================
+        # ==========================================
+        # POST PROCESS
+        # ==========================================
         df_merged = classify_jenis_satker(df_merged)
         df_merged = apply_reference_short_names(df_merged)
         df_merged = create_satker_column(df_merged)
 
-        # ===============================
-        # SIMPAN
-        # ===============================
         st.session_state.data_storage[(bulan, tahun)] = df_merged
 
     st.session_state.ikpa_dipa_merged = True
