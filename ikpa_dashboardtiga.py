@@ -3778,19 +3778,10 @@ def merge_ikpa_with_dipa(df):
         df["Total Pagu"] = 0
         return df
 
-    # ===============================
-    # NORMALISASI TAHUN
-    # ===============================
     df["Tahun"] = pd.to_numeric(df["Tahun"], errors="coerce").fillna(0).astype(int)
-
-    tahun_list = df["Tahun"].unique()
-    tahun = int(tahun_list[0])
+    tahun = int(df["Tahun"].iloc[0])
 
     dipa_dict = st.session_state.get("DATA_DIPA_by_year", {})
-
-    # ===============================
-    # AMBIL DIPA
-    # ===============================
     df_dipa = dipa_dict.get(tahun)
 
     if df_dipa is None or df_dipa.empty:
@@ -3799,17 +3790,25 @@ def merge_ikpa_with_dipa(df):
 
     df_dipa = df_dipa.copy()
 
-    # ===============================
-    # 🔥 SAFETY KOLOM PAGU
-    # ===============================
-    if "Total Pagu" not in df_dipa.columns:
-        df_dipa["Total Pagu"] = 0
+    # ==========================================
+    # 🔥 FIX KOLOM PAGU (AUTO DETECT)
+    # ==========================================
+    df_dipa.columns = df_dipa.columns.str.strip().str.upper()
 
-    # ===============================
-    # 🔥 CLEAN PAGU (FORMAT INDONESIA)
-    # ===============================
+    pagu_col = None
+    for col in df_dipa.columns:
+        if "PAGU" in col:
+            pagu_col = col
+            break
+
+    if pagu_col is None:
+        st.warning("❌ Kolom PAGU tidak ditemukan di DIPA")
+        st.write("Kolom tersedia:", list(df_dipa.columns))
+        df["Total Pagu"] = 0
+        return df
+
     df_dipa["Total Pagu"] = (
-        df_dipa["Total Pagu"]
+        df_dipa[pagu_col]
         .astype(str)
         .str.replace(".", "", regex=False)
         .str.replace(",", ".", regex=False)
@@ -3819,47 +3818,58 @@ def merge_ikpa_with_dipa(df):
         df_dipa["Total Pagu"], errors="coerce"
     ).fillna(0)
 
-    # ===============================
-    # 🔥 NORMALISASI KODE SATKER (FINAL FIX)
-    # ===============================
+    # ==========================================
+    # 🔥 FIX KODE SATKER
+    # ==========================================
     def normalize_satker(x):
         if pd.isna(x):
             return ""
         x = ''.join(filter(str.isdigit, str(x)))
-        if x == "":
-            return ""
-        return x[-6:].zfill(6)
+        return x[-6:].zfill(6) if x else ""
+
+    # IKPA
+    if "Kode Satker" not in df.columns:
+        alt_cols = [c for c in df.columns if "Satker" in c]
+        if alt_cols:
+            df["Kode Satker"] = df[alt_cols[0]]
+        else:
+            df["Total Pagu"] = 0
+            return df
 
     df["Kode Satker"] = df["Kode Satker"].apply(normalize_satker)
-    df_dipa["Kode Satker"] = df_dipa["Kode Satker"].apply(normalize_satker)
 
-    # ===============================
-    # 🔥 AGREGASI DIPA (ANTI DUPLIKAT)
-    # ===============================
+    # DIPA
+    kode_col = None
+    for col in df_dipa.columns:
+        if "SATKER" in col:
+            kode_col = col
+            break
+
+    if kode_col is None:
+        st.warning("❌ Kolom SATKER tidak ditemukan di DIPA")
+        df["Total Pagu"] = 0
+        return df
+
+    df_dipa["Kode Satker"] = df_dipa[kode_col].apply(normalize_satker)
+
+    # ==========================================
+    # AGREGASI
+    # ==========================================
     df_dipa = (
         df_dipa
         .groupby("Kode Satker", as_index=False)["Total Pagu"]
         .max()
     )
 
-    # ===============================
-    # 🔥 FINAL FORCE MATCH (WAJIB)
-    # ===============================
-    df["Kode Satker"] = df["Kode Satker"].astype(str).str[-6:]
-    df_dipa["Kode Satker"] = df_dipa["Kode Satker"].astype(str).str[-6:]
-
-    # ===============================
+    # ==========================================
     # MERGE
-    # ===============================
+    # ==========================================
     df_merge = df.merge(
         df_dipa,
         on="Kode Satker",
         how="left"
     )
 
-    # ===============================
-    # HANDLE NILAI KOSONG
-    # ===============================
     df_merge["Total Pagu"] = pd.to_numeric(
         df_merge["Total Pagu"], errors="coerce"
     ).fillna(0)
