@@ -2007,9 +2007,9 @@ def process_excel_file(uploaded_file, upload_year):
     # LOAD DATA
     # ===============================
     df_raw = pd.read_excel(uploaded_file, header=None, dtype=str)
-    df_raw = df_raw.fillna("")  # 🔥 biar aman & cepat
+    df_raw = df_raw.fillna("").astype(str)
 
-    # 🔥 FIX KHUSUS (kalau ada)
+    # FIX KHUSUS (kalau ada)
     df_raw = fix_ikpa_satker_raw(df_raw)
 
     # ===============================
@@ -2031,9 +2031,9 @@ def process_excel_file(uploaded_file, upload_year):
 
     detected_month = "UNKNOWN"
 
-    # 🔍 DETEKSI DARI ISI FILE
+    # DETEKSI DARI HEADER
     for i in range(min(15, len(df_raw))):
-        row_text = " ".join(df_raw.iloc[i].astype(str).str.upper())
+        row_text = " ".join(df_raw.iloc[i]).upper()
         for k, v in MONTH_KEYS.items():
             if k in row_text:
                 detected_month = v
@@ -2041,15 +2041,15 @@ def process_excel_file(uploaded_file, upload_year):
         if detected_month != "UNKNOWN":
             break
 
-    # 🔍 FALLBACK PERIODE
+    # FALLBACK PERIODE
     if detected_month == "UNKNOWN":
         for i in range(len(df_raw)):
-            if str(df_raw.iloc[i, 6]).strip().upper() == "NILAI":
+            if "NILAI" in " ".join(df_raw.iloc[i]).upper():
                 periode = str(df_raw.iloc[i, 1]).strip().zfill(2)
                 detected_month = PERIODE_MAP.get(periode, "UNKNOWN")
                 break
 
-    # 🔍 FALLBACK NAMA FILE
+    # FALLBACK NAMA FILE
     if detected_month == "UNKNOWN":
         fname = getattr(uploaded_file, "name", "").upper()
         for k, v in MONTH_KEYS.items():
@@ -2075,56 +2075,121 @@ def process_excel_file(uploaded_file, upload_year):
         return digits.zfill(width) if digits else ""
 
     # ===============================
-    # 🔥 FILTER LANGSUNG BARIS NILAI
+    # 🔥 DETEKSI FORMAT
     # ===============================
-    df_filtered = df_raw[
-        df_raw.apply(
-            lambda row: row.astype(str).str.contains("NILAI", case=False).any(),
-            axis=1
-        )
-    ]
+    sample_text = " ".join(df_raw.head(20).values.flatten()).upper()
+    use_nilai_format = "NILAI" in sample_text
 
     processed_rows = []
 
-    for _, row in df_filtered.iterrows():
-        try:
-            kode_satker = norm_kode(row.iloc[4], 6)
-            if not kode_satker or kode_satker == "000000":
+    # ======================================================
+    # FORMAT 1: NILAI
+    # ======================================================
+    if use_nilai_format:
+
+        i = 0
+        while i < len(df_raw):
+
+            row = df_raw.iloc[i]
+            row_str = " ".join(row).upper()
+
+            if "NILAI" not in row_str:
+                i += 1
                 continue
 
-            row_data = {
-                "No": str(row.iloc[0]).strip(),
-                "Kode KPPN": norm_kode(row.iloc[2], 6),
-                "Kode BA": norm_kode(row.iloc[3], 3),
-                "Kode Satker": kode_satker,
-                "Uraian Satker": str(row.iloc[5]).strip(),
+            try:
+                kode_satker = norm_kode(row.iloc[4], 6)
+                if not kode_satker or kode_satker == "000000":
+                    i += 1
+                    continue
 
-                "Revisi DIPA": safe_num(row.iloc[7]),
-                "Deviasi Halaman III DIPA": safe_num(row.iloc[8]),
-                "Kualitas Perencanaan Anggaran": safe_num(row.iloc[9]),
+                row_data = {
+                    "No": str(row.iloc[0]).strip(),
+                    "Kode KPPN": norm_kode(row.iloc[2], 6),
+                    "Kode BA": norm_kode(row.iloc[3], 3),
+                    "Kode Satker": kode_satker,
+                    "Uraian Satker": str(row.iloc[5]).strip(),
 
-                "Penyerapan Anggaran": safe_num(row.iloc[10]),
-                "Belanja Kontraktual": safe_num(row.iloc[11]),
-                "Penyelesaian Tagihan": safe_num(row.iloc[12]),
-                "Pengelolaan UP dan TUP": safe_num(row.iloc[13]),
-                "Kualitas Pelaksanaan Anggaran": safe_num(row.iloc[14]),
+                    "Revisi DIPA": safe_num(row.iloc[7]),
+                    "Deviasi Halaman III DIPA": safe_num(row.iloc[8]),
+                    "Kualitas Perencanaan Anggaran": safe_num(row.iloc[9]),
 
-                "Capaian Output": safe_num(row.iloc[15]),
-                "Kualitas Hasil Pelaksanaan Anggaran": safe_num(row.iloc[16]),
+                    "Penyerapan Anggaran": safe_num(row.iloc[10]),
+                    "Belanja Kontraktual": safe_num(row.iloc[11]),
+                    "Penyelesaian Tagihan": safe_num(row.iloc[12]),
+                    "Pengelolaan UP dan TUP": safe_num(row.iloc[13]),
+                    "Kualitas Pelaksanaan Anggaran": safe_num(row.iloc[14]),
 
-                "Nilai Total": safe_num(row.iloc[17]),
-                "Konversi Bobot": safe_num(row.iloc[18]),
-                "Dispensasi SPM (Pengurang)": safe_num(row.iloc[19]),
-                "Nilai Akhir (Nilai Total/Konversi Bobot)": safe_num(row.iloc[20]) if len(row) > 20 else 0.0,
+                    "Capaian Output": safe_num(row.iloc[15]),
+                    "Kualitas Hasil Pelaksanaan Anggaran": safe_num(row.iloc[16]),
 
-                "Bulan": detected_month,
-                "Tahun": upload_year,
-            }
+                    "Nilai Total": safe_num(row.iloc[17]) if len(row) > 17 else 0,
+                    "Konversi Bobot": safe_num(row.iloc[18]) if len(row) > 18 else 0,
+                    "Dispensasi SPM (Pengurang)": safe_num(row.iloc[19]) if len(row) > 19 else 0,
+                    "Nilai Akhir (Nilai Total/Konversi Bobot)": safe_num(row.iloc[20]) if len(row) > 20 else 0,
 
-            processed_rows.append(row_data)
+                    "Bulan": detected_month,
+                    "Tahun": upload_year,
+                }
 
-        except Exception:
-            continue
+                processed_rows.append(row_data)
+                i += 3
+
+            except:
+                i += 1
+
+    # ======================================================
+    # FORMAT 2: NON NILAI
+    # ======================================================
+    else:
+
+        for i in range(len(df_raw)):
+
+            row = df_raw.iloc[i]
+
+            try:
+                no_val = str(row.iloc[0]).strip()
+
+                if not no_val.isdigit():
+                    continue
+
+                kode_satker = norm_kode(row.iloc[4], 6)
+                if not kode_satker or kode_satker == "000000":
+                    continue
+
+                row_data = {
+                    "No": no_val,
+                    "Kode KPPN": norm_kode(row.iloc[2], 6),
+                    "Kode BA": norm_kode(row.iloc[3], 3),
+                    "Kode Satker": kode_satker,
+                    "Uraian Satker": str(row.iloc[5]).strip(),
+
+                    "Revisi DIPA": safe_num(row.iloc[7]),
+                    "Deviasi Halaman III DIPA": safe_num(row.iloc[8]),
+                    "Kualitas Perencanaan Anggaran": safe_num(row.iloc[9]),
+
+                    "Penyerapan Anggaran": safe_num(row.iloc[10]),
+                    "Belanja Kontraktual": safe_num(row.iloc[11]),
+                    "Penyelesaian Tagihan": safe_num(row.iloc[12]),
+                    "Pengelolaan UP dan TUP": safe_num(row.iloc[13]),
+                    "Kualitas Pelaksanaan Anggaran": safe_num(row.iloc[14]),
+
+                    "Capaian Output": safe_num(row.iloc[15]),
+                    "Kualitas Hasil Pelaksanaan Anggaran": safe_num(row.iloc[16]),
+
+                    "Nilai Total": safe_num(row.iloc[17]) if len(row) > 17 else 0,
+                    "Konversi Bobot": safe_num(row.iloc[18]) if len(row) > 18 else 0,
+                    "Dispensasi SPM (Pengurang)": safe_num(row.iloc[19]) if len(row) > 19 else 0,
+                    "Nilai Akhir (Nilai Total/Konversi Bobot)": safe_num(row.iloc[20]) if len(row) > 20 else 0,
+
+                    "Bulan": detected_month,
+                    "Tahun": upload_year,
+                }
+
+                processed_rows.append(row_data)
+
+            except:
+                continue
 
     df_final = pd.DataFrame(processed_rows)
 
