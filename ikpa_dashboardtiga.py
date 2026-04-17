@@ -9157,10 +9157,32 @@ def page_admin():
                             # ======================
                             # 🔄 PROSES FILE ASLI
                             # ======================
-                            df_final, month, year = process_excel_file(
-                                uploaded_file,
-                                upload_year
-                            )
+                            st.write("⚙️ Masuk ke process_excel_file...")
+                            try:
+                                result = process_excel_file(uploaded_file, upload_year)
+
+                                st.write("📦 Raw result:", result)
+
+                                if result is None:
+                                    st.error("❌ process_excel_file return None")
+                                    continue
+
+                                if not isinstance(result, tuple) or len(result) != 3:
+                                    st.error(f"❌ Format return salah: {type(result)}")
+                                    continue
+
+                                df_final, month, year = result
+
+                                st.write("✅ Parsing selesai:", month, year)
+
+                            except Exception as e:
+                                st.error(f"❌ ERROR di process_excel_file: {e}")
+
+                                import traceback
+                                st.text(traceback.format_exc())
+
+                                continue
+                            #--------------------------
 
                             st.write("📊 Hasil parsing:", month, year)
 
