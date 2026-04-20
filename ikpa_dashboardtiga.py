@@ -2154,6 +2154,22 @@ def process_excel_file(uploaded_file, upload_year):
             .fillna("")
             .str.zfill(6)
         )
+        
+        # ===============================
+        # 🔥 FILTER BARIS IKPA ASLI (WAJIB)
+        # ===============================
+        df = df[
+            (df["Kode Satker"] != "") &
+            (df["Kode Satker"] != "000000")
+        ]
+
+        # ambil hanya baris NILAI (buang Bobot, Nilai Aspek, dll)
+        if "Keterangan" in df.columns:
+            df = df[df["Keterangan"].astype(str).str.upper() == "NILAI"]
+
+        df = df.reset_index(drop=True)
+
+        st.write("🧹 Data setelah filter IKPA:", len(df))
 
         jumlah_satker = df["Kode Satker"].nunique()
         st.write(f"📊 IKPA SATKER TERBACA: {jumlah_satker}")
