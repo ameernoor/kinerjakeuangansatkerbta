@@ -2139,7 +2139,23 @@ def post_process_ikpa_satker(df, source="Upload"):
         )
 
     # =========================
-    # 🔥 2. NORMALISASI NUMERIK (ANTI NAN)
+    # 🚨 FIX PALING PENTING (BERSIHIN DATA SAMPAH)
+    # =========================
+    if "Kode Satker" in df.columns:
+        df = df[
+            (df["Kode Satker"] != "") &
+            (df["Kode Satker"] != "000000")
+        ]
+
+    if "Uraian Satker" in df.columns:
+        df = df[df["Uraian Satker"].notna()]
+
+    df = df.reset_index(drop=True)
+
+    st.write("🧹 Data setelah filter:", len(df))
+
+    # =========================
+    # 🔥 2. NORMALISASI NUMERIK
     # =========================
     non_numeric = [
         "Kode Satker", "Uraian Satker", "Bulan", "Tahun",
@@ -2168,7 +2184,7 @@ def post_process_ikpa_satker(df, source="Upload"):
         df[nilai_col] = 0
 
     # =========================
-    # 🔥 4. RANKING (ANTI ERROR)
+    # 🔥 4. RANKING
     # =========================
     try:
         df = df.sort_values(nilai_col, ascending=False)
