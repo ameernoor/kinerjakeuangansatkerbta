@@ -925,19 +925,25 @@ def normalize_month(val):
 
 def fix_ikpa_header(df_raw):
     
-    for i in range(min(15, len(df_raw))):
+    for i in range(min(10, len(df_raw))):
         row = df_raw.iloc[i].astype(str).str.upper()
 
+        # 🔥 deteksi fleksibel (tidak kaku)
         if (
             row.str.contains("KODE").any()
             and row.str.contains("SATKER").any()
         ):
             df = df_raw.iloc[i+1:].copy()
             df.columns = df_raw.iloc[i]
-            return df.reset_index(drop=True)
+            df = df.reset_index(drop=True)
+
+            # 🔥 bersihkan nama kolom
+            df.columns = [str(c).strip() for c in df.columns]
+
+            return df
 
     st.error("❌ HEADER IKPA TIDAK DITEMUKAN")
-    st.write(df_raw.head(10))
+    st.write("Preview RAW:", df_raw.head(10))
     return None
     
 
@@ -2012,12 +2018,12 @@ def process_excel_file(uploaded_file, upload_year):
     
     try:
         # ===============================
-        # 🔥 BACA FILE (WAJIB)
+        # 🔥 BACA FILE
         # ===============================
         df_raw = pd.read_excel(uploaded_file, header=None)
 
         # ===============================
-        # 🔥 FIX HEADER
+        # 🔥 FIX HEADER (FLEKSIBEL)
         # ===============================
         df = fix_ikpa_header(df_raw)
 
@@ -2025,11 +2031,16 @@ def process_excel_file(uploaded_file, upload_year):
             return None, "UNKNOWN", upload_year
 
         # ===============================
-        # 🔥 CEK KOLOM WAJIB
+        # 🔥 DEBUG KOLOM
+        # ===============================
+        st.write("🧾 KOLOM IKPA:", df.columns.tolist())
+
+        # ===============================
+        # 🔥 VALIDASI KOLOM
         # ===============================
         if "Kode Satker" not in df.columns:
             st.error("❌ Kolom 'Kode Satker' tidak ditemukan")
-            st.write("Kolom:", df.columns.tolist())
+            st.write(df.head())
             return None, "UNKNOWN", upload_year
 
         # ===============================
@@ -2043,34 +2054,32 @@ def process_excel_file(uploaded_file, upload_year):
             .str.zfill(6)
         )
 
+        df = df[df["Kode Satker"] != ""]
+
         # ===============================
-        # 🔥 VALIDASI JUMLAH SATKER
+        # 🔥 VALIDASI JUMLAH
         # ===============================
         jumlah_satker = df["Kode Satker"].nunique()
         st.write(f"📊 IKPA SATKER TERBACA: {jumlah_satker}")
 
         if jumlah_satker < 20:
-            st.error(f"❌ IKPA tidak normal (hanya {jumlah_satker} satker)")
+            st.error(f"❌ IKPA tidak normal ({jumlah_satker} satker)")
             return None, "UNKNOWN", upload_year
 
         # ===============================
-        # 🔥 DETEKSI BULAN (SIMPLE)
+        # 🔥 DETEKSI BULAN
         # ===============================
         nama_file = uploaded_file.name.upper()
 
-        bulan_map = {
-            "JAN": "JANUARI", "FEB": "FEBRUARI", "MAR": "MARET",
-            "APR": "APRIL", "MEI": "MEI", "JUN": "JUNI",
-            "JUL": "JULI", "AGU": "AGUSTUS", "SEP": "SEPTEMBER",
-            "OKT": "OKTOBER", "NOV": "NOVEMBER", "DES": "DESEMBER"
-        }
-
         bulan = "UNKNOWN"
-        for k, v in bulan_map.items():
+        for k, v in VALID_MONTHS.items():
             if k in nama_file:
                 bulan = v
                 break
 
+        # ===============================
+        # 🔥 FINAL RETURN
+        # ===============================
         return df, bulan, upload_year
 
     except Exception as e:
@@ -2101,6 +2110,12 @@ VALID_MONTHS = {
 
 def post_process_ikpa_satker(df, source="Upload"):
     df = df.copy()
+
+    # =========================
+    # 🔥 VALIDASI AWAL
+    # =========================
+    if df is None or df.empty:
+        return df
 
     # =========================
     # 🔥 0. FIX TAHUN & BULAN
@@ -2136,7 +2151,10 @@ def post_process_ikpa_satker(df, source="Upload"):
 
     for col in df.columns:
         if col not in non_numeric:
-            df[col] = df[col].apply(clean_numeric)
+            try:
+                df[col] = df[col].apply(clean_numeric)
+            except:
+                pass
 
     # =========================
     # 🔥 3. FIX NILAI IKPA
@@ -2145,24 +2163,35 @@ def post_process_ikpa_satker(df, source="Upload"):
 
     if nilai_col in df.columns:
         df[nilai_col] = df[nilai_col].apply(clean_numeric)
+    else:
+        st.warning("⚠️ Kolom nilai IKPA tidak ditemukan")
+        df[nilai_col] = 0
 
     # =========================
-    # 🔥 4. RANKING
+    # 🔥 4. RANKING (ANTI ERROR)
     # =========================
-    df = df.sort_values(nilai_col, ascending=False)
+    try:
+        df = df.sort_values(nilai_col, ascending=False)
 
-    df["Peringkat"] = (
-        df[nilai_col]
-        .rank(method="dense", ascending=False)
-        .fillna(0)
-        .astype(int)
-    )
+        df["Peringkat"] = (
+            df[nilai_col]
+            .rank(method="dense", ascending=False)
+            .fillna(0)
+            .astype(int)
+        )
+    except Exception as e:
+        st.warning(f"⚠️ Ranking gagal: {e}")
+        df["Peringkat"] = 0
 
     # =========================
     # 🔥 5. METADATA
     # =========================
     df["Source"] = source
-    df["Period"] = df["Bulan"] + " " + df["Tahun"].astype(str)
+
+    if "Bulan" in df.columns and "Tahun" in df.columns:
+        df["Period"] = df["Bulan"] + " " + df["Tahun"].astype(str)
+    else:
+        df["Period"] = "UNKNOWN"
 
     MONTH_ORDER = {
         "JANUARI": 1, "FEBRUARI": 2, "MARET": 3, "APRIL": 4,
@@ -2170,11 +2199,14 @@ def post_process_ikpa_satker(df, source="Upload"):
         "SEPTEMBER": 9, "OKTOBER": 10, "NOVEMBER": 11, "DESEMBER": 12
     }
 
-    df["Period_Sort"] = (
-        df["Tahun"].astype(int).astype(str)
-        + "-"
-        + df["Bulan"].map(MONTH_ORDER).fillna(0).astype(int).astype(str).str.zfill(2)
-    )
+    if "Bulan" in df.columns and "Tahun" in df.columns:
+        df["Period_Sort"] = (
+            df["Tahun"].astype(int).astype(str)
+            + "-"
+            + df["Bulan"].map(MONTH_ORDER).fillna(0).astype(int).astype(str).str.zfill(2)
+        )
+    else:
+        df["Period_Sort"] = "0000-00"
 
     # =========================
     # 🔥 6. MERGE DIPA
@@ -2193,9 +2225,8 @@ def post_process_ikpa_satker(df, source="Upload"):
     except Exception:
         df["Jenis Satker"] = "SEDANG"
 
-
     # =========================
-    # 🔥 9. FINAL KOLOM
+    # 🔥 8. FINAL KOLOM
     # =========================
     FINAL_COLUMNS = [
         "No","Kode KPPN","Kode BA","Kode Satker","Uraian Satker",
@@ -2218,17 +2249,21 @@ def post_process_ikpa_satker(df, source="Upload"):
     df = df[[c for c in FINAL_COLUMNS if c in df.columns]]
 
     # =========================
-    # 🔥 10. FINAL TOUCH
+    # 🔥 9. FINAL TOUCH
     # =========================
     df = df.fillna({
         "Satker": "TIDAK DIKETAHUI",
         "Total Pagu": 0
     })
 
-    df = apply_reference_short_names(df)
-    df = create_satker_column(df)
+    try:
+        df = apply_reference_short_names(df)
+        df = create_satker_column(df)
+    except:
+        pass
 
     return df
+
 
 # ===============================
 # PARSER IKPA KPPN (RINGKAS)
