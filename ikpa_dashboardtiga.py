@@ -2217,6 +2217,22 @@ def post_process_ikpa_satker(df, source="Upload"):
         return df
 
     # =========================
+    # 🔥 FIX TOTAL NUMERIK (WAJIB - INI YANG NENTUIN BERHASIL)
+    # =========================
+    for col in df.columns:
+        if col not in ["Kode Satker", "Uraian Satker", "Bulan", "Tahun"]:
+            try:
+                df[col] = (
+                    df[col]
+                    .astype(str)
+                    .str.replace(",", ".", regex=False)
+                    .str.replace(r"[^\d\.\-]", "", regex=True)
+                )
+                df[col] = pd.to_numeric(df[col], errors="ignore")
+            except:
+                pass
+
+    # =========================
     # 🔥 0. FIX TAHUN & BULAN
     # =========================
     if "Tahun" in df.columns:
@@ -2238,7 +2254,7 @@ def post_process_ikpa_satker(df, source="Upload"):
         )
 
     # =========================
-    # 🚨 FIX PALING PENTING (BERSIHIN DATA SAMPAH)
+    # 🔥 FILTER DATA SAMPAH
     # =========================
     if "Kode Satker" in df.columns:
         df = df[
@@ -2254,36 +2270,18 @@ def post_process_ikpa_satker(df, source="Upload"):
     st.write("🧹 Data setelah filter:", len(df))
 
     # =========================
-    # 🔥 2. NORMALISASI NUMERIK
-    # =========================
-    non_numeric = [
-        "Kode Satker", "Uraian Satker", "Bulan", "Tahun",
-        "Kode BA", "Kode KPPN", "Source", "Period", "Period_Sort",
-        "Satker", "Uraian Satker-RINGKAS", "Uraian Satker Final",
-        "Jenis Satker", "Peringkat",
-        "Nilai Akhir (Nilai Total/Konversi Bobot)"
-    ]
-
-    for col in df.columns:
-        if col not in non_numeric:
-            try:
-                df[col] = df[col].apply(clean_numeric)
-            except:
-                pass
-
-    # =========================
-    # 🔥 3. FIX NILAI IKPA
+    # 🔥 FIX NILAI IKPA
     # =========================
     nilai_col = "Nilai Akhir (Nilai Total/Konversi Bobot)"
 
     if nilai_col in df.columns:
-        df[nilai_col] = df[nilai_col].apply(clean_numeric)
+        df[nilai_col] = pd.to_numeric(df[nilai_col], errors="coerce").fillna(0)
     else:
         st.warning("⚠️ Kolom nilai IKPA tidak ditemukan")
         df[nilai_col] = 0
 
     # =========================
-    # 🔥 4. RANKING
+    # 🔥 RANKING (ANTI CRASH)
     # =========================
     try:
         df = df.sort_values(nilai_col, ascending=False)
@@ -2299,7 +2297,7 @@ def post_process_ikpa_satker(df, source="Upload"):
         df["Peringkat"] = 0
 
     # =========================
-    # 🔥 5. METADATA
+    # 🔥 METADATA
     # =========================
     df["Source"] = source
 
@@ -2324,7 +2322,7 @@ def post_process_ikpa_satker(df, source="Upload"):
         df["Period_Sort"] = "0000-00"
 
     # =========================
-    # 🔥 6. MERGE DIPA
+    # 🔥 MERGE DIPA
     # =========================
     try:
         df = merge_ikpa_with_dipa(df)
@@ -2333,7 +2331,7 @@ def post_process_ikpa_satker(df, source="Upload"):
         df["Total Pagu"] = 0
 
     # =========================
-    # 🔥 7. KLASIFIKASI
+    # 🔥 KLASIFIKASI
     # =========================
     try:
         df = classify_jenis_satker(df)
@@ -2341,7 +2339,7 @@ def post_process_ikpa_satker(df, source="Upload"):
         df["Jenis Satker"] = "SEDANG"
 
     # =========================
-    # 🔥 8. FINAL KOLOM
+    # 🔥 FINAL KOLOM
     # =========================
     FINAL_COLUMNS = [
         "No","Kode KPPN","Kode BA","Kode Satker","Uraian Satker",
@@ -2364,7 +2362,7 @@ def post_process_ikpa_satker(df, source="Upload"):
     df = df[[c for c in FINAL_COLUMNS if c in df.columns]]
 
     # =========================
-    # 🔥 9. FINAL TOUCH
+    # 🔥 FINAL TOUCH
     # =========================
     df = df.fillna({
         "Satker": "TIDAK DIKETAHUI",
