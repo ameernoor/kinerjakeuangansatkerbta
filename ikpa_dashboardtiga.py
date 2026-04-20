@@ -944,15 +944,25 @@ def fix_ikpa_satker_raw(df_raw):
     raise ValueError("❌ Header IKPA tidak ditemukan")
 
 def fix_dipa_header(df_raw):
-    df = df_raw.copy()
+    
+    import pandas as pd
 
-    # hapus baris kosong
-    df = df.dropna(how='all')
+    # cari header di 15 baris pertama
+    for i in range(min(15, len(df_raw))):
+        row = df_raw.iloc[i].astype(str).str.upper()
 
-    # reset index
-    df = df.reset_index(drop=True)
+        if (
+            row.str.contains("SATKER").any()
+            and row.str.contains("PAGU").any()
+        ):
+            df = df_raw.iloc[i+1:].copy()
+            df.columns = df_raw.iloc[i]
+            return df.reset_index(drop=True)
 
-    return df
+    # fallback keras (biar tidak hancur)
+    st.error("❌ HEADER DIPA TIDAK DITEMUKAN")
+    st.write(df_raw.head(10))
+    st.stop()
 
 
 def standardize_dipa(df_raw):
@@ -1283,12 +1293,13 @@ def parse_dipa(df_raw):
 # ============================================================
 def auto_process_dipa(df_raw):
     
-    if is_omspan_dipa(df_raw):
-        df = adapt_dipa_omspan(df_raw)
-    else:
-        df = standardize_dipa(df_raw)
+    # 🔥 FIX HEADER DULU
+    df_raw = fix_dipa_header(df_raw)
 
-    # safety net WAJIB
+    # 🔥 LANGSUNG STANDARDIZE (JANGAN PAKAI YANG LAIN)
+    df = standardize_dipa(df_raw)
+
+    # safety
     if "Tanggal Posting Revisi" not in df.columns:
         df["Tanggal Posting Revisi"] = pd.Timestamp("2026-12-31")
 
@@ -8639,24 +8650,26 @@ def process_uploaded_dipa(uploaded_file, save_file_to_github, forced_year=None):
         # ===============================
         # 1️⃣ BACA FILE
         # ===============================
-        raw = pd.read_excel(uploaded_file, header=None, dtype=str)
+        df_raw = pd.read_excel(uploaded_file, header=None)
 
-        if raw.empty:
-            return None, None, "❌ File kosong"
+        # 🔥 FIX HEADER
+        df_raw = fix_dipa_header(df_raw)
+
+        if df_raw is None or df_raw.empty:
+            return None, None, "❌ File kosong / header tidak terbaca"
 
         # ===============================
         # 2️⃣ STANDARDISASI
         # ===============================
-        if is_omspan_dipa(raw):
-            df_adapted = adapt_dipa_omspan(raw)
+        if is_omspan_dipa(df_raw):
+            df_adapted = adapt_dipa_omspan(df_raw)
 
             if df_adapted.empty:
                 return None, None, "❌ Data OMSPAN tidak valid"
 
             df_std = df_adapted.copy()
         else:
-            raw_fixed = fix_dipa_header(raw)
-            df_std = standardize_dipa(raw_fixed)
+            df_std = standardize_dipa(df_raw)
 
         # ===============================
         # 3️⃣ PAKSA TAHUN DARI UI
