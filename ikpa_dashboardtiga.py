@@ -943,6 +943,17 @@ def fix_ikpa_satker_raw(df_raw):
 
     raise ValueError("❌ Header IKPA tidak ditemukan")
 
+def fix_dipa_header(df_raw):
+    df = df_raw.copy()
+
+    # hapus baris kosong
+    df = df.dropna(how='all')
+
+    # reset index
+    df = df.reset_index(drop=True)
+
+    return df
+
 
 def standardize_dipa(df_raw):
     
