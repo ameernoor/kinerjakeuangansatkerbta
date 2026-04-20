@@ -2119,6 +2119,8 @@ def process_excel_digipay(uploaded_file, upload_year):
 def process_excel_file(uploaded_file, upload_year):
     
     try:
+        import re
+
         # ===============================
         # 🔥 BACA FILE
         # ===============================
@@ -2135,18 +2137,21 @@ def process_excel_file(uploaded_file, upload_year):
             return None, "UNKNOWN", upload_year
 
         # ===============================
-        # 🔥 DEBUG WAJIB (LIHAT ISI DATA)
+        # 🔥 DEBUG AWAL
         # ===============================
         st.write("🧾 KOLOM IKPA:", df.columns.tolist())
         st.write("📊 JUMLAH DATA AWAL:", len(df))
 
         # ===============================
-        # 🔥 NORMALISASI SATKER
+        # 🔥 VALIDASI KOLOM WAJIB
         # ===============================
         if "Kode Satker" not in df.columns:
             st.error("❌ Kolom Kode Satker tidak ada")
             return None, "UNKNOWN", upload_year
 
+        # ===============================
+        # 🔥 NORMALISASI SATKER
+        # ===============================
         df["Kode Satker"] = (
             df["Kode Satker"]
             .astype(str)
@@ -2154,16 +2159,15 @@ def process_excel_file(uploaded_file, upload_year):
             .fillna("")
             .str.zfill(6)
         )
-        
+
         # ===============================
-        # 🔥 FILTER BARIS IKPA ASLI (WAJIB)
+        # 🔥 FILTER DATA IKPA VALID
         # ===============================
         df = df[
             (df["Kode Satker"] != "") &
             (df["Kode Satker"] != "000000")
         ]
 
-        # ambil hanya baris NILAI (buang Bobot, Nilai Aspek, dll)
         if "Keterangan" in df.columns:
             df = df[df["Keterangan"].astype(str).str.upper() == "NILAI"]
 
@@ -2174,38 +2178,70 @@ def process_excel_file(uploaded_file, upload_year):
         jumlah_satker = df["Kode Satker"].nunique()
         st.write(f"📊 IKPA SATKER TERBACA: {jumlah_satker}")
 
-        # ===============================
-        # 🔥 JANGAN GAGALKAN PROSES (INI KUNCI)
-        # ===============================
         if jumlah_satker < 10:
             st.warning("⚠️ Satker sedikit, tapi tetap diproses")
 
         # ===============================
-        # 🔥 DETEKSI BULAN
+        # 🔥 DETEKSI BULAN (ANGKA + TEKS)
         # ===============================
         nama_file = uploaded_file.name.upper()
-
-        bulan_map = {
-            "JAN": "JANUARI", "FEB": "FEBRUARI", "MAR": "MARET",
-            "APR": "APRIL", "MEI": "MEI", "JUN": "JUNI",
-            "JUL": "JULI", "AGU": "AGUSTUS", "SEP": "SEPTEMBER",
-            "OKT": "OKTOBER", "NOV": "NOVEMBER", "DES": "DESEMBER"
-        }
-
         bulan = "UNKNOWN"
-        for k, v in bulan_map.items():
-            if k in nama_file:
-                bulan = v
-                break
-        
+
+        # PRIORITAS 1: angka (01–12)
+        match = re.search(r"\b(0[1-9]|1[0-2])\b", nama_file)
+
+        if match:
+            bulan_num = match.group(1)
+
+            bulan_map_num = {
+                "01": "JANUARI",
+                "02": "FEBRUARI",
+                "03": "MARET",
+                "04": "APRIL",
+                "05": "MEI",
+                "06": "JUNI",
+                "07": "JULI",
+                "08": "AGUSTUS",
+                "09": "SEPTEMBER",
+                "10": "OKTOBER",
+                "11": "NOVEMBER",
+                "12": "DESEMBER"
+            }
+
+            bulan = bulan_map_num.get(bulan_num, "UNKNOWN")
+
+        # PRIORITAS 2: teks (JAN, FEB, dll)
+        if bulan == "UNKNOWN":
+            bulan_map_text = {
+                "JAN": "JANUARI",
+                "FEB": "FEBRUARI",
+                "MAR": "MARET",
+                "APR": "APRIL",
+                "MEI": "MEI",
+                "JUN": "JUNI",
+                "JUL": "JULI",
+                "AGU": "AGUSTUS",
+                "SEP": "SEPTEMBER",
+                "OKT": "OKTOBER",
+                "NOV": "NOVEMBER",
+                "DES": "DESEMBER"
+            }
+
+            for k, v in bulan_map_text.items():
+                if k in nama_file:
+                    bulan = v
+                    break
+
+        st.write("📅 BULAN TERDETEKSI:", bulan)
+
         # ===============================
-        # 🔥 DEBUG FINAL (WAJIB)
+        # 🔥 DEBUG FINAL
         # ===============================
         st.write("✅ DATA FINAL SHAPE:", df.shape)
         st.write("✅ KOLOM FINAL:", df.columns.tolist())
-        
+
         # ===============================
-        # 🔥 FINAL RETURN (JANGAN FAIL)
+        # 🔥 RETURN FINAL
         # ===============================
         return df, bulan, upload_year
 
