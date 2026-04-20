@@ -928,22 +928,47 @@ def fix_ikpa_header(df_raw):
     for i in range(min(10, len(df_raw))):
         row = df_raw.iloc[i].astype(str).str.upper()
 
-        # 🔥 deteksi fleksibel (tidak kaku)
         if (
             row.str.contains("KODE").any()
             and row.str.contains("SATKER").any()
         ):
-            df = df_raw.iloc[i+1:].copy()
-            df.columns = df_raw.iloc[i]
+            header_row = i
+
+            # ===============================
+            # 🔥 AMBIL 2 BARIS HEADER
+            # ===============================
+            header1 = df_raw.iloc[header_row]
+            header2 = df_raw.iloc[header_row + 1]
+
+            new_columns = []
+
+            for h1, h2 in zip(header1, header2):
+                h1 = str(h1).strip()
+                h2 = str(h2).strip()
+
+                if h2 != "nan" and h2 != "None":
+                    col = f"{h1} {h2}"
+                else:
+                    col = h1
+
+                new_columns.append(col.strip())
+
+            # ===============================
+            # 🔥 DATA DIMULAI SETELAH HEADER
+            # ===============================
+            df = df_raw.iloc[header_row + 2:].copy()
+            df.columns = new_columns
             df = df.reset_index(drop=True)
 
-            # 🔥 bersihkan nama kolom
-            df.columns = [str(c).strip() for c in df.columns]
+            # ===============================
+            # 🔥 BERSIHKAN KOLOM
+            # ===============================
+            df.columns = [str(c).replace("nan", "").replace("None", "").strip() for c in df.columns]
 
             return df
 
     st.error("❌ HEADER IKPA TIDAK DITEMUKAN")
-    st.write("Preview RAW:", df_raw.head(10))
+    st.write(df_raw.head(10))
     return None
     
 
