@@ -2000,92 +2000,162 @@ def process_excel_file(uploaded_file, upload_year):
     import pandas as pd
     import re
 
-    df_raw = pd.read_excel(uploaded_file, header=None, dtype=str)
+    df_raw = pd.read_excel(uploaded_file, header=None)
     df_raw = df_raw.fillna("").astype(str)
 
     # ===============================
-    # HELPER
+    # 🔵 PARSER LAMA (FAST & PRESISI)
     # ===============================
-    def clean_num(x):
-        try:
-            return float(
-                str(x)
-                .replace("%", "")
-                .replace(".", "")
-                .replace(",", ".")
-            )
-        except:
-            return 0.0
+    def parser_legacy():
+        processed = []
 
-    def ambil_kode_satker(row):
-        text = " ".join(row)
-        m = re.search(r"\b\d{6}\b", text)
-        return m.group(0) if m else ""
+        df_data = df_raw.iloc[4:].reset_index(drop=True)
 
-    def norm_kode(x, n):
-        return re.sub(r"\D", "", str(x)).zfill(n)
+        i = 0
+        while i + 3 < len(df_data):
 
-    # ===============================
-    # PARSING (TANPA LOMPAT BARIS)
-    # ===============================
-    processed = []
+            nilai = df_data.iloc[i]
+            bobot = df_data.iloc[i + 1]
+            nilai_akhir = df_data.iloc[i + 2]
+            nilai_aspek = df_data.iloc[i + 3]
 
-    for i in range(len(df_raw)):
+            kode_satker = re.sub(r"\D", "", str(nilai[3])).zfill(6)
+            uraian_satker = str(nilai[4]).strip()
 
-        row = df_raw.iloc[i]
+            if (
+                not kode_satker.isdigit()
+                or len(kode_satker) != 6
+                or kode_satker == "000000"
+            ):
+                i += 4
+                continue
 
-        # 🔥 KUNCI UTAMA
-        # ambil hanya baris dengan Keterangan = NILAI
-        if not any(str(x).strip().upper() == "NILAI" for x in row):
-            continue
+            def clean(x):
+                try:
+                    return float(
+                        str(x)
+                        .replace("%", "")
+                        .replace(".", "")
+                        .replace(",", ".")
+                    )
+                except:
+                    return 0
 
-        kode_satker = ambil_kode_satker(row)
-
-        if not kode_satker:
-            continue
-
-        try:
             processed.append({
                 "Kode Satker": kode_satker,
-                "Kode BA": norm_kode(row[3], 3),
-                "Kode KPPN": norm_kode(row[2], 3),
-                "Uraian Satker": str(row[5]).strip(),
+                "Kode BA": re.sub(r"\D", "", str(nilai[2])).zfill(3),
+                "Kode KPPN": re.sub(r"\D", "", str(nilai[1])).zfill(3),
+                "Uraian Satker": uraian_satker,
 
-                "Revisi DIPA": clean_num(row[7]),
-                "Deviasi Halaman III DIPA": clean_num(row[8]),
-                "Kualitas Perencanaan Anggaran": clean_num(row[9]),
+                "Revisi DIPA": clean(nilai[6]),
+                "Deviasi Halaman III DIPA": clean(nilai[7]),
+                "Penyerapan Anggaran": clean(nilai[8]),
+                "Belanja Kontraktual": clean(nilai[9]),
+                "Penyelesaian Tagihan": clean(nilai[10]),
+                "Pengelolaan UP dan TUP": clean(nilai[11]),
+                "Capaian Output": clean(nilai[12]),
 
-                "Penyerapan Anggaran": clean_num(row[10]),
-                "Belanja Kontraktual": clean_num(row[11]),
-                "Penyelesaian Tagihan": clean_num(row[12]),
-                "Pengelolaan UP dan TUP": clean_num(row[13]),
-                "Kualitas Pelaksanaan Anggaran": clean_num(row[14]),
+                "Kualitas Perencanaan Anggaran": clean(nilai_aspek[6]),
+                "Kualitas Pelaksanaan Anggaran": clean(nilai_aspek[8]),
+                "Kualitas Hasil Pelaksanaan Anggaran": clean(nilai_aspek[12]),
 
-                "Capaian Output": clean_num(row[15]),
-                "Kualitas Hasil Pelaksanaan Anggaran": clean_num(row[16]),
+                "Nilai Total": clean(nilai[13]),
+                "Konversi Bobot": clean(nilai[14]),
+                "Dispensasi SPM (Pengurang)": clean(nilai[15]),
+                "Nilai Akhir (Nilai Total/Konversi Bobot)": clean(nilai[16]),
 
-                "Nilai Total": clean_num(row[17]),
-                "Konversi Bobot": clean_num(row[18]),
-                "Dispensasi SPM (Pengurang)": clean_num(row[19]),
-
-                # 🔥 paling aman: ambil kolom terakhir
-                "Nilai Akhir (Nilai Total/Konversi Bobot)": clean_num(row.iloc[-1]),
-
+                "Bulan": "UNKNOWN",
                 "Tahun": upload_year
             })
 
-        except:
-            continue
+            i += 4
 
-    df_final = pd.DataFrame(processed)
+        return pd.DataFrame(processed)
 
     # ===============================
-    # VALIDASI
+    # 🔴 PARSER BARU (FLEKSIBEL)
     # ===============================
-    if df_final.empty:
-        raise ValueError("❌ Data IKPA tidak terbaca (format berubah / tidak sesuai)")
+    def parser_flexible():
+        processed = []
 
-    return df_final
+        def clean(x):
+            try:
+                return float(
+                    str(x)
+                    .replace("%", "")
+                    .replace(".", "")
+                    .replace(",", ".")
+                )
+            except:
+                return 0
+
+        for i in range(len(df_raw)):
+
+            row = df_raw.iloc[i]
+
+            # ambil hanya baris NILAI
+            if not any(str(x).strip().upper() == "NILAI" for x in row):
+                continue
+
+            kode_satker = re.search(r"\b\d{6}\b", " ".join(row))
+            if not kode_satker:
+                continue
+
+            kode_satker = kode_satker.group(0)
+
+            try:
+                processed.append({
+                    "Kode Satker": kode_satker,
+                    "Kode BA": re.sub(r"\D", "", str(row[3])).zfill(3),
+                    "Kode KPPN": re.sub(r"\D", "", str(row[2])).zfill(3),
+                    "Uraian Satker": str(row[5]).strip(),
+
+                    "Revisi DIPA": clean(row[7]),
+                    "Deviasi Halaman III DIPA": clean(row[8]),
+                    "Penyerapan Anggaran": clean(row[9]),
+                    "Belanja Kontraktual": clean(row[10]),
+                    "Penyelesaian Tagihan": clean(row[11]),
+                    "Pengelolaan UP dan TUP": clean(row[12]),
+                    "Capaian Output": clean(row[13]),
+
+                    "Kualitas Perencanaan Anggaran": clean(row[7]),
+                    "Kualitas Pelaksanaan Anggaran": clean(row[10]),
+                    "Kualitas Hasil Pelaksanaan Anggaran": clean(row[13]),
+
+                    "Nilai Total": clean(row[14]),
+                    "Konversi Bobot": clean(row[15]),
+                    "Dispensasi SPM (Pengurang)": clean(row[16]),
+
+                    "Nilai Akhir (Nilai Total/Konversi Bobot)": clean(row.iloc[-1]),
+
+                    "Bulan": "UNKNOWN",
+                    "Tahun": upload_year
+                })
+            except:
+                continue
+
+        return pd.DataFrame(processed)
+
+    # ===============================
+    # PILIH PARSER OTOMATIS
+    # ===============================
+    try:
+        df_legacy = parser_legacy()
+
+        # kalau data masuk dan jumlah wajar → pakai legacy
+        if not df_legacy.empty and len(df_legacy) > 20:
+            return df_legacy, "AUTO", upload_year
+
+    except:
+        pass
+
+    # fallback ke fleksibel
+    df_flex = parser_flexible()
+
+    if df_flex.empty:
+        raise ValueError("❌ File IKPA tidak bisa dibaca (format tidak dikenali)")
+
+    return df_flex, "AUTO", upload_year
 
 
 VALID_MONTHS = {
