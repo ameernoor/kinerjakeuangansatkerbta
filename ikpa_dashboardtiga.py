@@ -2100,6 +2100,19 @@ VALID_MONTHS = {
 
 
 def post_process_ikpa_satker(df, source="Upload"):
+    
+    # ======================
+    # 🔥 FIX UTAMA: SIMPAN KE SESSION
+    # ======================
+    if "data_storage" not in st.session_state:
+        st.session_state.data_storage = {}
+
+    st.session_state.data_storage[(month, str(year))] = df_final.copy()
+
+    # DEBUG
+    st.write("✅ DATA MASUK STORAGE:", (month, str(year)))
+    st.write("📦 TOTAL DATA STORAGE:", len(st.session_state.data_storage))
+
     df = df.copy()
 
     # =========================
@@ -9220,20 +9233,25 @@ def page_admin():
                                 )
                             excel_bytes.seek(0)
 
-                            save_file_to_github(
-                                excel_bytes.getvalue(),
-                                f"IKPA_{month}_{year}.xlsx",
-                                folder="data"
-                            )
+                            try:
+                                save_file_to_github(
+                                    excel_bytes.getvalue(),
+                                    f"IKPA_{month}_{year}.xlsx",
+                                    folder="data"
+                                )
+                                st.success(f"☁️ Berhasil upload ke GitHub: IKPA_{month}_{year}.xlsx")
+
+                            except Exception as e:
+                                st.error(f"❌ Gagal upload GitHub: {e}")
 
                             # ======================
                             # 🔥 REFRESH DATA
                             # ======================
                             st.cache_data.clear()
 
-                            st.session_state.data_storage = load_data_from_github(
-                                _cache_buster=int(time.time())
-                            )
+                            #st.session_state.data_storage = load_data_from_github(
+                            #    _cache_buster=int(time.time())
+                            #)
 
                             st.success(
                                 f"✅ {uploaded_file.name} → "
