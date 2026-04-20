@@ -2197,7 +2197,13 @@ def process_excel_file(uploaded_file, upload_year):
             if k in nama_file:
                 bulan = v
                 break
-
+        
+        # ===============================
+        # 🔥 DEBUG FINAL (WAJIB)
+        # ===============================
+        st.write("✅ DATA FINAL SHAPE:", df.shape)
+        st.write("✅ KOLOM FINAL:", df.columns.tolist())
+        
         # ===============================
         # 🔥 FINAL RETURN (JANGAN FAIL)
         # ===============================
@@ -2381,8 +2387,16 @@ def post_process_ikpa_satker(df, source="Upload"):
         "Period","Period_Sort","Total Pagu","Jenis Satker"
     ]
     
+    # =========================
+    # 🔥 DEBUG KOLOM HILANG
+    # =========================
+    missing = [c for c in FINAL_COLUMNS if c not in df.columns]
+
+    if missing:
+        st.warning(f"⚠️ Kolom tidak ditemukan: {missing}")
 
     df = df[[c for c in FINAL_COLUMNS if c in df.columns]]
+    
 
     # =========================
     # 🔥 FINAL TOUCH
