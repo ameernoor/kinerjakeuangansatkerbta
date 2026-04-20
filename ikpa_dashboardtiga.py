@@ -928,15 +928,11 @@ def fix_ikpa_header(df_raw):
     for i in range(min(10, len(df_raw))):
         row = df_raw.iloc[i].astype(str).str.upper()
 
-        if (
-            row.str.contains("KODE").any()
-            and row.str.contains("SATKER").any()
-        ):
+        # deteksi header utama
+        if row.str.contains("KODE").any() and row.str.contains("SATKER").any():
+
             header_row = i
 
-            # ===============================
-            # 🔥 AMBIL 2 BARIS HEADER
-            # ===============================
             header1 = df_raw.iloc[header_row]
             header2 = df_raw.iloc[header_row + 1]
 
@@ -946,24 +942,60 @@ def fix_ikpa_header(df_raw):
                 h1 = str(h1).strip()
                 h2 = str(h2).strip()
 
-                if h2 != "nan" and h2 != "None":
+                if h2 not in ["nan", "None"]:
                     col = f"{h1} {h2}"
                 else:
                     col = h1
 
-                new_columns.append(col.strip())
+                col = col.replace("nan", "").replace("None", "").strip()
+                new_columns.append(col)
 
-            # ===============================
-            # 🔥 DATA DIMULAI SETELAH HEADER
-            # ===============================
             df = df_raw.iloc[header_row + 2:].copy()
             df.columns = new_columns
             df = df.reset_index(drop=True)
 
             # ===============================
-            # 🔥 BERSIHKAN KOLOM
+            # 🔥 NORMALISASI NAMA KOLOM
             # ===============================
-            df.columns = [str(c).replace("nan", "").replace("None", "").strip() for c in df.columns]
+            rename_map = {}
+
+            for col in df.columns:
+                c = col.upper()
+
+                if "KODE SATKER" in c:
+                    rename_map[col] = "Kode Satker"
+
+                elif "URAIAN SATKER" in c:
+                    rename_map[col] = "Uraian Satker"
+
+                elif "REVISI" in c:
+                    rename_map[col] = "Revisi DIPA"
+
+                elif "DEVIASI" in c:
+                    rename_map[col] = "Deviasi Halaman III DIPA"
+
+                elif "PENYERAPAN" in c:
+                    rename_map[col] = "Penyerapan Anggaran"
+
+                elif "BELANJA" in c:
+                    rename_map[col] = "Belanja Kontraktual"
+
+                elif "TAGIHAN" in c:
+                    rename_map[col] = "Penyelesaian Tagihan"
+
+                elif "OUTPUT" in c:
+                    rename_map[col] = "Capaian Output"
+
+                elif "NILAI AKHIR" in c:
+                    rename_map[col] = "Nilai Akhir (Nilai Total/Konversi Bobot)"
+
+                elif "NILAI TOTAL" in c:
+                    rename_map[col] = "Nilai Total"
+
+                elif "BOBOT" in c:
+                    rename_map[col] = "Konversi Bobot"
+
+            df = df.rename(columns=rename_map)
 
             return df
 
@@ -2102,13 +2134,10 @@ def process_excel_file(uploaded_file, upload_year):
                 bulan = v
                 break
 
-        # ===============================
-        # 🔥 FINAL RETURN
-        # ===============================
         return df, bulan, upload_year
-
     except Exception as e:
-        st.error(f"❌ Error parsing IKPA: {e}")
+        st.error(f"❌ Final processing error: {e}")
+        st.write(df.head())
         return None, "UNKNOWN", upload_year
 
 
