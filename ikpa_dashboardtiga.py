@@ -928,7 +928,6 @@ def fix_ikpa_header(df_raw):
     for i in range(min(10, len(df_raw))):
         row = df_raw.iloc[i].astype(str).str.upper()
 
-        # deteksi header utama
         if row.str.contains("KODE").any() and row.str.contains("SATKER").any():
 
             header_row = i
@@ -953,6 +952,25 @@ def fix_ikpa_header(df_raw):
             df = df_raw.iloc[header_row + 2:].copy()
             df.columns = new_columns
             df = df.reset_index(drop=True)
+
+            # ===============================
+            # 🔥 FIX KOLOM DUPLIKAT (WAJIB)
+            # ===============================
+            cols = []
+            seen = {}
+
+            for col in df.columns:
+                col = str(col).strip()
+
+                if col in seen:
+                    seen[col] += 1
+                    col = f"{col}_{seen[col]}"
+                else:
+                    seen[col] = 0
+
+                cols.append(col)
+
+            df.columns = cols
 
             # ===============================
             # 🔥 NORMALISASI NAMA KOLOM
@@ -996,6 +1014,9 @@ def fix_ikpa_header(df_raw):
                     rename_map[col] = "Konversi Bobot"
 
             df = df.rename(columns=rename_map)
+
+            # bersihkan spasi ganda
+            df.columns = [c.replace("  ", " ").strip() for c in df.columns]
 
             return df
 
@@ -2056,19 +2077,6 @@ def process_excel_digipay(uploaded_file, upload_year):
 
     return df_final
 
-
-def fix_ikpa_satker_raw(df_raw):
-    
-    for i in range(min(15, len(df_raw))):
-        try:
-            val = str(df_raw.iloc[i, 6]).replace("\xa0", " ").strip().upper()
-        except:
-            continue
-
-        if "NILAI" in val:
-            return df_raw.iloc[i:].reset_index(drop=True)
-
-    return df_raw
 
 
 def process_excel_file(uploaded_file, upload_year):
