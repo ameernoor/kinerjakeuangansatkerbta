@@ -957,24 +957,37 @@ def fix_dipa_header(df_raw):
 
 def standardize_dipa(df_raw):
     
+    import re
+    from datetime import datetime
+
     df = df_raw.copy()
     df.columns = [str(c).strip() for c in df.columns]
 
-    # =============
-    # 1) NORMALISASI NAMA KOLOM
-    # =============
+    # ===============================
+    # 🔥 DEBUG KOLOM (WAJIB)
+    # ===============================
+    st.write("🧾 KOLOM ASLI DIPA:", list(df.columns))
+
+    # ===============================
+    # 🔥 FIND COL (VERSI KUAT)
+    # ===============================
     def find_col(possible_names):
         for c in df.columns:
-            c_norm = re.sub(r'[^A-Z]', '', c.upper())
+            c_norm = re.sub(r'[^A-Z]', '', str(c).upper())
+
             for p in possible_names:
                 p_norm = re.sub(r'[^A-Z]', '', p.upper())
+
                 if p_norm in c_norm:
                     return c
         return None
 
-    # 🔥 FIX: tambah variasi nama kolom tanggal
+    # ===============================
+    # DETEKSI KOLOM
+    # ===============================
     col_kode = find_col(["Kode Satker", "Satker"])
     col_nama = find_col(["Nama Satker", "Uraian Satker", "Satker"])
+
     col_pagu = find_col([
         "Total Pagu",
         "Pagu",
@@ -984,6 +997,16 @@ def standardize_dipa(df_raw):
         "TOTAL",
         "PAGU_RUPIAH"
     ])
+
+    # 🔥 BACKUP DETEKSI PAGU
+    if col_pagu is None:
+        for c in df.columns:
+            if "PAGU" in str(c).upper():
+                col_pagu = c
+                break
+
+    st.write("🔍 KOLOM PAGU TERDETEKSI:", col_pagu)
+
     col_tanggal_revisi = find_col([
         "Tanggal Posting Revisi",
         "Tanggal Revisi",
@@ -991,6 +1014,7 @@ def standardize_dipa(df_raw):
         "Tgl Posting",
         "Posting Date"
     ])
+
     col_revisi_ke = find_col(["Revisi Terakhir", "Revisi ke"])
     col_no = find_col(["No"])
     col_kementerian = find_col(["Kementerian", "BA", "K/L"])
@@ -1001,9 +1025,9 @@ def standardize_dipa(df_raw):
     col_status_history = find_col(["Kode Status History"])
     col_jenis_revisi = find_col(["Jenis Revisi"])
 
-    # =============
-    # 2) BUILD OUTPUT
-    # =============
+    # ===============================
+    # BUILD OUTPUT
+    # ===============================
     out = pd.DataFrame()
 
     # KODE SATKER
@@ -1015,25 +1039,27 @@ def standardize_dipa(df_raw):
 
     # NAMA
     if col_nama:
-        out["Satker"] = df[col_nama].astype(str).str.replace(r"^\d{6}\s*-?\s*", "", regex=True)
+        out["Satker"] = df[col_nama].astype(str)
     else:
         out["Satker"] = ""
 
-    # PAGU
+    # ===============================
+    # PAGU (ANTI GAGAL TOTAL)
+    # ===============================
     if col_pagu:
         out["Total Pagu"] = (
             df[col_pagu]
             .astype(str)
-            .str.replace(r"[^\d\.-]", "", regex=True)
+            .str.replace(r"[^\d]", "", regex=True)
+            .replace("", "0")
             .astype(float)
-            .fillna(0)
-            .astype(int)
         )
     else:
-        raise ValueError("❌ Kolom PAGU tidak ditemukan di file DIPA")
+        st.error("❌ Kolom PAGU tidak ditemukan di file DIPA")
+        st.stop()
 
     # ===============================
-    # 🔥 FIX UTAMA DI SINI
+    # TANGGAL REVISI
     # ===============================
     if col_tanggal_revisi:
         out["Tanggal Posting Revisi"] = pd.to_datetime(
@@ -1043,7 +1069,6 @@ def standardize_dipa(df_raw):
     else:
         out["Tanggal Posting Revisi"] = pd.NaT
 
-    # 🔥 WAJIB: isi default supaya tidak error
     out["Tanggal Posting Revisi"] = out["Tanggal Posting Revisi"].fillna(
         pd.Timestamp(f"{datetime.now().year}-12-31")
     )
@@ -1052,21 +1077,15 @@ def standardize_dipa(df_raw):
     out["Tahun"] = out["Tanggal Posting Revisi"].dt.year.astype(int)
 
     # NO
-    if col_no:
-        out["NO"] = df[col_no]
-    else:
-        out["NO"] = range(1, len(df) + 1)
+    out["NO"] = df[col_no] if col_no else range(1, len(df) + 1)
 
     # KEMENTERIAN
     if col_kementerian:
         out["Kementerian"] = df[col_kementerian].astype(str)
     else:
-        if col_dipa:
-            out["Kementerian"] = df[col_dipa].astype(str).str.extract(r"DIPA-(\d{3})")[0]
-        else:
-            out["Kementerian"] = ""
+        out["Kementerian"] = ""
 
-    # REVISI KE
+    # REVISI
     if col_revisi_ke:
         out["Revisi ke-"] = (
             df[col_revisi_ke]
@@ -1078,74 +1097,30 @@ def standardize_dipa(df_raw):
     else:
         out["Revisi ke-"] = 0
 
-    # NO DIPA
+    # LAINNYA
     out["No Dipa"] = df[col_dipa].astype(str) if col_dipa else ""
-
-    # TANGGAL DIPA
     out["Tanggal Dipa"] = pd.to_datetime(df[col_tanggal_dipa], errors="coerce") if col_tanggal_dipa else pd.NaT
-
-    # OWNER
     out["Owner"] = df[col_owner].astype(str) if col_owner else ""
-
-    # DIGITAL STAMP
     out["Digital Stamp"] = df[col_stamp].astype(str) if col_stamp else ""
-
-    # Jenis Satker
     out["Jenis Satker"] = ""
+    out["Kode Status History"] = df[col_status_history].astype(str) if col_status_history else ""
+    out["Jenis Revisi"] = df[col_jenis_revisi].astype(str) if col_jenis_revisi else ""
 
-    # KODE STATUS HISTORY
-    if col_status_history:
-        out["Kode Status History"] = df[col_status_history].astype(str)
-    else:
-        out["Kode Status History"] = ""
-
-    # JENIS REVISI
-    if col_jenis_revisi:
-        out["Jenis Revisi"] = df[col_jenis_revisi].astype(str)
-    else:
-        out["Jenis Revisi"] = ""
-
-    # =============
-    # 3) FINAL CLEANUP
-    # =============
+    # ===============================
+    # FINAL CLEAN
+    # ===============================
     out = out.dropna(subset=["Kode Satker"])
     out["Kode Satker"] = out["Kode Satker"].astype(str).str.zfill(6)
 
-    # =============
-    # 4) SUSUN URUTAN KOLOM
-    # =============
-    final_order = [
-        "Kode Satker",
-        "Tanggal Posting Revisi",
-        "Total Pagu",
-        "Jenis Satker",
-        "NO",
-        "Kementerian",
-        "Kode Status History",
-        "Jenis Revisi",
-        "Revisi ke-",
-        "No Dipa",
-        "Tanggal Dipa",
-        "Owner",
-        "Digital Stamp",
-    ]
-
-    existing_cols = [c for c in final_order if c in out.columns]
-    out = out[existing_cols]
-    
     # ===============================
-    # SAFETY NET TOTAL PAGU
+    # SAFETY FINAL
     # ===============================
-    if "Total Pagu" not in out.columns:
-        out["Total Pagu"] = 0
-
-    out["Total Pagu"] = out["Total Pagu"].fillna(0)
+    out["Total Pagu"] = pd.to_numeric(out["Total Pagu"], errors="coerce").fillna(0)
 
     return out
 
+
 #Normalisasi kode BA
-
-
 def parse_dipa(df_raw):
     import pandas as pd
     import re
