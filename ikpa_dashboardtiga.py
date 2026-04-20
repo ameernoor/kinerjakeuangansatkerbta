@@ -2001,10 +2001,6 @@ def process_excel_file(uploaded_file, upload_year):
     import re
 
     df_raw = pd.read_excel(uploaded_file, header=None, dtype=str)
-
-    # ===============================
-    # NORMALISASI
-    # ===============================
     df_raw = df_raw.fillna("").astype(str)
 
     # ===============================
@@ -2021,138 +2017,75 @@ def process_excel_file(uploaded_file, upload_year):
         except:
             return 0.0
 
-    def find_kode_satker(row):
+    def ambil_kode_satker(row):
         text = " ".join(row)
         m = re.search(r"\b\d{6}\b", text)
         return m.group(0) if m else ""
 
-    def find_kode_ba(row):
-        text = " ".join(row)
-        m = re.search(r"\b\d{3}\b", text)
-        return m.group(0) if m else ""
-
-    def find_kppn(row):
-        text = " ".join(row)
-        m = re.search(r"\b\d{3,6}\b", text)
-        return m.group(0) if m else ""
-
-    def detect_month(df):
-        bulan_map = {
-            "JAN": "JANUARI", "FEB": "FEBRUARI", "MAR": "MARET",
-            "APR": "APRIL", "MEI": "MEI", "JUN": "JUNI",
-            "JUL": "JULI", "AGU": "AGUSTUS", "SEP": "SEPTEMBER",
-            "OKT": "OKTOBER", "NOV": "NOVEMBER", "DES": "DESEMBER",
-        }
-
-        text = " ".join(df.head(20).astype(str).values.flatten()).upper()
-
-        for k, v in bulan_map.items():
-            if k in text:
-                return v
-
-        return "UNKNOWN"
-
-    detected_month = detect_month(df_raw)
+    def norm_kode(x, n):
+        return re.sub(r"\D", "", str(x)).zfill(n)
 
     # ===============================
-    # DETEKSI KOLOM OTOMATIS
+    # PARSING (TANPA LOMPAT BARIS)
     # ===============================
-    header_row = None
+    processed = []
 
-    for i in range(20):
-        row = df_raw.iloc[i].str.upper()
+    for i in range(len(df_raw)):
 
-        if row.str.contains("SATKER").any() and row.str.contains("NILAI").any():
-            header_row = i
-            break
+        row = df_raw.iloc[i]
 
-    if header_row is not None:
-        df = df_raw.iloc[header_row+1:].copy()
-        df.columns = df_raw.iloc[header_row]
-    else:
-        df = df_raw.copy()
+        # 🔥 KUNCI UTAMA
+        # ambil hanya baris dengan Keterangan = NILAI
+        if not any(str(x).strip().upper() == "NILAI" for x in row):
+            continue
 
-    df.columns = [str(c).strip() for c in df.columns]
+        kode_satker = ambil_kode_satker(row)
 
-    # ===============================
-    # DETEKSI KOLOM NILAI IKPA
-    # ===============================
-    def find_col(keyword_list):
-        for col in df.columns:
-            col_u = col.upper()
-            if any(k in col_u for k in keyword_list):
-                return col
-        return None
+        if not kode_satker:
+            continue
 
-    col_satker = find_col(["SATKER"])
-    col_nilai  = find_col(["NILAI AKHIR", "IKPA"])
-    col_kppn   = find_col(["KPPN"])
-    col_ba     = find_col(["BA"])
-
-    # ===============================
-    # FALLBACK JIKA FORMAT RAW (3 BARIS)
-    # ===============================
-    if col_nilai is None:
-
-        processed_rows = []
-
-        i = 0
-        while i < len(df_raw):
-            row = df_raw.iloc[i]
-
-            if not any("NILAI" in str(x).upper() for x in row):
-                i += 1
-                continue
-
-            kode_satker = find_kode_satker(row)
-
-            if not kode_satker:
-                i += 1
-                continue
-
-            processed_rows.append({
+        try:
+            processed.append({
                 "Kode Satker": kode_satker,
-                "Kode BA": find_kode_ba(row),
-                "Kode KPPN": find_kppn(row),
-                "Uraian Satker": str(row[5]) if len(row) > 5 else "",
+                "Kode BA": norm_kode(row[3], 3),
+                "Kode KPPN": norm_kode(row[2], 3),
+                "Uraian Satker": str(row[5]).strip(),
+
+                "Revisi DIPA": clean_num(row[7]),
+                "Deviasi Halaman III DIPA": clean_num(row[8]),
+                "Kualitas Perencanaan Anggaran": clean_num(row[9]),
+
+                "Penyerapan Anggaran": clean_num(row[10]),
+                "Belanja Kontraktual": clean_num(row[11]),
+                "Penyelesaian Tagihan": clean_num(row[12]),
+                "Pengelolaan UP dan TUP": clean_num(row[13]),
+                "Kualitas Pelaksanaan Anggaran": clean_num(row[14]),
+
+                "Capaian Output": clean_num(row[15]),
+                "Kualitas Hasil Pelaksanaan Anggaran": clean_num(row[16]),
+
+                "Nilai Total": clean_num(row[17]),
+                "Konversi Bobot": clean_num(row[18]),
+                "Dispensasi SPM (Pengurang)": clean_num(row[19]),
+
+                # 🔥 paling aman: ambil kolom terakhir
                 "Nilai Akhir (Nilai Total/Konversi Bobot)": clean_num(row.iloc[-1]),
-                "Bulan": detected_month,
+
                 "Tahun": upload_year
             })
 
-            i += 3
+        except:
+            continue
 
-        df_final = pd.DataFrame(processed_rows)
-
-    else:
-        # ===============================
-        # FORMAT TABEL NORMAL
-        # ===============================
-        df_final = pd.DataFrame()
-
-        df_final["Kode Satker"] = df[col_satker].astype(str).str.extract(r"(\d{6})")[0]
-        df_final["Uraian Satker"] = df[col_satker].astype(str)
-
-        if col_ba:
-            df_final["Kode BA"] = df[col_ba]
-
-        if col_kppn:
-            df_final["Kode KPPN"] = df[col_kppn]
-
-        df_final["Nilai Akhir (Nilai Total/Konversi Bobot)"] = df[col_nilai].apply(clean_num)
-        df_final["Bulan"] = detected_month
-        df_final["Tahun"] = upload_year
+    df_final = pd.DataFrame(processed)
 
     # ===============================
-    # FINAL CLEANING
+    # VALIDASI
     # ===============================
-    df_final = df_final.dropna(subset=["Kode Satker"])
-    df_final = df_final[df_final["Kode Satker"] != ""]
-
     if df_final.empty:
-        raise ValueError("Format file tidak dikenali")
+        raise ValueError("❌ Data IKPA tidak terbaca (format berubah / tidak sesuai)")
 
-    return df_final, detected_month, upload_year
+    return df_final
 
 
 VALID_MONTHS = {
