@@ -8889,6 +8889,23 @@ def merge_ikpa_dipa_auto():
         tahun_int = int(tahun)
 
         dipa = valid_dipa_years.get(tahun_int)
+        
+        # ===============================
+        # VALIDASI FINAL PAGU (WAJIB)
+        # ===============================
+        if "Total Pagu" not in dipa.columns:
+            st.error("❌ Kolom 'Total Pagu' hilang sebelum merge")
+            st.write("Kolom DIPA saat ini:", dipa.columns.tolist())
+            st.stop()
+
+        # cek isi
+        if dipa["Total Pagu"].isna().all():
+            st.error("❌ Semua nilai 'Total Pagu' kosong")
+            st.stop()
+            
+        if dipa is not None:
+            st.write("📊 DEBUG DIPA SAMPLE:", dipa.head())
+            st.write("📊 KOLOM DIPA:", dipa.columns.tolist())
 
         # fallback ke tahun terdekat
         if dipa is None:
