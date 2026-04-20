@@ -8880,6 +8880,37 @@ def merge_ikpa_dipa_auto():
     # 🔥 LOOP IKPA
     # ===============================
     for (bulan, tahun), df_ikpa in st.session_state.data_storage.items():
+        
+        # ===============================
+        # 🔥 VALIDASI IKPA (WAJIB BANGET)
+        # ===============================
+        if df_ikpa is None or df_ikpa.empty:
+            st.warning(f"❌ IKPA kosong untuk {bulan}-{tahun}")
+            continue
+
+        if "Kode Satker" not in df_ikpa.columns:
+            st.error(f"❌ IKPA tidak punya kolom 'Kode Satker' ({bulan}-{tahun})")
+            st.write("Kolom IKPA:", df_ikpa.columns.tolist())
+            continue
+
+        # 🔥 NORMALISASI SATKER AWAL
+        df_ikpa["Kode Satker"] = (
+            df_ikpa["Kode Satker"]
+            .astype(str)
+            .str.extract(r"(\d+)")[0]
+            .fillna("")
+            .str.zfill(6)
+        )
+
+        jumlah_satker = df_ikpa["Kode Satker"].nunique()
+
+        st.write(f"📊 IKPA {bulan}-{tahun} jumlah satker:", jumlah_satker)
+
+        # 🔥 FILTER DATA RUSAK
+        if jumlah_satker < 20:
+            st.error(f"❌ IKPA tidak normal (hanya {jumlah_satker} satker) → SKIP")
+            st.write(df_ikpa.head())
+            continue
 
         if df_ikpa is None or df_ikpa.empty:
             continue
