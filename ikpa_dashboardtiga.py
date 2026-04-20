@@ -944,7 +944,7 @@ def fix_ikpa_header(df_raw):
                 col = ""
 
                 # ===============================
-                # 🔥 MAPPING FIX SESUAI FILE ASLI
+                # 🔥 MAPPING KOLOM UTAMA
                 # ===============================
 
                 if "KODE SATKER" in h1.upper():
@@ -961,6 +961,16 @@ def fix_ikpa_header(df_raw):
 
                 elif "PERIODE" in h1.upper():
                     col = "Periode"
+
+                elif "KETERANGAN" in h1.upper():
+                    col = "Keterangan"
+
+                elif "NO" in h1.upper():
+                    col = "No"
+
+                # ===============================
+                # 🔥 SUB KOLOM (HEADER BARIS 2)
+                # ===============================
 
                 elif "REVISI" in h2.upper():
                     col = "Revisi DIPA"
@@ -980,6 +990,10 @@ def fix_ikpa_header(df_raw):
                 elif "OUTPUT" in h2.upper():
                     col = "Capaian Output"
 
+                # ===============================
+                # 🔥 NILAI UTAMA
+                # ===============================
+
                 elif "NILAI AKHIR" in h1.upper():
                     col = "Nilai Akhir (Nilai Total/Konversi Bobot)"
 
@@ -992,11 +1006,12 @@ def fix_ikpa_header(df_raw):
                 elif "DISPENSASI" in h1.upper():
                     col = "Dispensasi SPM (Pengurangan)"
 
-                elif "KETERANGAN" in h1.upper():
-                    col = "Keterangan"
+                # ===============================
+                # 🔥 NILAI ASPEK (FIX DUPLIKAT)
+                # ===============================
 
-                elif "NO" in h1.upper():
-                    col = "No"
+                elif "NILAI ASPEK" in h2.upper():
+                    col = "Nilai Aspek"
 
                 else:
                     col = f"IGNORE_{len(cols)}"
@@ -1006,6 +1021,35 @@ def fix_ikpa_header(df_raw):
             df = df_raw.iloc[header_row + 2:].copy()
             df.columns = cols
             df = df.reset_index(drop=True)
+
+            # ===============================
+            # 🔥 FIX DUPLIKAT KOLOM (WAJIB)
+            # ===============================
+            seen = {}
+            new_cols = []
+
+            for col in df.columns:
+                if col in seen:
+                    seen[col] += 1
+                    new_cols.append(f"{col}_{seen[col]}")
+                else:
+                    seen[col] = 0
+                    new_cols.append(col)
+
+            df.columns = new_cols
+
+            # ===============================
+            # 🔥 KHUSUS NILAI ASPEK (MAP 3 KOLOM)
+            # ===============================
+            aspek_cols = [c for c in df.columns if "Nilai Aspek" in c]
+
+            for idx, col in enumerate(aspek_cols):
+                if idx == 0:
+                    df.rename(columns={col: "Nilai Aspek Perencanaan"}, inplace=True)
+                elif idx == 1:
+                    df.rename(columns={col: "Nilai Aspek Pelaksanaan"}, inplace=True)
+                elif idx == 2:
+                    df.rename(columns={col: "Nilai Aspek Hasil"}, inplace=True)
 
             # ===============================
             # 🔥 DROP KOLOM SAMPAH
