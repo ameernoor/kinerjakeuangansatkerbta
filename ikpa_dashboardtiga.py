@@ -2751,10 +2751,14 @@ def save_file_to_github(content_bytes, filename, folder):
         
 
 # ============================
-#  LOAD DATA IKPA DARI GITHUB (FINAL FIX)
+#  LOAD DATA IKPA SATKER DARI GITHUB
 # ============================
 @st.cache_data(ttl=0)
 def load_data_from_github(_cache_buster: int = 0):
+
+    import base64
+    import io
+    import re
 
     data_storage = {}
 
@@ -2762,14 +2766,41 @@ def load_data_from_github(_cache_buster: int = 0):
     repo_name = st.secrets.get("GITHUB_REPO")
 
     if not token or not repo_name:
+        st.error("❌ GITHUB_TOKEN / GITHUB_REPO tidak ditemukan")
         return data_storage
 
-    g = Github(auth=Auth.Token(token))
-    repo = g.get_repo(repo_name)
-
     try:
-        contents = repo.get_contents("data")
-    except Exception:
+        g = Github(auth=Auth.Token(token))
+        repo = g.get_repo(repo_name)
+    except Exception as e:
+        st.error(f"❌ Gagal koneksi GitHub: {e}")
+        return data_storage
+
+    # ===============================
+    # 🔥 AMBIL SEMUA FILE (RECURSIVE)
+    # ===============================
+    def get_all_files(repo, path="data"):
+        files = []
+        try:
+            contents = repo.get_contents(path)
+        except Exception:
+            return files
+
+        for item in contents:
+            if item.type == "dir":
+                files.extend(get_all_files(repo, item.path))
+            else:
+                files.append(item)
+
+        return files
+
+    contents = get_all_files(repo, "data")
+
+    # 🔥 DEBUG
+    st.write("📂 FILE DARI GITHUB:", [f.name for f in contents])
+
+    if not contents:
+        st.warning("⚠️ Folder 'data' kosong di GitHub")
         return data_storage
 
     MONTH_ORDER = {
@@ -2778,22 +2809,27 @@ def load_data_from_github(_cache_buster: int = 0):
         "SEPTEMBER": 9, "OKTOBER": 10, "NOVEMBER": 11, "DESEMBER": 12
     }
 
+    # ===============================
+    # LOOP FILE
+    # ===============================
     for file in contents:
+
         if not file.name.endswith(".xlsx"):
             continue
 
         try:
             decoded = base64.b64decode(file.content)
 
-            # ===============================
-            # 🔥 LOAD LANGSUNG (FILE SUDAH BERSIH)
-            # ===============================
             df = pd.read_excel(io.BytesIO(decoded))
             df.columns = [str(c).strip() for c in df.columns]
 
+            # 🔥 VALIDASI KOLOM
+            if "Kode Satker" not in df.columns:
+                st.warning(f"⚠️ Skip file (tidak ada Kode Satker): {file.name}")
+                continue
 
             # ===============================
-            # NORMALISASI KODE SATKER
+            # NORMALISASI SATKER
             # ===============================
             df["Kode Satker"] = (
                 df["Kode Satker"]
@@ -2806,14 +2842,16 @@ def load_data_from_github(_cache_buster: int = 0):
             df = df[(df["Kode Satker"] != "") & (df["Kode Satker"] != "000000")]
 
             if df.empty:
+                st.warning(f"⚠️ Skip file kosong: {file.name}")
                 continue
 
             # ===============================
-            # AMBIL BULAN & TAHUN DARI NAMA FILE
+            # AMBIL BULAN & TAHUN
             # ===============================
             match = re.search(r"IKPA_(\w+)_(\d{4})", file.name)
 
             if not match:
+                st.warning(f"⚠️ Format nama file salah: {file.name}")
                 continue
 
             month = match.group(1).upper()
@@ -2823,7 +2861,7 @@ def load_data_from_github(_cache_buster: int = 0):
             df["Tahun"] = year
 
             # ===============================
-            # POST PROCESS (WAJIB)
+            # POST PROCESS
             # ===============================
             df = post_process_ikpa_satker(df)
 
@@ -2837,42 +2875,23 @@ def load_data_from_github(_cache_buster: int = 0):
             df["Period_Sort"] = f"{int(year):04d}-{month_num:02d}"
 
             # ===============================
-            # RANKING
-            # ===============================
-            nilai_col = "Nilai Akhir (Nilai Total/Konversi Bobot)"
-
-            df = df.sort_values(nilai_col, ascending=False)
-
-            df["Peringkat"] = (
-                df[nilai_col]
-                .rank(method="dense", ascending=False)
-                .astype(int)
-            )
-
-            # ===============================
-            # MERGE DIPA (AUTO)
-            # ===============================
-            if st.session_state.get("DATA_DIPA_by_year"):
-                df = merge_ikpa_with_dipa(df)
-            else:
-                df["Total Pagu"] = 0
-
-            # ===============================
-            # JENIS SATKER
-            # ===============================
-            if "Jenis Satker" in df.columns:
-                df = df.drop(columns=["Jenis Satker"])
-
-            df = classify_jenis_satker(df)
-
-            # ===============================
             # SIMPAN
             # ===============================
             key = (month, year)
             data_storage[key] = df
 
+            st.success(f"✅ Loaded: {file.name}")
+
         except Exception as e:
-            continue
+            st.error(f"❌ Gagal load file {file.name}: {e}")
+
+    # ===============================
+    # FINAL CHECK
+    # ===============================
+    if not data_storage:
+        st.warning("⚠️ Tidak ada data IKPA berhasil dimuat")
+    else:
+        st.success(f"☁️ Total data IKPA dimuat: {len(data_storage)} periode")
 
     return data_storage
 
