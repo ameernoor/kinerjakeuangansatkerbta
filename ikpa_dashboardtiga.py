@@ -2373,13 +2373,14 @@ def post_process_ikpa_satker(df, source="Upload"):
         "Penyelesaian Tagihan","Pengelolaan UP dan TUP",
         "Capaian Output",
         "Nilai Total","Konversi Bobot",
-        "Dispensasi SPM (Pengurang)",
+        "Dispensasi SPM (Pengurangan)",  # 🔥 FIX DI SINI
         "Nilai Akhir (Nilai Total/Konversi Bobot)",
         "Bulan","Tahun","Peringkat",
         "Uraian Satker Final","Satker","Source",
         "Uraian Satker-RINGKAS",
         "Period","Period_Sort","Total Pagu","Jenis Satker"
     ]
+    
 
     df = df[[c for c in FINAL_COLUMNS if c in df.columns]]
 
