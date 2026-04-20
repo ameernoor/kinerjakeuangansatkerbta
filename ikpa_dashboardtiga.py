@@ -923,28 +923,26 @@ def normalize_month(val):
     return MONTH_MAP.get(val, safe_upper(val))
 
 
-def fix_dipa_header(df_raw):
-    """
-    Header detector SUPER FLEXIBLE:
-    """
+def fix_ikpa_satker_raw(df_raw):
+    
     for i in range(min(15, len(df_raw))):
         row = df_raw.iloc[i].astype(str).str.upper()
 
         if (
-            (row.str.contains("SATKER").any()) or
-            (row.str.contains("KODE").any() and row.str.contains("SATKER").any()) or
-            (row.str.contains("NAMA").any())
+            row.str.contains("KODE SATKER").any() and
+            row.str.contains("URAIAN SATKER").any()
         ):
             df = df_raw.iloc[i+1:].copy()
             df.columns = df_raw.iloc[i]
-            return df.reset_index(drop=True)
+            df = df.reset_index(drop=True)
 
-    # fallback
-    df = df_raw.copy()
-    df.columns = df.iloc[0]
-    df = df[1:]
+            # 🔥 bersihin kolom kosong
+            df = df.loc[:, ~df.columns.isna()]
 
-    return df.reset_index(drop=True)
+            return df
+
+    raise ValueError("❌ Header IKPA tidak ditemukan")
+
 
 def standardize_dipa(df_raw):
     
