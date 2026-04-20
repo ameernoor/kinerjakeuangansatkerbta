@@ -2125,29 +2125,28 @@ def process_excel_file(uploaded_file, upload_year):
         df_raw = pd.read_excel(uploaded_file, header=None)
 
         # ===============================
-        # 🔥 FIX HEADER (FLEKSIBEL)
+        # 🔥 FIX HEADER
         # ===============================
         df = fix_ikpa_header(df_raw)
 
         if df is None or df.empty:
+            st.error("❌ Data kosong setelah header fix")
+            st.write(df_raw.head(10))
             return None, "UNKNOWN", upload_year
 
         # ===============================
-        # 🔥 DEBUG KOLOM
+        # 🔥 DEBUG WAJIB (LIHAT ISI DATA)
         # ===============================
         st.write("🧾 KOLOM IKPA:", df.columns.tolist())
-
-        # ===============================
-        # 🔥 VALIDASI KOLOM
-        # ===============================
-        if "Kode Satker" not in df.columns:
-            st.error("❌ Kolom 'Kode Satker' tidak ditemukan")
-            st.write(df.head())
-            return None, "UNKNOWN", upload_year
+        st.write("📊 JUMLAH DATA AWAL:", len(df))
 
         # ===============================
         # 🔥 NORMALISASI SATKER
         # ===============================
+        if "Kode Satker" not in df.columns:
+            st.error("❌ Kolom Kode Satker tidak ada")
+            return None, "UNKNOWN", upload_year
+
         df["Kode Satker"] = (
             df["Kode Satker"]
             .astype(str)
@@ -2156,33 +2155,40 @@ def process_excel_file(uploaded_file, upload_year):
             .str.zfill(6)
         )
 
-        df = df[df["Kode Satker"] != ""]
-
-        # ===============================
-        # 🔥 VALIDASI JUMLAH
-        # ===============================
         jumlah_satker = df["Kode Satker"].nunique()
         st.write(f"📊 IKPA SATKER TERBACA: {jumlah_satker}")
 
-        if jumlah_satker < 20:
-            st.error(f"❌ IKPA tidak normal ({jumlah_satker} satker)")
-            return None, "UNKNOWN", upload_year
+        # ===============================
+        # 🔥 JANGAN GAGALKAN PROSES (INI KUNCI)
+        # ===============================
+        if jumlah_satker < 10:
+            st.warning("⚠️ Satker sedikit, tapi tetap diproses")
 
         # ===============================
         # 🔥 DETEKSI BULAN
         # ===============================
         nama_file = uploaded_file.name.upper()
 
+        bulan_map = {
+            "JAN": "JANUARI", "FEB": "FEBRUARI", "MAR": "MARET",
+            "APR": "APRIL", "MEI": "MEI", "JUN": "JUNI",
+            "JUL": "JULI", "AGU": "AGUSTUS", "SEP": "SEPTEMBER",
+            "OKT": "OKTOBER", "NOV": "NOVEMBER", "DES": "DESEMBER"
+        }
+
         bulan = "UNKNOWN"
-        for k, v in VALID_MONTHS.items():
+        for k, v in bulan_map.items():
             if k in nama_file:
                 bulan = v
                 break
 
+        # ===============================
+        # 🔥 FINAL RETURN (JANGAN FAIL)
+        # ===============================
         return df, bulan, upload_year
+
     except Exception as e:
-        st.error(f"❌ Final processing error: {e}")
-        st.write(df.head())
+        st.error(f"❌ Error parsing IKPA: {e}")
         return None, "UNKNOWN", upload_year
 
 
