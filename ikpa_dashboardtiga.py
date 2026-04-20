@@ -2100,19 +2100,6 @@ VALID_MONTHS = {
 
 
 def post_process_ikpa_satker(df, source="Upload"):
-    
-    # ======================
-    # 🔥 FIX UTAMA: SIMPAN KE SESSION
-    # ======================
-    if "data_storage" not in st.session_state:
-        st.session_state.data_storage = {}
-
-    st.session_state.data_storage[(month, str(year))] = df_final.copy()
-
-    # DEBUG
-    st.write("✅ DATA MASUK STORAGE:", (month, str(year)))
-    st.write("📦 TOTAL DATA STORAGE:", len(st.session_state.data_storage))
-
     df = df.copy()
 
     # =========================
