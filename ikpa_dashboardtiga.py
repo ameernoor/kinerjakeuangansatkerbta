@@ -928,100 +928,93 @@ def fix_ikpa_header(df_raw):
     for i in range(min(10, len(df_raw))):
         row = df_raw.iloc[i].astype(str).str.upper()
 
-        if row.str.contains("KODE").any() and row.str.contains("SATKER").any():
-
+        if "KODE SATKER" in row.to_string():
             header_row = i
 
             header1 = df_raw.iloc[header_row]
             header2 = df_raw.iloc[header_row + 1]
 
-            new_columns = []
+            cols = []
 
             for h1, h2 in zip(header1, header2):
+
                 h1 = str(h1).strip()
                 h2 = str(h2).strip()
 
-                if h2 not in ["nan", "None"]:
-                    col = f"{h1} {h2}"
+                col = ""
+
+                # ===============================
+                # 🔥 MAPPING FIX SESUAI FILE ASLI
+                # ===============================
+
+                if "KODE SATKER" in h1.upper():
+                    col = "Kode Satker"
+
+                elif "URAIAN SATKER" in h1.upper():
+                    col = "Uraian Satker"
+
+                elif "KODE KPPN" in h1.upper():
+                    col = "Kode KPPN"
+
+                elif "KODE BA" in h1.upper():
+                    col = "Kode BA"
+
+                elif "PERIODE" in h1.upper():
+                    col = "Periode"
+
+                elif "REVISI" in h2.upper():
+                    col = "Revisi DIPA"
+
+                elif "DEVIASI" in h2.upper():
+                    col = "Deviasi Halaman III DIPA"
+
+                elif "PENYERAPAN" in h2.upper():
+                    col = "Penyerapan Anggaran"
+
+                elif "BELANJA" in h2.upper():
+                    col = "Belanja Kontraktual"
+
+                elif "TAGIHAN" in h2.upper():
+                    col = "Penyelesaian Tagihan"
+
+                elif "OUTPUT" in h2.upper():
+                    col = "Capaian Output"
+
+                elif "NILAI AKHIR" in h1.upper():
+                    col = "Nilai Akhir (Nilai Total/Konversi Bobot)"
+
+                elif "NILAI TOTAL" in h1.upper():
+                    col = "Nilai Total"
+
+                elif "BOBOT" in h1.upper():
+                    col = "Konversi Bobot"
+
+                elif "DISPENSASI" in h1.upper():
+                    col = "Dispensasi SPM (Pengurangan)"
+
+                elif "KETERANGAN" in h1.upper():
+                    col = "Keterangan"
+
+                elif "NO" in h1.upper():
+                    col = "No"
+
                 else:
-                    col = h1
-
-                col = col.replace("nan", "").replace("None", "").strip()
-                new_columns.append(col)
-
-            df = df_raw.iloc[header_row + 2:].copy()
-            df.columns = new_columns
-            df = df.reset_index(drop=True)
-
-            # ===============================
-            # 🔥 FIX KOLOM DUPLIKAT (WAJIB)
-            # ===============================
-            cols = []
-            seen = {}
-
-            for col in df.columns:
-                col = str(col).strip()
-
-                if col in seen:
-                    seen[col] += 1
-                    col = f"{col}_{seen[col]}"
-                else:
-                    seen[col] = 0
+                    col = f"IGNORE_{len(cols)}"
 
                 cols.append(col)
 
+            df = df_raw.iloc[header_row + 2:].copy()
             df.columns = cols
+            df = df.reset_index(drop=True)
 
             # ===============================
-            # 🔥 NORMALISASI NAMA KOLOM
+            # 🔥 DROP KOLOM SAMPAH
             # ===============================
-            rename_map = {}
-
-            for col in df.columns:
-                c = col.upper()
-
-                if "KODE SATKER" in c:
-                    rename_map[col] = "Kode Satker"
-
-                elif "URAIAN SATKER" in c:
-                    rename_map[col] = "Uraian Satker"
-
-                elif "REVISI" in c:
-                    rename_map[col] = "Revisi DIPA"
-
-                elif "DEVIASI" in c:
-                    rename_map[col] = "Deviasi Halaman III DIPA"
-
-                elif "PENYERAPAN" in c:
-                    rename_map[col] = "Penyerapan Anggaran"
-
-                elif "BELANJA" in c:
-                    rename_map[col] = "Belanja Kontraktual"
-
-                elif "TAGIHAN" in c:
-                    rename_map[col] = "Penyelesaian Tagihan"
-
-                elif "OUTPUT" in c:
-                    rename_map[col] = "Capaian Output"
-
-                elif "NILAI AKHIR" in c:
-                    rename_map[col] = "Nilai Akhir (Nilai Total/Konversi Bobot)"
-
-                elif "NILAI TOTAL" in c:
-                    rename_map[col] = "Nilai Total"
-
-                elif "BOBOT" in c:
-                    rename_map[col] = "Konversi Bobot"
-
-            df = df.rename(columns=rename_map)
-
-            # bersihkan spasi ganda
-            df.columns = [c.replace("  ", " ").strip() for c in df.columns]
+            df = df[[c for c in df.columns if not c.startswith("IGNORE")]]
 
             return df
 
     st.error("❌ HEADER IKPA TIDAK DITEMUKAN")
-    st.write(df_raw.head(10))
     return None
     
 
