@@ -9368,7 +9368,7 @@ def page_admin():
                             # ======================
                             # POST PROCESS
                             # ======================
-                            df_final = post_process_ikpa_satker(df_final)
+                            df = post_process_ikpa_satker(df)
 
                             # ======================
                             # 🔥 SIMPAN KE SESSION (FIX UTAMA)
