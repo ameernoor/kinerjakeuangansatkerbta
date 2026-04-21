@@ -1068,45 +1068,29 @@ def fix_ikpa_header(df_raw):
 
     return None
 
-def detect_column_positions(df_raw):
+def detect_columns(df_raw):
     
-    header_row = df_raw.iloc[2].astype(str).str.upper()
+    header = df_raw.iloc[2].astype(str).str.upper()
 
     col_map = {}
 
-    for i, col in enumerate(header_row):
+    for i, col in enumerate(header):
 
         if "REVISI" in col:
             col_map["revisi"] = i
-
         elif "DEVIASI" in col:
             col_map["deviasi"] = i
-
         elif "PENYERAPAN" in col:
             col_map["serapan"] = i
-
         elif "KONTRAK" in col:
             col_map["kontrak"] = i
-
         elif "TAGIHAN" in col:
             col_map["tagihan"] = i
-
         elif "OUTPUT" in col:
             col_map["output"] = i
 
-        elif "NILAI TOTAL" in col:
-            col_map["total"] = i
-
-        elif "KONVERSI" in col:
-            col_map["bobot"] = i
-
-        elif "DISPENSASI" in col:
-            col_map["dispensasi"] = i
-
-        elif "AKHIR" in col:
-            col_map["akhir"] = i
-
     return col_map
+
 
 def safe_get(row, idx):
     try:
@@ -2230,9 +2214,9 @@ def process_excel_file(uploaded_file, upload_year):
         month_text = str(df_raw.iloc[1, 0])
         month_raw = month_text.split(":")[-1].strip().upper()
     except:
-        month_raw = "JULI"
+        month_raw = "UNKNOWN"
 
-    month = VALID_MONTHS.get(month_raw, "JULI")
+    month = VALID_MONTHS.get(month_raw, "UNKNOWN")
 
     # ===============================
     # DATA MULAI BARIS KE-5
@@ -2254,11 +2238,11 @@ def process_excel_file(uploaded_file, upload_year):
 
         nilai = df_data.iloc[i]
         bobot = df_data.iloc[i + 1]
-        nilai_akhir = df_data.iloc[i + 2]
+        nilai_akhir_row = df_data.iloc[i + 2]
         nilai_aspek = df_data.iloc[i + 3]
 
         # ===============================
-        # 🔥 FIX KODE SATKER (ANTI ERROR FORMAT)
+        # 🔥 FIX KODE SATKER (FLEKSIBEL)
         # ===============================
         kode_satker_raw = str(nilai[3])
         kode_satker = re.sub(r"\D", "", kode_satker_raw)
@@ -2266,9 +2250,6 @@ def process_excel_file(uploaded_file, upload_year):
 
         uraian_satker = str(nilai[4]).strip()
 
-        # ===============================
-        # FILTER VALID (FLEKSIBEL)
-        # ===============================
         if (
             kode_satker == ""
             or kode_satker == "000000"
@@ -2278,30 +2259,27 @@ def process_excel_file(uploaded_file, upload_year):
             continue
 
         # ===============================
-        # 🔥 HITUNG ASPEK (ANTI FORMAT BERUBAH)
+        # 🔥 KUALITAS (PAKAI NILAI_ASPEK — PALING BENAR)
         # ===============================
-        kualitas_perencanaan = (
-            safe_get(nilai, 6) + safe_get(nilai, 7)
-        )
+        kualitas_perencanaan = safe_get(nilai_aspek, 6)
+        kualitas_pelaksanaan = safe_get(nilai_aspek, 8)
+        kualitas_hasil = safe_get(nilai_aspek, 12)
 
-        kualitas_pelaksanaan = (
-            safe_get(nilai, 8)
-            + safe_get(nilai, 9)
-            + safe_get(nilai, 10)
-            + safe_get(nilai, 11)
-        )
+        # ===============================
+        # 🔥 DETAIL INDIKATOR (PAKAI NILAI)
+        # ===============================
+        revisi = safe_get(nilai, 6)
+        deviasi = safe_get(nilai, 7)
+        serapan = safe_get(nilai, 8)
+        kontrak = safe_get(nilai, 9)
+        tagihan = safe_get(nilai, 10)
+        pengelolaan_up = safe_get(nilai, 11)
+        output = safe_get(nilai, 12)
 
-        kualitas_hasil = safe_get(nilai, 12)
-
-        # 🔥 FALLBACK WAJIB (Maret 2026 fix)
-        if kualitas_perencanaan == 0:
-            kualitas_perencanaan = safe_get(nilai_aspek, 6)
-
-        if kualitas_pelaksanaan == 0:
-            kualitas_pelaksanaan = safe_get(nilai_aspek, 8)
-
-        if kualitas_hasil == 0:
-            kualitas_hasil = safe_get(nilai_aspek, 12)
+        total = safe_get(nilai, 13)
+        bobot_val = safe_get(nilai, 14)
+        dispensasi = safe_get(nilai, 15)
+        nilai_akhir = safe_get(nilai, 16)
 
         # ===============================
         # 🔥 BUILD ROW
@@ -2317,21 +2295,18 @@ def process_excel_file(uploaded_file, upload_year):
             "Kualitas Pelaksanaan Anggaran": kualitas_pelaksanaan,
             "Kualitas Hasil Pelaksanaan Anggaran": kualitas_hasil,
 
-            "Revisi DIPA": safe_get(nilai, 6),
-            "Deviasi Halaman III DIPA": safe_get(nilai, 7),
-            "Penyerapan Anggaran": safe_get(nilai, 8),
-            "Belanja Kontraktual": safe_get(nilai, 9),
-            "Penyelesaian Tagihan": safe_get(nilai, 10),
-            "Pengelolaan UP dan TUP": safe_get(nilai, 11),
-            "Capaian Output": safe_get(nilai, 12),
+            "Revisi DIPA": revisi,
+            "Deviasi Halaman III DIPA": deviasi,
+            "Penyerapan Anggaran": serapan,
+            "Belanja Kontraktual": kontrak,
+            "Penyelesaian Tagihan": tagihan,
+            "Pengelolaan UP dan TUP": pengelolaan_up,
+            "Capaian Output": output,
 
-            "Nilai Total": safe_get(nilai, 13),
-            "Konversi Bobot": safe_get(nilai, 14),
-
-            # 🔥 FIX NAMA KOLOM
-            "Dispensasi SPM (Pengurangan)": safe_get(nilai, 15),
-
-            "Nilai Akhir (Nilai Total/Konversi Bobot)": safe_get(nilai, 16),
+            "Nilai Total": total,
+            "Konversi Bobot": bobot_val,
+            "Dispensasi SPM (Pengurangan)": dispensasi,
+            "Nilai Akhir (Nilai Total/Konversi Bobot)": nilai_akhir,
 
             "Bulan": month,
             "Tahun": upload_year
