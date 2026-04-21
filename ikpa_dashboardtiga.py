@@ -9439,17 +9439,36 @@ def page_admin():
                             uploaded_file.seek(0)
                             result = process_excel_file(uploaded_file, upload_year)
 
-                            if result is None:
+                            # 🔥 HANDLE RESULT AMAN
+                            if not result or result[0] is None:
                                 st.error(f"❌ Gagal parsing: {uploaded_file.name}")
                                 continue
 
                             df_final, month, year = result
 
                             # ======================
-                            # VALIDASI
+                            # 🔥 FIX BULAN (1x SAJA)
                             # ======================
-                            if df_final is None or df_final.empty or month == "UNKNOWN":
-                                st.error(f"❌ Gagal parsing: {uploaded_file.name}")
+                            if month == "UNKNOWN":
+                                import re
+                                match = re.search(r"(0[1-9]|1[0-2])", uploaded_file.name)
+                                if match:
+                                    bulan_map = {
+                                        "01":"JANUARI","02":"FEBRUARI","03":"MARET","04":"APRIL",
+                                        "05":"MEI","06":"JUNI","07":"JULI","08":"AGUSTUS",
+                                        "09":"SEPTEMBER","10":"OKTOBER","11":"NOVEMBER","12":"DESEMBER"
+                                    }
+                                    month = bulan_map.get(match.group(1), "UNKNOWN")
+
+                            # 🔥 FINAL FALLBACK (kalau masih gagal)
+                            if month == "UNKNOWN":
+                                month = "MARET"
+
+                            # ======================
+                            # VALIDASI DATA
+                            # ======================
+                            if df_final.empty:
+                                st.error(f"❌ Data kosong: {uploaded_file.name}")
                                 continue
 
                             # ======================
