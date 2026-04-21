@@ -1087,7 +1087,6 @@ def fix_dipa_header(df_raw):
 
     # fallback keras (biar tidak hancur)
     st.error("❌ HEADER DIPA TIDAK DITEMUKAN")
-    st.write(df_raw.head(10))
     st.stop()
 
 
@@ -1098,11 +1097,6 @@ def standardize_dipa(df_raw):
 
     df = df_raw.copy()
     df.columns = [str(c).strip() for c in df.columns]
-
-    # ===============================
-    # 🔥 DEBUG KOLOM (WAJIB)
-    # ===============================
-    st.write("🧾 KOLOM ASLI DIPA:", list(df.columns))
 
     # ===============================
     # 🔥 FIND COL (VERSI KUAT)
@@ -1141,7 +1135,6 @@ def standardize_dipa(df_raw):
                 col_pagu = c
                 break
 
-    st.write("🔍 KOLOM PAGU TERDETEKSI:", col_pagu)
 
     col_tanggal_revisi = find_col([
         "Tanggal Posting Revisi",
@@ -2145,14 +2138,8 @@ def process_excel_file(uploaded_file, upload_year):
         # ===============================
         if df is None or df.empty:
             st.error("❌ File tidak bisa diproses (header tidak terbaca)")
-            st.write(df_raw.head(10))
             return None, "UNKNOWN", upload_year
 
-        # ===============================
-        # 🔥 DEBUG AWAL
-        # ===============================
-        st.write("🧾 KOLOM IKPA:", df.columns.tolist())
-        st.write("📊 JUMLAH DATA AWAL:", len(df))
 
         # ===============================
         # 🔥 VALIDASI KOLOM WAJIB
@@ -2185,7 +2172,6 @@ def process_excel_file(uploaded_file, upload_year):
 
         df = df.reset_index(drop=True)
 
-        st.write("🧹 Data setelah filter IKPA:", len(df))
 
         # ===============================
         # 🔥 VALIDASI HASIL FILTER
@@ -2195,7 +2181,6 @@ def process_excel_file(uploaded_file, upload_year):
             return None, "UNKNOWN", upload_year
 
         jumlah_satker = df["Kode Satker"].nunique()
-        st.write(f"📊 IKPA SATKER TERBACA: {jumlah_satker}")
 
         if jumlah_satker < 10:
             st.warning("⚠️ Satker sedikit, tapi tetap diproses")
@@ -2231,14 +2216,6 @@ def process_excel_file(uploaded_file, upload_year):
                 if k in nama_file:
                     bulan = v
                     break
-
-        st.write("📅 BULAN TERDETEKSI:", bulan)
-
-        # ===============================
-        # 🔥 DEBUG FINAL
-        # ===============================
-        st.write("✅ DATA FINAL SHAPE:", df.shape)
-        st.write("✅ KOLOM FINAL:", df.columns.tolist())
 
         # ===============================
         # 🔥 RETURN FINAL
@@ -2331,7 +2308,6 @@ def post_process_ikpa_satker(df, source="Upload"):
 
     df = df.reset_index(drop=True)
 
-    st.write("🧹 Data setelah filter:", len(df))
 
     # =========================
     # 🔥 FIX NILAI IKPA
@@ -3004,8 +2980,6 @@ def load_data_from_github(_cache_buster: int = 0):
 
     contents = get_all_files(repo, "data")
 
-    # 🔥 DEBUG
-    st.write("📂 FILE DARI GITHUB:", [f.name for f in contents])
 
     if not contents:
         st.warning("⚠️ Folder 'data' kosong di GitHub")
@@ -3926,7 +3900,6 @@ def merge_ikpa_with_dipa(df):
     # ===============================
     if "Total Pagu" not in df_dipa.columns:
         st.error("❌ Merge gagal: kolom 'Total Pagu' tidak ditemukan di DIPA")
-        st.write("Kolom DIPA:", df_dipa.columns.tolist())
         st.stop()
 
     # ===============================
@@ -3935,18 +3908,12 @@ def merge_ikpa_with_dipa(df):
     df["Kode Satker"] = df["Kode Satker"].apply(normalize_kode_satker)
     df_dipa["Kode Satker"] = df_dipa["Kode Satker"].apply(normalize_kode_satker)
 
-    # ===============================
-    #  FIX 3: DEBUG CEPAT
-    # ===============================
-    st.write("Jumlah Satker IKPA:", df["Kode Satker"].nunique())
-    st.write("Jumlah Satker DIPA:", df_dipa["Kode Satker"].nunique())
 
     # ===============================
     #  SAFETY KOLOM PAGU
     # ===============================
     if "Total Pagu" not in df_dipa.columns:
         st.error("❌ Kolom 'Total Pagu' tidak ditemukan saat merge")
-        st.write("Kolom DIPA:", df_dipa.columns.tolist())
         st.stop()
 
     # ===============================
@@ -9008,7 +8975,6 @@ def merge_ikpa_dipa_auto():
         # ===============================
         if "Total Pagu" not in dipa_df.columns:
             st.error("❌ DIPA tidak memiliki kolom Total Pagu")
-            st.write("Kolom tersedia:", dipa_df.columns.tolist())
             st.stop()
 
         dipa_df["Total Pagu"] = (
@@ -9045,7 +9011,6 @@ def merge_ikpa_dipa_auto():
 
         if "Kode Satker" not in df_ikpa.columns:
             st.error(f"❌ IKPA tidak punya kolom 'Kode Satker' ({bulan}-{tahun})")
-            st.write("Kolom IKPA:", df_ikpa.columns.tolist())
             continue
 
         # 🔥 NORMALISASI SATKER AWAL
@@ -9059,12 +9024,10 @@ def merge_ikpa_dipa_auto():
 
         jumlah_satker = df_ikpa["Kode Satker"].nunique()
 
-        st.write(f"📊 IKPA {bulan}-{tahun} jumlah satker:", jumlah_satker)
 
         # 🔥 FILTER DATA RUSAK
         if jumlah_satker < 20:
             st.error(f"❌ IKPA tidak normal (hanya {jumlah_satker} satker) → SKIP")
-            st.write(df_ikpa.head())
             continue
 
         if df_ikpa is None or df_ikpa.empty:
@@ -9079,7 +9042,6 @@ def merge_ikpa_dipa_auto():
         # ===============================
         if "Total Pagu" not in dipa.columns:
             st.error("❌ Kolom 'Total Pagu' hilang sebelum merge")
-            st.write("Kolom DIPA saat ini:", dipa.columns.tolist())
             st.stop()
 
         # cek isi
@@ -9087,9 +9049,6 @@ def merge_ikpa_dipa_auto():
             st.error("❌ Semua nilai 'Total Pagu' kosong")
             st.stop()
             
-        if dipa is not None:
-            st.write("📊 DEBUG DIPA SAMPLE:", dipa.head())
-            st.write("📊 KOLOM DIPA:", dipa.columns.tolist())
 
         # fallback ke tahun terdekat
         if dipa is None:
@@ -9164,11 +9123,6 @@ def merge_ikpa_dipa_auto():
             errors="ignore"
         )
 
-        # ===============================
-        # 🔥 DEBUG MATCH
-        # ===============================
-        match_ratio = df_merged["Total Pagu"].notna().mean()
-        st.write(f"📊 {bulan}-{tahun} Match Ratio:", round(match_ratio, 3))
 
         # ===============================
         # 🔥 FINAL CLEAN
@@ -9380,15 +9334,6 @@ def page_admin():
                     for uploaded_file in uploaded_files:
                         try:
                             # ======================
-                            # 🔍 PREVIEW RAW
-                            # ======================
-                            uploaded_file.seek(0)
-                            preview = pd.read_excel(uploaded_file, header=None)
-
-                            st.write("📄 PREVIEW RAW:", uploaded_file.name)
-                            st.write(preview.head(5))
-
-                            # ======================
                             # 🔄 PROSES FILE
                             # ======================
                             uploaded_file.seek(0)
@@ -9456,10 +9401,6 @@ def page_admin():
                         except Exception as e:
                             st.error(f"❌ ERROR FILE {uploaded_file.name}: {e}")
 
-                    # ======================
-                    # 🔥 CEK STORAGE
-                    # ======================
-                    st.write("📦 TOTAL DATA STORAGE:", len(st.session_state.data_storage))
 
                     if success_count == 0:
                         st.error("❌ Tidak ada file yang berhasil diproses")
@@ -10834,13 +10775,9 @@ def page_admin():
             g = Github(auth=Auth.Token(token))
             repo = g.get_repo(repo_name)
             
-            # 🔥 DEBUG PATH
-            st.write("DEBUG PATH:", "Data IKPA KPPN")
 
             files_kppn = get_all_kppn_files(repo)
             
-            # 🔥 DEBUG JUMLAH FILE
-            st.write("Jumlah file ditemukan:", len(files_kppn))
 
         except Exception:
             files_kppn = []
