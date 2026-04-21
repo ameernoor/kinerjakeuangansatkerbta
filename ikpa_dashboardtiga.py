@@ -3045,7 +3045,7 @@ def load_data_from_github(_cache_buster: int = 0):
             # ===============================
             # POST PROCESS
             # ===============================
-            df = post_process_ikpa_satker(df)
+            df_final = post_process_ikpa_satker(df_final)
 
             # ===============================
             # METADATA
