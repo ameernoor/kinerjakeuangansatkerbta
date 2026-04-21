@@ -1067,6 +1067,30 @@ def fix_ikpa_header(df_raw):
         return None
 
     return None
+
+def ensure_ikpa_columns(df):
+    import numpy as np
+
+    required_cols = [
+        "No", "Periode", "Kode KPPN", "Kode BA", "Kode Satker",
+        "Uraian Satker", "Keterangan",
+        "Revisi DIPA", "Deviasi Halaman III DIPA",
+        "Nilai Aspek Perencanaan",
+        "Penyerapan Anggaran", "Belanja Kontraktual",
+        "Penyelesaian Tagihan",
+        "Nilai Aspek Pelaksanaan",
+        "Capaian Output",
+        "Nilai Aspek Hasil",
+        "Nilai Total", "Konversi Bobot",
+        "Dispensasi SPM (Pengurangan)",
+        "Nilai Akhir (Nilai Total/Konversi Bobot)"
+    ]
+
+    for col in required_cols:
+        if col not in df.columns:
+            df[col] = np.nan
+
+    return df
     
 
 def fix_dipa_header(df_raw):
@@ -3045,7 +3069,8 @@ def load_data_from_github(_cache_buster: int = 0):
             # ===============================
             # POST PROCESS
             # ===============================
-            df_final = post_process_ikpa_satker(df_final)
+            df = post_process_ikpa_satker(df)
+            df = ensure_ikpa_columns(df)
 
             # ===============================
             # METADATA
