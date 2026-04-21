@@ -2167,115 +2167,108 @@ def process_excel_digipay(uploaded_file, upload_year):
 
 def process_excel_file(uploaded_file, upload_year):
     
-    import re
+    import pandas as pd
 
+    df_raw = pd.read_excel(uploaded_file, header=None)
+
+    # ===============================
+    # AMBIL BULAN
+    # ===============================
     try:
-        # ===============================
-        # 🔥 BACA FILE
-        # ===============================
-        df_raw = pd.read_excel(uploaded_file, header=None)
+        month_text = str(df_raw.iloc[1, 0])
+        month_raw = month_text.split(":")[-1].strip().upper()
+    except:
+        month_raw = "JULI"
 
-        # ===============================
-        # 🔥 FIX HEADER
-        # ===============================
+    month = VALID_MONTHS.get(month_raw, "JULI")
+
+    # ===============================
+    # DATA MULAI BARIS KE-5
+    # ===============================
+    df_data = df_raw.iloc[4:].reset_index(drop=True)
+
+    processed_rows = []
+
+    def safe_get(row, idx):
         try:
-            df = fix_ikpa_header(df_raw)
-        except Exception as e:
-            st.error(f"❌ ERROR FILE: {e}")
-            return None, "UNKNOWN", upload_year
+            val = row[idx]
+            return float(str(val).replace(",", "."))
+        except:
+            return 0
+
+    i = 0
+
+    while i + 3 < len(df_data):
+
+        nilai = df_data.iloc[i]
+        bobot = df_data.iloc[i + 1]
+        nilai_akhir = df_data.iloc[i + 2]
+        nilai_aspek = df_data.iloc[i + 3]
+
+        kode_satker = str(nilai[3]).strip("'").strip()
+        uraian_satker = str(nilai[4]).strip()
+
+        # FILTER VALID
+        if (
+            not kode_satker.isdigit()
+            or len(kode_satker) != 6
+            or kode_satker == "000000"
+            or uraian_satker.upper() in ["NILAI", "BOBOT", "NILAI AKHIR"]
+        ):
+            i += 4
+            continue
 
         # ===============================
-        # 🔥 VALIDASI HASIL PARSING
+        # HITUNG ASPEK (TIDAK TERGANTUNG INDEX)
         # ===============================
-        if df is None or df.empty:
-            st.error("❌ File tidak bisa diproses (header tidak terbaca)")
-            return None, "UNKNOWN", upload_year
-
-
-        # ===============================
-        # 🔥 VALIDASI KOLOM WAJIB
-        # ===============================
-        if "Kode Satker" not in df.columns:
-            st.error("❌ Kolom Kode Satker tidak ada")
-            return None, "UNKNOWN", upload_year
-
-        # ===============================
-        # 🔥 NORMALISASI KODE SATKER
-        # ===============================
-        df["Kode Satker"] = (
-            df["Kode Satker"]
-            .astype(str)
-            .str.extract(r"(\d+)")[0]
-            .fillna("")
-            .str.zfill(6)
+        kualitas_perencanaan = (
+            safe_get(nilai, 6) + safe_get(nilai, 7)
         )
 
-        # ===============================
-        # 🔥 FILTER DATA VALID
-        # ===============================
-        df = df[
-            (df["Kode Satker"] != "") &
-            (df["Kode Satker"] != "000000")
-        ]
+        kualitas_pelaksanaan = (
+            safe_get(nilai, 8)
+            + safe_get(nilai, 9)
+            + safe_get(nilai, 10)
+            + safe_get(nilai, 11)
+        )
 
-        if "Keterangan" in df.columns:
-            df = df[df["Keterangan"].astype(str).str.upper() == "NILAI"]
+        kualitas_hasil = safe_get(nilai, 12)
 
-        df = df.reset_index(drop=True)
+        row = {
+            "No": nilai[0],
+            "Kode KPPN": str(nilai[1]).strip("'"),
+            "Kode BA": str(nilai[2]).strip("'"),
+            "Kode Satker": kode_satker,
+            "Uraian Satker": uraian_satker,
 
+            #  HASIL ASPEK (AMAN)
+            "Kualitas Perencanaan Anggaran": kualitas_perencanaan,
+            "Kualitas Pelaksanaan Anggaran": kualitas_pelaksanaan,
+            "Kualitas Hasil Pelaksanaan Anggaran": kualitas_hasil,
 
-        # ===============================
-        # 🔥 VALIDASI HASIL FILTER
-        # ===============================
-        if df.empty:
-            st.error("❌ Data kosong setelah filter")
-            return None, "UNKNOWN", upload_year
+            "Revisi DIPA": safe_get(nilai, 6),
+            "Deviasi Halaman III DIPA": safe_get(nilai, 7),
+            "Penyerapan Anggaran": safe_get(nilai, 8),
+            "Belanja Kontraktual": safe_get(nilai, 9),
+            "Penyelesaian Tagihan": safe_get(nilai, 10),
+            "Pengelolaan UP dan TUP": safe_get(nilai, 11),
+            "Capaian Output": safe_get(nilai, 12),
 
-        jumlah_satker = df["Kode Satker"].nunique()
+            "Nilai Total": safe_get(nilai, 13),
+            "Konversi Bobot": safe_get(nilai, 14),
+            "Dispensasi SPM (Pengurang)": safe_get(nilai, 15),
+            "Nilai Akhir (Nilai Total/Konversi Bobot)": safe_get(nilai, 16),
 
-        if jumlah_satker < 10:
-            st.warning("⚠️ Satker sedikit, tapi tetap diproses")
+            "Bulan": month,
+            "Tahun": upload_year
+        }
 
-        # ===============================
-        # 🔥 DETEKSI BULAN
-        # ===============================
-        nama_file = uploaded_file.name.upper()
-        bulan = "UNKNOWN"
+        processed_rows.append(row)
+        i += 4
 
-        # PRIORITAS ANGKA
-        match = re.search(r"\b(0[1-9]|1[0-2])\b", nama_file)
+    df_final = pd.DataFrame(processed_rows)
 
-        if match:
-            bulan_map_num = {
-                "01": "JANUARI", "02": "FEBRUARI", "03": "MARET",
-                "04": "APRIL", "05": "MEI", "06": "JUNI",
-                "07": "JULI", "08": "AGUSTUS", "09": "SEPTEMBER",
-                "10": "OKTOBER", "11": "NOVEMBER", "12": "DESEMBER"
-            }
-            bulan = bulan_map_num.get(match.group(1), "UNKNOWN")
-
-        # PRIORITAS TEKS
-        if bulan == "UNKNOWN":
-            bulan_map_text = {
-                "JAN": "JANUARI", "FEB": "FEBRUARI", "MAR": "MARET",
-                "APR": "APRIL", "MEI": "MEI", "JUN": "JUNI",
-                "JUL": "JULI", "AGU": "AGUSTUS", "SEP": "SEPTEMBER",
-                "OKT": "OKTOBER", "NOV": "NOVEMBER", "DES": "DESEMBER"
-            }
-
-            for k, v in bulan_map_text.items():
-                if k in nama_file:
-                    bulan = v
-                    break
-
-        # ===============================
-        # 🔥 RETURN FINAL
-        # ===============================
-        return df, bulan, upload_year
-
-    except Exception as e:
-        st.error(f"❌ Error parsing IKPA: {e}")
-        return None, "UNKNOWN", upload_year
+    return df_final, month, upload_year
     
 
 VALID_MONTHS = {
