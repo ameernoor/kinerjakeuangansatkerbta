@@ -563,6 +563,7 @@ def render_table_pin_satker(df):
         "Penyelesaian Tagihan",
         "Pengelolaan UP dan TUP",
         "Capaian Output",
+        "Dispensasi SPM (Pengurangan)",
         "Dispensasi SPM (Pengurang)",
         "Nilai Akhir (Nilai Total/Konversi Bobot)"
     ]
@@ -1100,23 +1101,31 @@ def safe_get(row, idx):
 
 
 def normalize_ikpa_columns(df):
-    
+
     rename_map = {
-        # 🔥 ASPEK
+        # ASPEK (dari format lama yang pakai nama berbeda)
         "Nilai Aspek Perencanaan": "Kualitas Perencanaan Anggaran",
         "Nilai Aspek Pelaksanaan": "Kualitas Pelaksanaan Anggaran",
         "Nilai Aspek Hasil": "Kualitas Hasil Pelaksanaan Anggaran",
 
-        # 🔥 URAIAN
+        # URAIAN — semua variannya dipetakan ke Uraian Satker-RINGKAS
         "Uraian Satker": "Uraian Satker-RINGKAS",
+        "Uraian Satker Final": "Uraian Satker-RINGKAS",
 
-        # 🔥 DISPENSASI (INI YANG KAMU BUTUH)
-        "Dispensasi SPM (Pengurang)": "Dispensasi SPM (Pengurangan)",
-        "Dispensasi SPM Pengurang": "Dispensasi SPM (Pengurangan)",
-        "Dispensasi SPM Pengurangan": "Dispensasi SPM (Pengurangan)"
+        # DISPENSASI
+        "Dispensasi SPM (Pengurang)":   "Dispensasi SPM (Pengurangan)",
+        "Dispensasi SPM Pengurang":     "Dispensasi SPM (Pengurangan)",
+        "Dispensasi SPM Pengurangan":   "Dispensasi SPM (Pengurangan)",
     }
 
     df = df.rename(columns={k: v for k, v in rename_map.items() if k in df.columns})
+
+    # Jika Uraian Satker-RINGKAS masih belum ada tapi ada kolom lain yang bisa dipakai
+    if "Uraian Satker-RINGKAS" not in df.columns:
+        for fallback in ["SATKER", "Satker", "Nama Satker"]:
+            if fallback in df.columns:
+                df["Uraian Satker-RINGKAS"] = df[fallback].astype(str)
+                break
 
     return df
 
@@ -2201,121 +2210,201 @@ def process_excel_digipay(uploaded_file, upload_year):
 
 
 def process_excel_file(uploaded_file, upload_year):
-    
+    """
+    Parser IKPA Satker universal — mendeteksi otomatis format:
+      • Format LAMA (≤2025): 4 baris per satker (NILAI, BOBOT, NILAI AKHIR, NILAI ASPEK)
+        - Kode Satker di col 3, Uraian di col 4, indikator mulai col 6
+        - Kualitas Aspek dibaca dari baris ke-4 (nilai_aspek)
+      • Format BARU (2026+): 3 baris per satker (NILAI, BOBOT, NILAI AKHIR)
+        - Kode Satker di col 4, Kode BA di col 3, Uraian di col 5, Kode KPPN di col 2
+        - Semua indikator + Nilai Aspek ada di baris NILAI (col 7–20)
+    """
     import pandas as pd
     import re
 
     df_raw = pd.read_excel(uploaded_file, header=None)
 
     # ===============================
-    # AMBIL BULAN
+    # DETEKSI BULAN dari baris header
     # ===============================
-    try:
-        month_text = str(df_raw.iloc[1, 0])
-        month_raw = month_text.split(":")[-1].strip().upper()
-    except:
-        month_raw = "UNKNOWN"
+    month = "UNKNOWN"
+    for ri in range(min(5, len(df_raw))):
+        for ci in range(min(5, df_raw.shape[1])):
+            cell = str(df_raw.iloc[ri, ci]).upper().strip()
+            if cell in VALID_MONTHS:
+                month = VALID_MONTHS[cell]
+                break
+        if month != "UNKNOWN":
+            break
 
-    month = VALID_MONTHS.get(month_raw, "UNKNOWN")
+    if month == "UNKNOWN":
+        try:
+            month_text = str(df_raw.iloc[1, 0])
+            month_raw = month_text.split(":")[-1].strip().upper()
+            month = VALID_MONTHS.get(month_raw, "UNKNOWN")
+        except:
+            pass
 
     # ===============================
-    # DATA MULAI BARIS KE-5
+    # DATA MULAI BARIS KE-5 (index 4)
     # ===============================
     df_data = df_raw.iloc[4:].reset_index(drop=True)
 
+    # ===============================
+    # DETEKSI FORMAT: 3-baris vs 4-baris
+    # Cek apakah ada baris ke-4 dengan label 'NILAI ASPEK' atau 'ASPEK'
+    # dalam 12 baris pertama data
+    # ===============================
+    is_3row_format = True  # default: format 2026 (3 baris)
+    check_limit = min(12, len(df_data))
+    for ri in range(check_limit):
+        cell = str(df_data.iloc[ri, 6]).upper().strip() if df_data.shape[1] > 6 else ""
+        if "ASPEK" in cell and "NILAI" in cell:
+            is_3row_format = False
+            break
+
+    def safe_num(val):
+        """Convert Indonesian decimal format (comma) to float."""
+        try:
+            s = str(val).strip().replace("%", "")
+            if "," in s:
+                s = s.replace(".", "").replace(",", ".")
+            s = re.sub(r"[^\d.\-]", "", s)
+            return float(s) if s not in ("", "-") else 0.0
+        except:
+            return 0.0
+
     processed_rows = []
 
-    def safe_get(row, idx):
-        try:
-            val = row[idx]
-            return float(str(val).replace(",", "."))
-        except:
-            return 0
+    # ===============================
+    # FORMAT BARU 2026: 3 baris per satker
+    # Header row 2: NO | Periode | Kode KPPN | Kode BA | Kode Satker | Uraian Satker | Keterangan
+    #               | RevisiDIPA(7) | Deviasi(8) | NilaiAspekPerencanaan(9)
+    #               | Penyerapan(10) | Kontraktual(11) | Tagihan(12) | UP/TUP(13) | NilaiAspekPelaksanaan(14)
+    #               | CapaianOutput(15) | NilaiAspekHasil(16)
+    #               | NilaiTotal(17) | KonversBobot(18) | Dispensasi(19) | NilaiAkhir(20)
+    # ===============================
+    if is_3row_format:
+        i = 0
+        while i < len(df_data):
+            nilai = df_data.iloc[i]
 
-    i = 0
+            # Pastikan ini baris NILAI (keterangan col 6)
+            keterangan = str(nilai[6]).upper().strip() if df_data.shape[1] > 6 else ""
+            if keterangan != "NILAI":
+                i += 1
+                continue
 
-    while i + 3 < len(df_data):
+            # Kode Satker di col 4
+            kode_satker_raw = str(nilai[4]).strip()
+            kode_satker = re.sub(r"\D", "", kode_satker_raw).zfill(6)
 
-        nilai = df_data.iloc[i]
-        bobot = df_data.iloc[i + 1]
-        nilai_akhir_row = df_data.iloc[i + 2]
-        nilai_aspek = df_data.iloc[i + 3]
+            if not kode_satker or kode_satker == "000000":
+                i += 3
+                continue
 
-        # ===============================
-        # 🔥 FIX KODE SATKER (FLEKSIBEL)
-        # ===============================
-        kode_satker_raw = str(nilai[3])
-        kode_satker = re.sub(r"\D", "", kode_satker_raw)
-        kode_satker = kode_satker.zfill(6)
+            kode_ba   = re.sub(r"\D", "", str(nilai[3]).strip()).zfill(3)
+            kode_kppn = re.sub(r"\D", "", str(nilai[2]).strip())
+            uraian    = str(nilai[5]).strip()
 
-        uraian_satker = str(nilai[4]).strip()
+            # Bulan dari baris BOBOT (col 1)
+            if i + 1 < len(df_data):
+                bulan_cell = str(df_data.iloc[i + 1, 1]).strip().upper()
+                month_detected = VALID_MONTHS.get(bulan_cell, month)
+            else:
+                month_detected = month
 
-        if kode_satker == "" or kode_satker == "000000":
+            row = {
+                "No": nilai[0],
+                "Kode KPPN": kode_kppn,
+                "Kode BA":   kode_ba,
+                "Kode Satker": kode_satker,
+                "Uraian Satker": uraian,
+
+                # Nilai Aspek (sudah ada di baris NILAI untuk format 2026)
+                "Kualitas Perencanaan Anggaran":        safe_num(nilai[9]),
+                "Kualitas Pelaksanaan Anggaran":         safe_num(nilai[14]),
+                "Kualitas Hasil Pelaksanaan Anggaran":   safe_num(nilai[16]),
+
+                # Detail indikator komponen
+                "Revisi DIPA":                safe_num(nilai[7]),
+                "Deviasi Halaman III DIPA":   safe_num(nilai[8]),
+                "Penyerapan Anggaran":         safe_num(nilai[10]),
+                "Belanja Kontraktual":         safe_num(nilai[11]),
+                "Penyelesaian Tagihan":        safe_num(nilai[12]),
+                "Pengelolaan UP dan TUP":      safe_num(nilai[13]),
+                "Capaian Output":              safe_num(nilai[15]),
+
+                "Nilai Total":                            safe_num(nilai[17]),
+                "Konversi Bobot":                         safe_num(nilai[18]),
+                "Dispensasi SPM (Pengurangan)":           safe_num(nilai[19]),
+                "Nilai Akhir (Nilai Total/Konversi Bobot)": safe_num(nilai[20]),
+
+                "Bulan": month_detected,
+                "Tahun": upload_year,
+            }
+
+            processed_rows.append(row)
+            i += 3  # lompat ke blok berikutnya
+
+    # ===============================
+    # FORMAT LAMA (≤2025): 4 baris per satker
+    # col 1=Kode KPPN, 2=Kode BA, 3=Kode Satker, 4=Uraian Satker
+    # col 6=RevisiDIPA, 7=Deviasi, 8=Penyerapan, 9=Kontraktual,
+    #       10=Tagihan, 11=UP/TUP, 12=CapaianOutput
+    # col 13=NilaiTotal, 14=KonversBobot, 15=Dispensasi, 16=NilaiAkhir
+    # Baris ke-4 (nilai_aspek): col 6=KualitasPerencanaan, 8=KualitasPelaksanaan, 12=KualitasHasil
+    # ===============================
+    else:
+        i = 0
+        while i + 3 < len(df_data):
+            nilai       = df_data.iloc[i]
+            bobot       = df_data.iloc[i + 1]
+            nilai_akhir_row = df_data.iloc[i + 2]
+            nilai_aspek = df_data.iloc[i + 3]
+
+            kode_satker_raw = str(nilai[3])
+            kode_satker = re.sub(r"\D", "", kode_satker_raw).zfill(6)
+            uraian_satker = str(nilai[4]).strip()
+
+            if not kode_satker or kode_satker == "000000":
+                i += 4
+                continue
+
+            row = {
+                "No": nilai[0],
+                "Kode KPPN": str(nilai[1]).strip("'"),
+                "Kode BA":   str(nilai[2]).strip("'"),
+                "Kode Satker": kode_satker,
+                "Uraian Satker": uraian_satker,
+
+                # Kualitas dari baris nilai_aspek (format lama)
+                "Kualitas Perencanaan Anggaran":        safe_num(nilai_aspek[6]),
+                "Kualitas Pelaksanaan Anggaran":         safe_num(nilai_aspek[8]),
+                "Kualitas Hasil Pelaksanaan Anggaran":   safe_num(nilai_aspek[12]),
+
+                "Revisi DIPA":                safe_num(nilai[6]),
+                "Deviasi Halaman III DIPA":   safe_num(nilai[7]),
+                "Penyerapan Anggaran":         safe_num(nilai[8]),
+                "Belanja Kontraktual":         safe_num(nilai[9]),
+                "Penyelesaian Tagihan":        safe_num(nilai[10]),
+                "Pengelolaan UP dan TUP":      safe_num(nilai[11]),
+                "Capaian Output":              safe_num(nilai[12]),
+
+                "Nilai Total":                            safe_num(nilai[13]),
+                "Konversi Bobot":                         safe_num(nilai[14]),
+                "Dispensasi SPM (Pengurangan)":           safe_num(nilai[15]),
+                "Nilai Akhir (Nilai Total/Konversi Bobot)": safe_num(nilai[16]),
+
+                "Bulan": month,
+                "Tahun": upload_year,
+            }
+
+            processed_rows.append(row)
             i += 4
-            continue
-
-        # ===============================
-        # 🔥 KUALITAS (PAKAI NILAI_ASPEK — PALING BENAR)
-        # ===============================
-        kualitas_perencanaan = safe_get(nilai_aspek, 6)
-        kualitas_pelaksanaan = safe_get(nilai_aspek, 8)
-        kualitas_hasil = safe_get(nilai_aspek, 12)
-
-        # ===============================
-        # 🔥 DETAIL INDIKATOR (PAKAI NILAI)
-        # ===============================
-        revisi = safe_get(nilai, 6)
-        deviasi = safe_get(nilai, 7)
-        serapan = safe_get(nilai, 8)
-        kontrak = safe_get(nilai, 9)
-        tagihan = safe_get(nilai, 10)
-        pengelolaan_up = safe_get(nilai, 11)
-        output = safe_get(nilai, 12)
-
-        total = safe_get(nilai, 13)
-        bobot_val = safe_get(nilai, 14)
-        dispensasi = safe_get(nilai, 15)
-        nilai_akhir = safe_get(nilai, 16)
-
-        # ===============================
-        # 🔥 BUILD ROW
-        # ===============================
-        row = {
-            "No": nilai[0],
-            "Kode KPPN": str(nilai[1]).strip("'"),
-            "Kode BA": str(nilai[2]).strip("'"),
-            "Kode Satker": kode_satker,
-            "Uraian Satker": uraian_satker,
-
-            "Kualitas Perencanaan Anggaran": kualitas_perencanaan,
-            "Kualitas Pelaksanaan Anggaran": kualitas_pelaksanaan,
-            "Kualitas Hasil Pelaksanaan Anggaran": kualitas_hasil,
-
-            "Revisi DIPA": revisi,
-            "Deviasi Halaman III DIPA": deviasi,
-            "Penyerapan Anggaran": serapan,
-            "Belanja Kontraktual": kontrak,
-            "Penyelesaian Tagihan": tagihan,
-            "Pengelolaan UP dan TUP": pengelolaan_up,
-            "Capaian Output": output,
-
-            "Nilai Total": total,
-            "Konversi Bobot": bobot_val,
-            "Dispensasi SPM (Pengurangan)": dispensasi,
-            "Nilai Akhir (Nilai Total/Konversi Bobot)": nilai_akhir,
-
-            "Bulan": month,
-            "Tahun": upload_year
-        }
-
-        processed_rows.append(row)
-        i += 4
 
     df_final = pd.DataFrame(processed_rows)
 
-    # ===============================
-    # 🔥 ANTI GAGAL PARSING
-    # ===============================
     if df_final.empty:
         return None, "UNKNOWN", upload_year
 
@@ -2353,20 +2442,30 @@ def post_process_ikpa_satker(df, source="Upload"):
         return df
 
     # =========================
-    # 🔥 FIX TOTAL NUMERIK (WAJIB - INI YANG NENTUIN BERHASIL)
+    # 🔥 KOLOM TEKS YANG TIDAK BOLEH DI-NUMERIK-KAN
+    # =========================
+    NON_NUMERIC_COLS = {
+        "Kode Satker", "Uraian Satker", "Uraian Satker-RINGKAS",
+        "Bulan", "Tahun", "Kode BA", "Kode KPPN", "Source", "Period",
+        "Period_Sort", "Satker", "Jenis Satker"
+    }
+
+    # =========================
+    # 🔥 FIX TOTAL NUMERIK (JANGAN SENTUH KOLOM TEKS)
     # =========================
     for col in df.columns:
-        if col not in ["Kode Satker", "Uraian Satker", "Bulan", "Tahun"]:
-            try:
-                df[col] = (
-                    df[col]
-                    .astype(str)
-                    .str.replace(",", ".", regex=False)
-                    .str.replace(r"[^\d\.\-]", "", regex=True)
-                )
-                df[col] = pd.to_numeric(df[col], errors="ignore")
-            except:
-                pass
+        if col in NON_NUMERIC_COLS:
+            continue
+        try:
+            df[col] = (
+                df[col]
+                .astype(str)
+                .str.replace(",", ".", regex=False)
+                .str.replace(r"[^\d.\-]", "", regex=True)
+            )
+            df[col] = pd.to_numeric(df[col], errors="ignore")
+        except:
+            pass
 
     # =========================
     # 🔥 0. FIX TAHUN & BULAN
@@ -2441,7 +2540,7 @@ def post_process_ikpa_satker(df, source="Upload"):
     else:
         df["Period"] = "UNKNOWN"
 
-    MONTH_ORDER = {
+    MONTH_ORDER_LOCAL = {
         "JANUARI": 1, "FEBRUARI": 2, "MARET": 3, "APRIL": 4,
         "MEI": 5, "JUNI": 6, "JULI": 7, "AGUSTUS": 8,
         "SEPTEMBER": 9, "OKTOBER": 10, "NOVEMBER": 11, "DESEMBER": 12
@@ -2451,7 +2550,7 @@ def post_process_ikpa_satker(df, source="Upload"):
         df["Period_Sort"] = (
             df["Tahun"].astype(int).astype(str)
             + "-"
-            + df["Bulan"].map(MONTH_ORDER).fillna(0).astype(int).astype(str).str.zfill(2)
+            + df["Bulan"].map(MONTH_ORDER_LOCAL).fillna(0).astype(int).astype(str).str.zfill(2)
         )
     else:
         df["Period_Sort"] = "0000-00"
@@ -2477,26 +2576,24 @@ def post_process_ikpa_satker(df, source="Upload"):
     # 🔥 FINAL KOLOM
     # =========================
     FINAL_COLUMNS = [
-        "No","Kode KPPN","Kode BA","Kode Satker","Uraian Satker",
+        "No", "Kode KPPN", "Kode BA", "Kode Satker", "Uraian Satker",
         "Kualitas Perencanaan Anggaran",
         "Kualitas Pelaksanaan Anggaran",
         "Kualitas Hasil Pelaksanaan Anggaran",
-        "Revisi DIPA","Deviasi Halaman III DIPA",
-        "Penyerapan Anggaran","Belanja Kontraktual",
-        "Penyelesaian Tagihan","Pengelolaan UP dan TUP",
+        "Revisi DIPA", "Deviasi Halaman III DIPA",
+        "Penyerapan Anggaran", "Belanja Kontraktual",
+        "Penyelesaian Tagihan", "Pengelolaan UP dan TUP",
         "Capaian Output",
-        "Nilai Total","Konversi Bobot",
-        "Dispensasi SPM (Pengurangan)", 
+        "Nilai Total", "Konversi Bobot",
+        "Dispensasi SPM (Pengurangan)",
         "Nilai Akhir (Nilai Total/Konversi Bobot)",
-        "Bulan","Tahun","Peringkat",
-        "Uraian Satker Final","Satker","Source",
+        "Bulan", "Tahun", "Peringkat",
+        "Uraian Satker Final", "Satker", "Source",
         "Uraian Satker-RINGKAS",
-        "Period","Period_Sort","Total Pagu","Jenis Satker"
+        "Period", "Period_Sort", "Total Pagu", "Jenis Satker"
     ]
-    
 
     df = df[[c for c in FINAL_COLUMNS if c in df.columns]]
-    
 
     # =========================
     # 🔥 FINAL TOUCH
@@ -3855,24 +3952,30 @@ def apply_reference_short_names(df):
     df['Kode Satker'] = df['Kode Satker'].apply(clean_kode)
 
     # ===============================
+    # FALLBACK: gunakan Uraian Satker dari file sebagai nama awal
+    # ===============================
+    uraian_asli = None
+    for col in ["Uraian Satker", "Uraian Satker-RINGKAS", "Satker"]:
+        if col in df.columns:
+            uraian_asli = df[col].astype(str)
+            break
+    if uraian_asli is None:
+        uraian_asli = pd.Series([""] * len(df), index=df.index)
+
+    # ===============================
     # LOAD REFERENCE
     # ===============================
     ref = st.session_state.get("reference_df", pd.DataFrame()).copy()
 
     # ===============================
-    # JIKA TIDAK ADA REFERENCE → FALLBACK
+    # JIKA TIDAK ADA REFERENCE → FALLBACK ke nama asli
     # ===============================
-    if ref.empty or 'Kode Satker' not in ref.columns:
-        df['Uraian Satker-RINGKAS'] = df.get('Uraian Satker', '')
+    if ref.empty or 'Kode Satker' not in ref.columns or 'Uraian Satker-SINGKAT' not in ref.columns:
+        df['Uraian Satker-RINGKAS'] = uraian_asli
         df['Satker'] = df['Uraian Satker-RINGKAS'] + " (" + df['Kode Satker'] + ")"
         return df
 
     ref['Kode Satker'] = ref['Kode Satker'].apply(clean_kode)
-
-    if 'Uraian Satker-SINGKAT' not in ref.columns:
-        df['Uraian Satker-RINGKAS'] = df.get('Uraian Satker', '')
-        df['Satker'] = df['Uraian Satker-RINGKAS'] + " (" + df['Kode Satker'] + ")"
-        return df
 
     # ===============================
     # HAPUS KOLOM LAMA DULU
@@ -3890,17 +3993,17 @@ def apply_reference_short_names(df):
     )
 
     # ===============================
-    # PASTIKAN KOLOM ADA 
+    # PASTIKAN KOLOM ADA
     # ===============================
     if 'Uraian Satker-RINGKAS' not in df.columns:
         df['Uraian Satker-RINGKAS'] = None
 
     # ===============================
-    # FALLBACK KE NAMA ASLI
+    # FALLBACK ke nama asli dari file jika referensi tidak punya
     # ===============================
-    df['Uraian Satker-RINGKAS'] = df['Uraian Satker-RINGKAS'].fillna(
-        df.get('Uraian Satker', '')
-    )
+    df['Uraian Satker-RINGKAS'] = df['Uraian Satker-RINGKAS'].fillna(uraian_asli)
+    # Pastikan tidak kosong
+    df['Uraian Satker-RINGKAS'] = df['Uraian Satker-RINGKAS'].replace("", pd.NA).fillna(uraian_asli)
 
     # ===============================
     # AUTO RINGKAS TAMBAHAN 🔥
