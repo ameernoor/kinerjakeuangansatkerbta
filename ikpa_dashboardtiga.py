@@ -927,158 +927,145 @@ def fix_ikpa_header(df_raw):
     
     import pandas as pd
 
-    for i in range(min(10, len(df_raw))):
-        row = df_raw.iloc[i].astype(str).str.upper()
-        row_text = " ".join(row.values)
+    df = None  # 🔥 ANTI ERROR WAJIB
 
-        # 🔥 DETEKSI HEADER LEBIH FLEKSIBEL
-        if ("KODE" in row_text and "SATKER" in row_text):
+    try:
+        for i in range(min(10, len(df_raw))):
+            row = df_raw.iloc[i].astype(str).str.upper()
+            row_text = " ".join(row.values)
 
-            header_row = i
+            if ("KODE" in row_text and "SATKER" in row_text):
 
-            header1 = df_raw.iloc[header_row]
-            header2 = df_raw.iloc[header_row + 1]
+                header_row = i
 
-            # 🔥 FIX KHUSUS MARET (3 BARIS HEADER)
-            row_next = " ".join(
-                df_raw.iloc[header_row + 2].astype(str).str.upper().values
-            )
+                header1 = df_raw.iloc[header_row]
+                header2 = df_raw.iloc[header_row + 1]
 
-            if any(x in row_next for x in ["REVISI", "DEVIASI", "PENYERAPAN"]):
-                header2 = df_raw.iloc[header_row + 2]
-                data_start = header_row + 3
-            else:
-                data_start = header_row + 2
+                # 🔥 DETEKSI HEADER 3 BARIS (KHUSUS MARET)
+                row_next = " ".join(
+                    df_raw.iloc[header_row + 2].astype(str).str.upper().values
+                )
 
-            cols = []
-
-            for h1, h2 in zip(header1, header2):
-
-                h1 = str(h1).strip()
-                h2 = str(h2).strip()
-
-                col = ""
-
-                # ===============================
-                # KOLOM UTAMA
-                # ===============================
-                if "KODE SATKER" in h1.upper():
-                    col = "Kode Satker"
-
-                elif "URAIAN SATKER" in h1.upper():
-                    col = "Uraian Satker"
-
-                elif "KODE KPPN" in h1.upper():
-                    col = "Kode KPPN"
-
-                elif "KODE BA" in h1.upper():
-                    col = "Kode BA"
-
-                elif "PERIODE" in h1.upper():
-                    col = "Periode"
-
-                elif "KETERANGAN" in h1.upper():
-                    col = "Keterangan"
-
-                elif "NO" in h1.upper():
-                    col = "No"
-
-                # ===============================
-                # SUB KOLOM
-                # ===============================
-                elif "REVISI" in h2.upper():
-                    col = "Revisi DIPA"
-
-                elif "DEVIASI" in h2.upper():
-                    col = "Deviasi Halaman III DIPA"
-
-                elif "PENYERAPAN" in h2.upper():
-                    col = "Penyerapan Anggaran"
-
-                elif "BELANJA" in h2.upper():
-                    col = "Belanja Kontraktual"
-
-                elif "TAGIHAN" in h2.upper():
-                    col = "Penyelesaian Tagihan"
-
-                elif "OUTPUT" in h2.upper():
-                    col = "Capaian Output"
-
-                # ===============================
-                # NILAI UTAMA
-                # ===============================
-                elif "NILAI AKHIR" in h1.upper():
-                    col = "Nilai Akhir (Nilai Total/Konversi Bobot)"
-
-                elif "NILAI TOTAL" in h1.upper():
-                    col = "Nilai Total"
-
-                elif "BOBOT" in h1.upper():
-                    col = "Konversi Bobot"
-
-                elif "DISPENSASI" in h1.upper():
-                    col = "Dispensasi SPM (Pengurangan)"
-
-                elif "NILAI ASPEK" in h2.upper():
-                    col = "Nilai Aspek"
-
+                if any(x in row_next for x in ["REVISI", "DEVIASI", "PENYERAPAN"]):
+                    header2 = df_raw.iloc[header_row + 2]
+                    data_start = header_row + 3
                 else:
-                    col = f"IGNORE_{len(cols)}"
+                    data_start = header_row + 2
 
-                cols.append(col)
+                cols = []
 
-            df = df_raw.iloc[data_start:].copy()
-            df.columns = cols
-            df = df.reset_index(drop=True)
+                for h1, h2 in zip(header1, header2):
 
-            # ===============================
-            # 🔥 FIX DUPLIKAT KOLOM
-            # ===============================
-            seen = {}
-            new_cols = []
+                    h1 = str(h1).strip()
+                    h2 = str(h2).strip()
 
-            for col in df.columns:
-                if col in seen:
-                    seen[col] += 1
-                    new_cols.append(f"{col}_{seen[col]}")
-                else:
-                    seen[col] = 0
-                    new_cols.append(col)
+                    col = ""
 
-            df.columns = new_cols
+                    if "KODE SATKER" in h1.upper():
+                        col = "Kode Satker"
+                    elif "URAIAN SATKER" in h1.upper():
+                        col = "Uraian Satker"
+                    elif "KODE KPPN" in h1.upper():
+                        col = "Kode KPPN"
+                    elif "KODE BA" in h1.upper():
+                        col = "Kode BA"
+                    elif "PERIODE" in h1.upper():
+                        col = "Periode"
+                    elif "KETERANGAN" in h1.upper():
+                        col = "Keterangan"
+                    elif "NO" in h1.upper():
+                        col = "No"
 
-            # ===============================
-            # 🔥 MAP NILAI ASPEK (3 KOLOM)
-            # ===============================
-            aspek_cols = [c for c in df.columns if "Nilai Aspek" in c]
+                    elif "REVISI" in h2.upper():
+                        col = "Revisi DIPA"
+                    elif "DEVIASI" in h2.upper():
+                        col = "Deviasi Halaman III DIPA"
+                    elif "PENYERAPAN" in h2.upper():
+                        col = "Penyerapan Anggaran"
+                    elif "BELANJA" in h2.upper():
+                        col = "Belanja Kontraktual"
+                    elif "TAGIHAN" in h2.upper():
+                        col = "Penyelesaian Tagihan"
+                    elif "OUTPUT" in h2.upper():
+                        col = "Capaian Output"
 
-            for idx, col in enumerate(aspek_cols):
-                if idx == 0:
-                    df.rename(columns={col: "Nilai Aspek Perencanaan"}, inplace=True)
-                elif idx == 1:
-                    df.rename(columns={col: "Nilai Aspek Pelaksanaan"}, inplace=True)
-                elif idx == 2:
-                    df.rename(columns={col: "Nilai Aspek Hasil"}, inplace=True)
+                    elif "NILAI AKHIR" in h1.upper():
+                        col = "Nilai Akhir (Nilai Total/Konversi Bobot)"
+                    elif "NILAI TOTAL" in h1.upper():
+                        col = "Nilai Total"
+                    elif "BOBOT" in h1.upper():
+                        col = "Konversi Bobot"
+                    elif "DISPENSASI" in h1.upper():
+                        col = "Dispensasi SPM (Pengurangan)"
+                    elif "NILAI ASPEK" in h2.upper():
+                        col = "Nilai Aspek"
+                    else:
+                        col = f"IGNORE_{len(cols)}"
 
-            # ===============================
-            # 🔥 DROP KOLOM SAMPAH
-            # ===============================
-            df = df[[c for c in df.columns if not c.startswith("IGNORE")]]
+                    cols.append(col)
 
-            # ===============================
-            # 🔥 FILTER HANYA NILAI (PENTING)
-            # ===============================
-            if "Keterangan" in df.columns:
-                df = df[
-                    df["Keterangan"]
-                    .astype(str)
-                    .str.upper()
-                    .str.strip() == "NILAI"
-                ]
+                df = df_raw.iloc[data_start:].copy()
+                df.columns = cols
+                df = df.reset_index(drop=True)
 
-            return df
+                # ===============================
+                # FIX DUPLIKAT KOLOM
+                # ===============================
+                seen = {}
+                new_cols = []
 
-    st.error("❌ HEADER IKPA TIDAK DITEMUKAN")
+                for col in df.columns:
+                    if col in seen:
+                        seen[col] += 1
+                        new_cols.append(f"{col}_{seen[col]}")
+                    else:
+                        seen[col] = 0
+                        new_cols.append(col)
+
+                df.columns = new_cols
+
+                # ===============================
+                # MAP NILAI ASPEK
+                # ===============================
+                aspek_cols = [c for c in df.columns if "Nilai Aspek" in c]
+
+                for idx, col in enumerate(aspek_cols):
+                    if idx == 0:
+                        df.rename(columns={col: "Nilai Aspek Perencanaan"}, inplace=True)
+                    elif idx == 1:
+                        df.rename(columns={col: "Nilai Aspek Pelaksanaan"}, inplace=True)
+                    elif idx == 2:
+                        df.rename(columns={col: "Nilai Aspek Hasil"}, inplace=True)
+
+                # ===============================
+                # DROP KOLOM SAMPAH
+                # ===============================
+                df = df[[c for c in df.columns if not c.startswith("IGNORE")]]
+
+                # ===============================
+                # 🔥 FIX KHUSUS FILE MARET
+                # ===============================
+                if "Keterangan" in df.columns:
+                    df = df[
+                        df["Keterangan"]
+                        .astype(str)
+                        .str.upper()
+                        .str.contains("NILAI", na=False)
+                    ]
+
+                if "Kode Satker" in df.columns:
+                    df = df[
+                        df["Kode Satker"]
+                        .astype(str)
+                        .str.contains(r"\d{6}", na=False)
+                    ]
+
+                return df
+
+    except Exception as e:
+        st.error(f"❌ ERROR parsing IKPA: {e}")
+        return None
+
     return None
     
 
@@ -2147,7 +2134,18 @@ def process_excel_file(uploaded_file, upload_year):
         # ===============================
         # 🔥 FIX HEADER
         # ===============================
-        df = fix_ikpa_header(df_raw)
+        df = None  # 🔥 WAJIB
+
+        try:
+            df = fix_ikpa_header(df_raw)
+        except Exception as e:
+            st.error(f"❌ ERROR FILE: {e}")
+            return
+
+        # 🔥 STOP kalau gagal parsing
+        if df is None or df.empty:
+            st.error("❌ File tidak bisa diproses (format berubah / header tidak terbaca)")
+            return
 
         if df is None or df.empty:
             st.error("❌ Data kosong setelah header fix")
