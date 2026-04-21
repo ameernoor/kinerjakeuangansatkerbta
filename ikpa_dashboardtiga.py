@@ -1068,20 +1068,47 @@ def fix_ikpa_header(df_raw):
 
     return None
 
+def normalize_ikpa_columns(df):
+    
+    rename_map = {
+        # 🔥 mapping versi lama → baru
+        "Nilai Aspek Perencanaan": "Kualitas Perencanaan Anggaran",
+        "Nilai Aspek Pelaksanaan": "Kualitas Pelaksanaan Anggaran",
+        "Nilai Aspek Hasil": "Kualitas Hasil Pelaksanaan Anggaran",
+
+        "Uraian Satker": "Uraian Satker-RINGKAS",
+
+        # fallback
+        "Pengelolaan UP/TUP": "Pengelolaan UP dan TUP"
+    }
+
+    df = df.rename(columns={k: v for k, v in rename_map.items() if k in df.columns})
+
+    return df
+
+
 def ensure_ikpa_columns(df):
     import numpy as np
 
     required_cols = [
-        "No", "Periode", "Kode KPPN", "Kode BA", "Kode Satker",
-        "Uraian Satker", "Keterangan",
-        "Revisi DIPA", "Deviasi Halaman III DIPA",
-        "Nilai Aspek Perencanaan",
-        "Penyerapan Anggaran", "Belanja Kontraktual",
+        "Kode Satker",
+        "Uraian Satker",
+        "Uraian Satker-RINGKAS",
+
+        "Kualitas Perencanaan Anggaran",
+        "Kualitas Pelaksanaan Anggaran",
+        "Kualitas Hasil Pelaksanaan Anggaran",
+
+        "Revisi DIPA",
+        "Deviasi Halaman III DIPA",
+        "Penyerapan Anggaran",
+        "Belanja Kontraktual",
         "Penyelesaian Tagihan",
-        "Nilai Aspek Pelaksanaan",
+        "Pengelolaan UP dan TUP",
         "Capaian Output",
-        "Nilai Aspek Hasil",
-        "Nilai Total", "Konversi Bobot",
+
+        "Nilai Total",
+        "Konversi Bobot",
         "Dispensasi SPM (Pengurangan)",
         "Nilai Akhir (Nilai Total/Konversi Bobot)"
     ]
@@ -3070,6 +3097,7 @@ def load_data_from_github(_cache_buster: int = 0):
             # POST PROCESS
             # ===============================
             df = post_process_ikpa_satker(df)
+            df = normalize_ikpa_columns(df)
             df = ensure_ikpa_columns(df)
 
             # ===============================
@@ -6267,7 +6295,13 @@ def page_dashboard():
                         "Nilai Akhir (Nilai Total/Konversi Bobot)"
                     ]
 
-                    df_display = df[base_cols + value_cols].copy()
+                    cols_needed = base_cols + value_cols
+
+                    for col in cols_needed:
+                        if col not in df.columns:
+                            df[col] = 0  # 🔥 anti KeyError
+
+                    df_display = df[cols_needed].copy()
 
                 else:
                     component_cols = [
