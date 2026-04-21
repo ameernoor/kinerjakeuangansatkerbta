@@ -2250,11 +2250,7 @@ def process_excel_file(uploaded_file, upload_year):
 
         uraian_satker = str(nilai[4]).strip()
 
-        if (
-            kode_satker == ""
-            or kode_satker == "000000"
-            or uraian_satker.upper() in ["NILAI", "BOBOT", "NILAI AKHIR"]
-        ):
+        if kode_satker == "" or kode_satker == "000000":
             i += 4
             continue
 
@@ -2321,7 +2317,7 @@ def process_excel_file(uploaded_file, upload_year):
     # 🔥 ANTI GAGAL PARSING
     # ===============================
     if df_final.empty:
-        raise ValueError("Data IKPA tidak terbaca (format berubah / struktur beda)")
+        return None, "UNKNOWN", upload_year
 
     return df_final, month, upload_year
     
@@ -9447,18 +9443,24 @@ def page_admin():
                             df_final, month, year = result
 
                             # ======================
-                            # 🔥 FIX BULAN (1x SAJA)
+                            # FIX BULAN (1x SAJA)
                             # ======================
                             if month == "UNKNOWN":
                                 import re
-                                match = re.search(r"(0[1-9]|1[0-2])", uploaded_file.name)
+
+                                # 🔥 ambil angka bulan di akhir nama file (paling aman)
+                                match = re.search(r"(\d{4})\s*(0[1-9]|1[0-2])", uploaded_file.name)
+
                                 if match:
+                                    bulan_num = match.group(2)
+
                                     bulan_map = {
                                         "01":"JANUARI","02":"FEBRUARI","03":"MARET","04":"APRIL",
                                         "05":"MEI","06":"JUNI","07":"JULI","08":"AGUSTUS",
                                         "09":"SEPTEMBER","10":"OKTOBER","11":"NOVEMBER","12":"DESEMBER"
                                     }
-                                    month = bulan_map.get(match.group(1), "UNKNOWN")
+
+                                    month = bulan_map.get(bulan_num, "UNKNOWN")
 
                             # 🔥 FINAL FALLBACK (kalau masih gagal)
                             if month == "UNKNOWN":
