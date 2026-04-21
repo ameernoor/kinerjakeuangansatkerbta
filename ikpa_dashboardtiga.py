@@ -925,14 +925,30 @@ def normalize_month(val):
 
 def fix_ikpa_header(df_raw):
     
+    import pandas as pd
+
     for i in range(min(10, len(df_raw))):
         row = df_raw.iloc[i].astype(str).str.upper()
+        row_text = " ".join(row.values)
 
-        if "KODE SATKER" in row.to_string():
+        # 🔥 DETEKSI HEADER LEBIH FLEKSIBEL
+        if ("KODE" in row_text and "SATKER" in row_text):
+
             header_row = i
 
             header1 = df_raw.iloc[header_row]
             header2 = df_raw.iloc[header_row + 1]
+
+            # 🔥 FIX KHUSUS MARET (3 BARIS HEADER)
+            row_next = " ".join(
+                df_raw.iloc[header_row + 2].astype(str).str.upper().values
+            )
+
+            if any(x in row_next for x in ["REVISI", "DEVIASI", "PENYERAPAN"]):
+                header2 = df_raw.iloc[header_row + 2]
+                data_start = header_row + 3
+            else:
+                data_start = header_row + 2
 
             cols = []
 
@@ -944,9 +960,8 @@ def fix_ikpa_header(df_raw):
                 col = ""
 
                 # ===============================
-                # 🔥 MAPPING KOLOM UTAMA
+                # KOLOM UTAMA
                 # ===============================
-
                 if "KODE SATKER" in h1.upper():
                     col = "Kode Satker"
 
@@ -969,9 +984,8 @@ def fix_ikpa_header(df_raw):
                     col = "No"
 
                 # ===============================
-                # 🔥 SUB KOLOM (HEADER BARIS 2)
+                # SUB KOLOM
                 # ===============================
-
                 elif "REVISI" in h2.upper():
                     col = "Revisi DIPA"
 
@@ -991,9 +1005,8 @@ def fix_ikpa_header(df_raw):
                     col = "Capaian Output"
 
                 # ===============================
-                # 🔥 NILAI UTAMA
+                # NILAI UTAMA
                 # ===============================
-
                 elif "NILAI AKHIR" in h1.upper():
                     col = "Nilai Akhir (Nilai Total/Konversi Bobot)"
 
@@ -1006,10 +1019,6 @@ def fix_ikpa_header(df_raw):
                 elif "DISPENSASI" in h1.upper():
                     col = "Dispensasi SPM (Pengurangan)"
 
-                # ===============================
-                # 🔥 NILAI ASPEK (FIX DUPLIKAT)
-                # ===============================
-
                 elif "NILAI ASPEK" in h2.upper():
                     col = "Nilai Aspek"
 
@@ -1018,12 +1027,12 @@ def fix_ikpa_header(df_raw):
 
                 cols.append(col)
 
-            df = df_raw.iloc[header_row + 2:].copy()
+            df = df_raw.iloc[data_start:].copy()
             df.columns = cols
             df = df.reset_index(drop=True)
 
             # ===============================
-            # 🔥 FIX DUPLIKAT KOLOM (WAJIB)
+            # 🔥 FIX DUPLIKAT KOLOM
             # ===============================
             seen = {}
             new_cols = []
@@ -1039,7 +1048,7 @@ def fix_ikpa_header(df_raw):
             df.columns = new_cols
 
             # ===============================
-            # 🔥 KHUSUS NILAI ASPEK (MAP 3 KOLOM)
+            # 🔥 MAP NILAI ASPEK (3 KOLOM)
             # ===============================
             aspek_cols = [c for c in df.columns if "Nilai Aspek" in c]
 
@@ -1055,6 +1064,17 @@ def fix_ikpa_header(df_raw):
             # 🔥 DROP KOLOM SAMPAH
             # ===============================
             df = df[[c for c in df.columns if not c.startswith("IGNORE")]]
+
+            # ===============================
+            # 🔥 FILTER HANYA NILAI (PENTING)
+            # ===============================
+            if "Keterangan" in df.columns:
+                df = df[
+                    df["Keterangan"]
+                    .astype(str)
+                    .str.upper()
+                    .str.strip() == "NILAI"
+                ]
 
             return df
 
@@ -2058,7 +2078,6 @@ def find_header_row_by_keywords(uploaded_file, keywords, max_rows=15):
     return None
 
 
-
 def process_excel_digipay(uploaded_file, upload_year):
     """
     Parser DIGIPAY stabil
@@ -2113,7 +2132,6 @@ def process_excel_digipay(uploaded_file, upload_year):
     df_final = pd.DataFrame(processed_rows)
 
     return df_final
-
 
 
 def process_excel_file(uploaded_file, upload_year):
