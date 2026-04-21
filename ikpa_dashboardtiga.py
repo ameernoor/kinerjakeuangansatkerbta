@@ -1068,18 +1068,28 @@ def fix_ikpa_header(df_raw):
 
     return None
 
+def safe_get(row, idx):
+    try:
+        return float(str(row[idx]).replace(",", "."))
+    except:
+        return 0
+
+
 def normalize_ikpa_columns(df):
     
     rename_map = {
-        # 🔥 mapping versi lama → baru
+        # 🔥 ASPEK
         "Nilai Aspek Perencanaan": "Kualitas Perencanaan Anggaran",
         "Nilai Aspek Pelaksanaan": "Kualitas Pelaksanaan Anggaran",
         "Nilai Aspek Hasil": "Kualitas Hasil Pelaksanaan Anggaran",
 
+        # 🔥 URAIAN
         "Uraian Satker": "Uraian Satker-RINGKAS",
 
-        # fallback
-        "Pengelolaan UP/TUP": "Pengelolaan UP dan TUP"
+        # 🔥 DISPENSASI (INI YANG KAMU BUTUH)
+        "Dispensasi SPM (Pengurang)": "Dispensasi SPM (Pengurangan)",
+        "Dispensasi SPM Pengurang": "Dispensasi SPM (Pengurangan)",
+        "Dispensasi SPM Pengurangan": "Dispensasi SPM (Pengurangan)"
     }
 
     df = df.rename(columns={k: v for k, v in rename_map.items() if k in df.columns})
@@ -1088,6 +1098,7 @@ def normalize_ikpa_columns(df):
 
 
 def ensure_ikpa_columns(df):
+
     import numpy as np
 
     required_cols = [
@@ -2219,7 +2230,7 @@ def process_excel_file(uploaded_file, upload_year):
             continue
 
         # ===============================
-        # HITUNG ASPEK (TIDAK TERGANTUNG INDEX)
+        # HITUNG ASPEK 
         # ===============================
         kualitas_perencanaan = (
             safe_get(nilai, 6) + safe_get(nilai, 7)
@@ -2234,6 +2245,16 @@ def process_excel_file(uploaded_file, upload_year):
 
         kualitas_hasil = safe_get(nilai, 12)
 
+        # 🔥 FALLBACK WAJIB (INI PENYELAMAT MARET 2026)
+        if kualitas_perencanaan == 0:
+            kualitas_perencanaan = safe_get(nilai_aspek, 6)
+
+        if kualitas_pelaksanaan == 0:
+            kualitas_pelaksanaan = safe_get(nilai_aspek, 8)
+
+        if kualitas_hasil == 0:
+            kualitas_hasil = safe_get(nilai_aspek, 12)
+
         row = {
             "No": nilai[0],
             "Kode KPPN": str(nilai[1]).strip("'"),
@@ -2241,7 +2262,7 @@ def process_excel_file(uploaded_file, upload_year):
             "Kode Satker": kode_satker,
             "Uraian Satker": uraian_satker,
 
-            #  HASIL ASPEK (AMAN)
+            # HASIL ASPEK (AMAN)
             "Kualitas Perencanaan Anggaran": kualitas_perencanaan,
             "Kualitas Pelaksanaan Anggaran": kualitas_pelaksanaan,
             "Kualitas Hasil Pelaksanaan Anggaran": kualitas_hasil,
@@ -9419,6 +9440,8 @@ def page_admin():
                             # POST PROCESS
                             # ======================
                             df_final = post_process_ikpa_satker(df_final)
+                            df_final = normalize_ikpa_columns(df_final)
+                            df_final = ensure_ikpa_columns(df_final)
 
                             # ======================
                             # 🔥 SIMPAN KE SESSION (FIX UTAMA)
