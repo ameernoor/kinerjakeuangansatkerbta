@@ -2123,9 +2123,9 @@ def process_excel_digipay(uploaded_file, upload_year):
 
 def process_excel_file(uploaded_file, upload_year):
     
-    try:
-        import re
+    import re
 
+    try:
         # ===============================
         # 🔥 BACA FILE
         # ===============================
@@ -2134,21 +2134,17 @@ def process_excel_file(uploaded_file, upload_year):
         # ===============================
         # 🔥 FIX HEADER
         # ===============================
-        df = None  # 🔥 WAJIB
-
         try:
             df = fix_ikpa_header(df_raw)
         except Exception as e:
             st.error(f"❌ ERROR FILE: {e}")
-            return
+            return None, "UNKNOWN", upload_year
 
-        # 🔥 STOP kalau gagal parsing
+        # ===============================
+        # 🔥 VALIDASI HASIL PARSING
+        # ===============================
         if df is None or df.empty:
-            st.error("❌ File tidak bisa diproses (format berubah / header tidak terbaca)")
-            return
-
-        if df is None or df.empty:
-            st.error("❌ Data kosong setelah header fix")
+            st.error("❌ File tidak bisa diproses (header tidak terbaca)")
             st.write(df_raw.head(10))
             return None, "UNKNOWN", upload_year
 
@@ -2166,7 +2162,7 @@ def process_excel_file(uploaded_file, upload_year):
             return None, "UNKNOWN", upload_year
 
         # ===============================
-        # 🔥 NORMALISASI SATKER
+        # 🔥 NORMALISASI KODE SATKER
         # ===============================
         df["Kode Satker"] = (
             df["Kode Satker"]
@@ -2177,7 +2173,7 @@ def process_excel_file(uploaded_file, upload_year):
         )
 
         # ===============================
-        # 🔥 FILTER DATA IKPA VALID
+        # 🔥 FILTER DATA VALID
         # ===============================
         df = df[
             (df["Kode Satker"] != "") &
@@ -2191,6 +2187,13 @@ def process_excel_file(uploaded_file, upload_year):
 
         st.write("🧹 Data setelah filter IKPA:", len(df))
 
+        # ===============================
+        # 🔥 VALIDASI HASIL FILTER
+        # ===============================
+        if df.empty:
+            st.error("❌ Data kosong setelah filter")
+            return None, "UNKNOWN", upload_year
+
         jumlah_satker = df["Kode Satker"].nunique()
         st.write(f"📊 IKPA SATKER TERBACA: {jumlah_satker}")
 
@@ -2198,49 +2201,30 @@ def process_excel_file(uploaded_file, upload_year):
             st.warning("⚠️ Satker sedikit, tapi tetap diproses")
 
         # ===============================
-        # 🔥 DETEKSI BULAN (ANGKA + TEKS)
+        # 🔥 DETEKSI BULAN
         # ===============================
         nama_file = uploaded_file.name.upper()
         bulan = "UNKNOWN"
 
-        # PRIORITAS 1: angka (01–12)
+        # PRIORITAS ANGKA
         match = re.search(r"\b(0[1-9]|1[0-2])\b", nama_file)
 
         if match:
-            bulan_num = match.group(1)
-
             bulan_map_num = {
-                "01": "JANUARI",
-                "02": "FEBRUARI",
-                "03": "MARET",
-                "04": "APRIL",
-                "05": "MEI",
-                "06": "JUNI",
-                "07": "JULI",
-                "08": "AGUSTUS",
-                "09": "SEPTEMBER",
-                "10": "OKTOBER",
-                "11": "NOVEMBER",
-                "12": "DESEMBER"
+                "01": "JANUARI", "02": "FEBRUARI", "03": "MARET",
+                "04": "APRIL", "05": "MEI", "06": "JUNI",
+                "07": "JULI", "08": "AGUSTUS", "09": "SEPTEMBER",
+                "10": "OKTOBER", "11": "NOVEMBER", "12": "DESEMBER"
             }
+            bulan = bulan_map_num.get(match.group(1), "UNKNOWN")
 
-            bulan = bulan_map_num.get(bulan_num, "UNKNOWN")
-
-        # PRIORITAS 2: teks (JAN, FEB, dll)
+        # PRIORITAS TEKS
         if bulan == "UNKNOWN":
             bulan_map_text = {
-                "JAN": "JANUARI",
-                "FEB": "FEBRUARI",
-                "MAR": "MARET",
-                "APR": "APRIL",
-                "MEI": "MEI",
-                "JUN": "JUNI",
-                "JUL": "JULI",
-                "AGU": "AGUSTUS",
-                "SEP": "SEPTEMBER",
-                "OKT": "OKTOBER",
-                "NOV": "NOVEMBER",
-                "DES": "DESEMBER"
+                "JAN": "JANUARI", "FEB": "FEBRUARI", "MAR": "MARET",
+                "APR": "APRIL", "MEI": "MEI", "JUN": "JUNI",
+                "JUL": "JULI", "AGU": "AGUSTUS", "SEP": "SEPTEMBER",
+                "OKT": "OKTOBER", "NOV": "NOVEMBER", "DES": "DESEMBER"
             }
 
             for k, v in bulan_map_text.items():
@@ -2264,7 +2248,7 @@ def process_excel_file(uploaded_file, upload_year):
     except Exception as e:
         st.error(f"❌ Error parsing IKPA: {e}")
         return None, "UNKNOWN", upload_year
-
+    
 
 VALID_MONTHS = {
     "JANUARI": "JANUARI",
@@ -9408,10 +9392,13 @@ def page_admin():
                             # 🔄 PROSES FILE
                             # ======================
                             uploaded_file.seek(0)
-                            df_final, month, year = process_excel_file(
-                                uploaded_file,
-                                upload_year
-                            )
+                            result = process_excel_file(uploaded_file, upload_year)
+
+                            if result is None:
+                                st.error(f"❌ Gagal parsing: {uploaded_file.name}")
+                                continue
+
+                            df_final, month, year = result
 
                             # ======================
                             # VALIDASI
@@ -9434,7 +9421,7 @@ def page_admin():
                             # ======================
                             # POST PROCESS
                             # ======================
-                            df = post_process_ikpa_satker(df)
+                            df_final = post_process_ikpa_satker(df_final)
 
                             # ======================
                             # 🔥 SIMPAN KE SESSION (FIX UTAMA)
