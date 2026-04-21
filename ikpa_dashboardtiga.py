@@ -1068,6 +1068,46 @@ def fix_ikpa_header(df_raw):
 
     return None
 
+def detect_column_positions(df_raw):
+    
+    header_row = df_raw.iloc[2].astype(str).str.upper()
+
+    col_map = {}
+
+    for i, col in enumerate(header_row):
+
+        if "REVISI" in col:
+            col_map["revisi"] = i
+
+        elif "DEVIASI" in col:
+            col_map["deviasi"] = i
+
+        elif "PENYERAPAN" in col:
+            col_map["serapan"] = i
+
+        elif "KONTRAK" in col:
+            col_map["kontrak"] = i
+
+        elif "TAGIHAN" in col:
+            col_map["tagihan"] = i
+
+        elif "OUTPUT" in col:
+            col_map["output"] = i
+
+        elif "NILAI TOTAL" in col:
+            col_map["total"] = i
+
+        elif "KONVERSI" in col:
+            col_map["bobot"] = i
+
+        elif "DISPENSASI" in col:
+            col_map["dispensasi"] = i
+
+        elif "AKHIR" in col:
+            col_map["akhir"] = i
+
+    return col_map
+
 def safe_get(row, idx):
     try:
         return float(str(row[idx]).replace(",", "."))
@@ -2179,6 +2219,7 @@ def process_excel_digipay(uploaded_file, upload_year):
 def process_excel_file(uploaded_file, upload_year):
     
     import pandas as pd
+    import re
 
     df_raw = pd.read_excel(uploaded_file, header=None)
 
@@ -2216,13 +2257,20 @@ def process_excel_file(uploaded_file, upload_year):
         nilai_akhir = df_data.iloc[i + 2]
         nilai_aspek = df_data.iloc[i + 3]
 
-        kode_satker = str(nilai[3]).strip("'").strip()
+        # ===============================
+        # 🔥 FIX KODE SATKER (ANTI ERROR FORMAT)
+        # ===============================
+        kode_satker_raw = str(nilai[3])
+        kode_satker = re.sub(r"\D", "", kode_satker_raw)
+        kode_satker = kode_satker.zfill(6)
+
         uraian_satker = str(nilai[4]).strip()
 
-        # FILTER VALID
+        # ===============================
+        # FILTER VALID (FLEKSIBEL)
+        # ===============================
         if (
-            not kode_satker.isdigit()
-            or len(kode_satker) != 6
+            kode_satker == ""
             or kode_satker == "000000"
             or uraian_satker.upper() in ["NILAI", "BOBOT", "NILAI AKHIR"]
         ):
@@ -2230,7 +2278,7 @@ def process_excel_file(uploaded_file, upload_year):
             continue
 
         # ===============================
-        # HITUNG ASPEK 
+        # 🔥 HITUNG ASPEK (ANTI FORMAT BERUBAH)
         # ===============================
         kualitas_perencanaan = (
             safe_get(nilai, 6) + safe_get(nilai, 7)
@@ -2245,7 +2293,7 @@ def process_excel_file(uploaded_file, upload_year):
 
         kualitas_hasil = safe_get(nilai, 12)
 
-        # 🔥 FALLBACK WAJIB (INI PENYELAMAT MARET 2026)
+        # 🔥 FALLBACK WAJIB (Maret 2026 fix)
         if kualitas_perencanaan == 0:
             kualitas_perencanaan = safe_get(nilai_aspek, 6)
 
@@ -2255,6 +2303,9 @@ def process_excel_file(uploaded_file, upload_year):
         if kualitas_hasil == 0:
             kualitas_hasil = safe_get(nilai_aspek, 12)
 
+        # ===============================
+        # 🔥 BUILD ROW
+        # ===============================
         row = {
             "No": nilai[0],
             "Kode KPPN": str(nilai[1]).strip("'"),
@@ -2262,7 +2313,6 @@ def process_excel_file(uploaded_file, upload_year):
             "Kode Satker": kode_satker,
             "Uraian Satker": uraian_satker,
 
-            # HASIL ASPEK (AMAN)
             "Kualitas Perencanaan Anggaran": kualitas_perencanaan,
             "Kualitas Pelaksanaan Anggaran": kualitas_pelaksanaan,
             "Kualitas Hasil Pelaksanaan Anggaran": kualitas_hasil,
@@ -2277,7 +2327,10 @@ def process_excel_file(uploaded_file, upload_year):
 
             "Nilai Total": safe_get(nilai, 13),
             "Konversi Bobot": safe_get(nilai, 14),
-            "Dispensasi SPM (Pengurang)": safe_get(nilai, 15),
+
+            # 🔥 FIX NAMA KOLOM
+            "Dispensasi SPM (Pengurangan)": safe_get(nilai, 15),
+
             "Nilai Akhir (Nilai Total/Konversi Bobot)": safe_get(nilai, 16),
 
             "Bulan": month,
@@ -2288,6 +2341,12 @@ def process_excel_file(uploaded_file, upload_year):
         i += 4
 
     df_final = pd.DataFrame(processed_rows)
+
+    # ===============================
+    # 🔥 ANTI GAGAL PARSING
+    # ===============================
+    if df_final.empty:
+        raise ValueError("Data IKPA tidak terbaca (format berubah / struktur beda)")
 
     return df_final, month, upload_year
     
@@ -2456,7 +2515,7 @@ def post_process_ikpa_satker(df, source="Upload"):
         "Penyelesaian Tagihan","Pengelolaan UP dan TUP",
         "Capaian Output",
         "Nilai Total","Konversi Bobot",
-        "Dispensasi SPM (Pengurangan)",  # 🔥 FIX DI SINI
+        "Dispensasi SPM (Pengurangan)", 
         "Nilai Akhir (Nilai Total/Konversi Bobot)",
         "Bulan","Tahun","Peringkat",
         "Uraian Satker Final","Satker","Source",
@@ -2464,13 +2523,6 @@ def post_process_ikpa_satker(df, source="Upload"):
         "Period","Period_Sort","Total Pagu","Jenis Satker"
     ]
     
-    # =========================
-    # 🔥 DEBUG KOLOM HILANG
-    # =========================
-    missing = [c for c in FINAL_COLUMNS if c not in df.columns]
-
-    if missing:
-        st.warning(f"⚠️ Kolom tidak ditemukan: {missing}")
 
     df = df[[c for c in FINAL_COLUMNS if c in df.columns]]
     
