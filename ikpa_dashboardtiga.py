@@ -2764,16 +2764,9 @@ def process_excel_file_kppn(uploaded_file, year, detected_month=None):
 
         # ===============================
         # VALIDASI BARIS UTAMA
-        # Struktur kolom file IKPA KPPN:
-        # [0]=No, [1]=Kode KPPN, [2]=Nama KPPN, [3]=Keterangan,
-        # [4]=Revisi DIPA, [5]=Deviasi Hal3, [6]=Penyerapan,
-        # [7]=Belanja Kontraktual, [8]=Penyelesaian Tagihan,
-        # [9]=Pengelolaan UP/TUP, [10]=Capaian Output,
-        # [11]=Nilai Total, [12]=Konversi Bobot,
-        # [13]=Dispensasi SPM, [14]=Nilai Akhir
         # ===============================
-        kode = str(nilai[1]).strip()   # FIX: index 1 = Kode KPPN
-        nama = str(nilai[2]).strip()   # FIX: index 2 = Nama KPPN
+        kode = str(nilai[2]).strip()
+        nama = str(nilai[3]).strip()
 
         if not kode.isdigit():
             i += 1
@@ -2783,18 +2776,18 @@ def process_excel_file_kppn(uploaded_file, year, detected_month=None):
             "Kode KPPN": kode,
             "Nama KPPN": nama,
 
-            "Revisi DIPA": nilai[4],               # FIX: geser -1
-            "Deviasi Halaman III DIPA": nilai[5],
-            "Penyerapan Anggaran": nilai[6],
-            "Belanja Kontraktual": nilai[7],
-            "Penyelesaian Tagihan": nilai[8],
-            "Pengelolaan UP dan TUP": nilai[9],
-            "Capaian Output": nilai[10],
+            "Revisi DIPA": nilai[5],
+            "Deviasi Halaman III DIPA": nilai[6],
+            "Penyerapan Anggaran": nilai[8],
+            "Belanja Kontraktual": nilai[9],
+            "Penyelesaian Tagihan": nilai[10],
+            "Pengelolaan UP dan TUP": nilai[11],
+            "Capaian Output": nilai[13],
 
-            "Nilai Total": nilai[11],
-            "Konversi Bobot": nilai[12],
-            "Dispensasi SPM (Pengurangan)": nilai[13],
-            "Nilai Akhir (Nilai Total/Konversi Bobot)": nilai[14],
+            "Nilai Total": nilai[15],
+            "Konversi Bobot": nilai[16],
+            "Dispensasi SPM (Pengurangan)": nilai[17],
+            "Nilai Akhir (Nilai Total/Konversi Bobot)": nilai[18],
         }
 
         processed_rows.append(row)
