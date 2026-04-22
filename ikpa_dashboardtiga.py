@@ -3303,6 +3303,7 @@ def load_data_ikpa_kppn_from_github():
     from github import Github, Auth
     import base64, io
     import pandas as pd
+    from datetime import datetime
 
     token = st.secrets.get("GITHUB_TOKEN")
     repo_name = st.secrets.get("GITHUB_REPO")
@@ -3316,9 +3317,8 @@ def load_data_ikpa_kppn_from_github():
     except Exception:
         return {}
 
-    KPPN_PATH = "Data IKPA KPPN"   # ✅ konsisten
+    KPPN_PATH = "Data IKPA KPPN"
 
-    # 🔥 recursive scan semua folder tahun
     def collect_xlsx_files(path):
         all_files = []
         try:
@@ -3342,46 +3342,28 @@ def load_data_ikpa_kppn_from_github():
         try:
             file_bytes = io.BytesIO(base64.b64decode(f.content))
 
-            header_row = detect_header_row(file_bytes)
-
-            file_bytes.seek(0)
-            df = pd.read_excel(file_bytes, header=header_row)
-            df = process_kppn_flat(df)
-
-            df.columns = (
-                df.columns.astype(str)
-                .str.strip()
-                .str.replace(r"\s+", " ", regex=True)
-            )
-
             # =========================
             # 🔥 AMBIL TAHUN DARI PATH
             # =========================
             path_parts = f.path.split("/")
-            tahun = next((p for p in path_parts if p.isdigit()), str(datetime.now().year))
+            tahun = next(
+                (p for p in path_parts if p.isdigit()),
+                str(datetime.now().year)
+            )
 
             # =========================
-            # 🔥 AMBIL BULAN DARI NAMA FILE
+            # 🔥 PROCESS KPPN (FIX)
             # =========================
-            name = f.name.upper()
-            bulan = "UNKNOWN"
-
-            for m in [
-                "JANUARI","FEBRUARI","MARET","APRIL","MEI","JUNI",
-                "JULI","AGUSTUS","SEPTEMBER","OKTOBER","NOVEMBER","DESEMBER"
-            ]:
-                if m in name:
-                    bulan = m
-                    break
-
-            df["Bulan"] = bulan
-            df["Tahun"] = tahun
+            df, bulan, tahun = process_excel_file_kppn(
+                file_bytes,
+                year=tahun
+            )
 
             key = (bulan, tahun)
             data[key] = df
 
         except Exception as e:
-            pass  # skip file error
+            continue
 
     return data
 
@@ -12059,16 +12041,16 @@ def main():
 
 
     # ===============================
-    # LOAD IKPA KPPN DARI GITHUB
+    # LOAD IKPA KPPN DARI GITHUB (AUTO REFRESH)
     # ===============================
     if "data_storage_kppn" not in st.session_state:
         st.session_state.data_storage_kppn = {}
 
-    if "auto_loaded_kppn" not in st.session_state:
-        result_kppn = load_data_ikpa_kppn_from_github()
-        if result_kppn:
-            st.session_state.data_storage_kppn = result_kppn
-        st.session_state.auto_loaded_kppn = True
+    # 🔥 LOAD SELALU SAAT APP RUN
+    result_kppn = load_data_ikpa_kppn_from_github()
+
+    if result_kppn:
+        st.session_state.data_storage_kppn = result_kppn
 
     # ===============================
     # NOTIF BERHASIL LOAD (SEKALI)
