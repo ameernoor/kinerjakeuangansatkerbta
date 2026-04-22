@@ -3249,8 +3249,6 @@ def load_data_from_github(_cache_buster: int = 0):
             key = (month, year)
             data_storage[key] = df
 
-            st.success(f"✅ Loaded: {file.name}")
-
         except Exception as e:
             st.error(f"❌ Gagal load file {file.name}: {e}")
 
