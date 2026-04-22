@@ -3342,8 +3342,11 @@ def load_data_ikpa_kppn_from_github():
         try:
             file_bytes = io.BytesIO(base64.b64decode(f.content))
 
+            # 🔥 FIX WAJIB
+            file_bytes.seek(0)
+
             # =========================
-            # 🔥 AMBIL TAHUN DARI PATH
+            # AMBIL TAHUN
             # =========================
             path_parts = f.path.split("/")
             tahun = next(
@@ -3352,7 +3355,7 @@ def load_data_ikpa_kppn_from_github():
             )
 
             # =========================
-            # 🔥 PROCESS KPPN (FIX)
+            # PROCESS
             # =========================
             df, bulan, tahun = process_excel_file_kppn(
                 file_bytes,
@@ -3363,7 +3366,11 @@ def load_data_ikpa_kppn_from_github():
             data[key] = df
 
         except Exception as e:
-            continue
+            st.error(f"❌ Error file {f.path}: {e}")
+
+    # 🔥 DEBUG FINAL (LUAR LOOP)
+    st.write("📂 FILES TERBACA:", [f.path for f in xlsx_files])
+    st.write("📊 TOTAL DATA KPPN:", len(data))
 
     return data
 
