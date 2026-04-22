@@ -1047,19 +1047,11 @@ def fix_ikpa_header(df_raw):
                 # 🔥 FIX KHUSUS FILE MARET
                 # ===============================
                 if "Keterangan" in df.columns:
-                    df = df[
-                        df["Keterangan"]
-                        .astype(str)
-                        .str.upper()
-                        .str.contains("NILAI", na=False)
-                    ]
+                    mask = df["Keterangan"].astype(str).str.upper().str.contains("NILAI", na=False)
 
-                if "Kode Satker" in df.columns:
-                    df = df[
-                        df["Kode Satker"]
-                        .astype(str)
-                        .str.contains(r"\d{6}", na=False)
-                    ]
+                # hanya filter kalau memang ada
+                if mask.any():
+                    df = df[mask]
 
                 return df
 
@@ -3122,9 +3114,8 @@ def save_file_to_github(content_bytes, filename, folder):
 # ============================
 #  LOAD DATA IKPA SATKER DARI GITHUB
 # ============================
-@st.cache_data(ttl=0)
 def load_data_from_github(_cache_buster: int = 0):
-
+    
     import base64
     import io
     import re
@@ -3249,9 +3240,18 @@ def load_data_from_github(_cache_buster: int = 0):
             key = (month, year)
             data_storage[key] = df
 
+            st.success(f"✅ Loaded: {file.name}")
+
         except Exception as e:
             st.error(f"❌ Gagal load file {file.name}: {e}")
 
+    # ===============================
+    # FINAL CHECK
+    # ===============================
+    if not data_storage:
+        st.warning("⚠️ Tidak ada data IKPA berhasil dimuat")
+    else:
+        st.success(f"☁️ Total data IKPA dimuat: {len(data_storage)} periode")
 
     return data_storage
 
@@ -9226,27 +9226,34 @@ def merge_ikpa_dipa_auto():
         tahun_int = int(tahun)
 
         dipa = valid_dipa_years.get(tahun_int)
-        
-        # ===============================
-        # VALIDASI FINAL PAGU (WAJIB)
-        # ===============================
-        if "Total Pagu" not in dipa.columns:
-            st.error("❌ Kolom 'Total Pagu' hilang sebelum merge")
-            st.stop()
 
-        # cek isi
-        if dipa["Total Pagu"].isna().all():
-            st.error("❌ Semua nilai 'Total Pagu' kosong")
-            st.stop()
-            
-
-        # fallback ke tahun terdekat
-        if dipa is None:
+        # ===============================
+        # 🔥 FALLBACK TAHUN TERDEKAT (HARUS SEBELUM CEK KOLOM)
+        # ===============================
+        if dipa is None and valid_dipa_years:
             nearest = min(valid_dipa_years.keys(), key=lambda y: abs(y - tahun_int))
             dipa = valid_dipa_years[nearest]
-            st.warning(f"⚠️ Tahun {tahun_int} pakai DIPA {nearest}")
+            st.warning(f"⚠️ DIPA {tahun_int} tidak ada → pakai DIPA {nearest}")
 
         if dipa is None or dipa.empty:
+            st.warning(f"⚠️ Tidak ada DIPA untuk {bulan}-{tahun}, lanjut tanpa merge pagu")
+            df_ikpa["Total Pagu"] = 0
+            df_ikpa = classify_jenis_satker(df_ikpa)
+            df_ikpa = apply_reference_short_names(df_ikpa)
+            df_ikpa = create_satker_column(df_ikpa)
+            st.session_state.data_storage[(bulan, tahun)] = df_ikpa
+            continue
+
+        # ===============================
+        # VALIDASI KOLOM PAGU
+        # ===============================
+        if "Total Pagu" not in dipa.columns:
+            st.warning(f"⚠️ Kolom 'Total Pagu' tidak ada di DIPA {tahun_int}, lanjut tanpa merge pagu")
+            df_ikpa["Total Pagu"] = 0
+            df_ikpa = classify_jenis_satker(df_ikpa)
+            df_ikpa = apply_reference_short_names(df_ikpa)
+            df_ikpa = create_satker_column(df_ikpa)
+            st.session_state.data_storage[(bulan, tahun)] = df_ikpa
             continue
 
         df_final = df_ikpa.copy()
@@ -11981,13 +11988,16 @@ def main():
                 })
 
     # ============================================================
-    # LOAD IKPA (HANYA SEKALI)
+    # LOAD IKPA — reload dari GitHub setiap kali app dibuka/refresh
     # ============================================================
     if "data_storage" not in st.session_state:
         st.session_state.data_storage = {}
 
-    if not st.session_state.data_storage:
-        st.session_state.data_storage = load_data_from_github()
+    # Selalu load ulang dari GitHub (tidak bergantung session yang hilang saat refresh)
+    with st.spinner("🔄 Memuat data IKPA dari GitHub..."):
+        loaded = load_data_from_github()
+        if loaded:
+            st.session_state.data_storage = loaded
 
     if st.session_state.data_storage:
         add_notification("Data IKPA berhasil dimuat dari GitHub")
@@ -12015,24 +12025,14 @@ def main():
         st.session_state["_kppn_loaded_notif"] = True
         
     # ===============================
-    # INIT DIPA (WAJIB)
+    # INIT & LOAD DIPA — hanya load jika belum ada (tidak reset tiap run)
     # ===============================
     if "DATA_DIPA_by_year" not in st.session_state:
         st.session_state.DATA_DIPA_by_year = {}
 
-    if "_DIPA_LOCKED" not in st.session_state:
-        st.session_state._DIPA_LOCKED = False
-
-
-    # ===============================
-    # 🔥 FORCE AUTO LOAD DIPA (SETIAP RUN)
-    # ===============================
-    st.session_state.DATA_DIPA_by_year = {}
-
-    with st.spinner("🔄 Memuat data DIPA dari GitHub..."):
-        load_DATA_DIPA_from_github()
-
-
+    if not st.session_state.DATA_DIPA_by_year:
+        with st.spinner("🔄 Memuat data DIPA dari GitHub..."):
+            load_DATA_DIPA_from_github()
 
     # ===============================
     # FINALISASI DIPA (AMAN)
@@ -12054,11 +12054,8 @@ def main():
 
             st.session_state.DATA_DIPA_by_year[tahun] = df
     
-    # 🔥 WAJIB RESET
-    st.session_state.ikpa_dipa_merged = False
-
     # ============================================================
-    # AUTO MERGE IKPA + DIPA 
+    # AUTO MERGE IKPA + DIPA — selalu jalankan ulang setelah load
     # ============================================================
     st.session_state.ikpa_dipa_merged = False
 
