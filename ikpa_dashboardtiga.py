@@ -767,6 +767,23 @@ MONTH_ORDER = {
 # Path ke file template (akan diatur di session state)
 TEMPLATE_PATH = r"C:\Users\KEMENKEU\Desktop\INDIKATOR PELAKSANAAN ANGGARAN.xlsx"
 
+def detect_ikpa_type(df_raw):
+    
+    text = " ".join(
+        df_raw.astype(str)
+        .iloc[:5]
+        .values
+        .flatten()
+    ).upper()
+
+    if "KODE SATKER" in text:
+        return "SATKER"
+
+    elif "KPPN" in text:
+        return "KPPN"
+
+    else:
+        return "UNKNOWN"
 
 # Normalize kode satker
 def normalize_kode_satker(k, width=6):
@@ -2746,11 +2763,18 @@ def process_excel_file_kppn(uploaded_file, year, detected_month=None):
     df_raw = pd.read_excel(uploaded_file, header=None)
 
     # ===============================
-    # 🔍 DETEKSI HEADER
+    # 🔍 DETEKSI HEADER (LEBIH AMAN)
     # ===============================
-    header_row = detect_header_row(df_raw)
+    header_row = None
+    for i in range(min(10, len(df_raw))):
+        row = " ".join(df_raw.iloc[i].astype(str).str.upper())
+        if "KPPN" in row and "NILAI" in row:
+            header_row = i
+            break
 
-    # ambil data setelah header
+    if header_row is None:
+        raise ValueError("Header IKPA KPPN tidak ditemukan")
+
     df_data = df_raw.iloc[header_row+2:].reset_index(drop=True)
 
     processed_rows = []
@@ -2762,12 +2786,10 @@ def process_excel_file_kppn(uploaded_file, year, detected_month=None):
         bobot = df_data.iloc[i + 1]
         nilai_akhir = df_data.iloc[i + 2]
 
-        # ===============================
-        # VALIDASI BARIS UTAMA
-        # ===============================
         kode = str(nilai[2]).strip()
         nama = str(nilai[3]).strip()
 
+        # skip baris tidak valid
         if not kode.isdigit():
             i += 1
             continue
@@ -2792,15 +2814,25 @@ def process_excel_file_kppn(uploaded_file, year, detected_month=None):
 
         processed_rows.append(row)
 
-        i += 3  # lompat per blok
+        i += 3  # lompat per blok NILAI-BOBOT-NILAI AKHIR
 
     df = pd.DataFrame(processed_rows)
 
     # ===============================
-    # METADATA
+    # 🔥 CLEAN NUMERIC (WAJIB)
     # ===============================
+    for col in df.columns:
+        if col not in ["Kode KPPN", "Nama KPPN"]:
+            df[col] = (
+                df[col]
+                .astype(str)
+                .str.replace(".", "", regex=False)
+                .str.replace(",", ".", regex=False)
+            )
+            df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0)
+
     # ===============================
-    # DETEKSI BULAN OTOMATIS (FIX)
+    # 📅 DETEKSI BULAN
     # ===============================
     if not detected_month or detected_month == "UNKNOWN":
 
@@ -2813,31 +2845,31 @@ def process_excel_file_kppn(uploaded_file, year, detected_month=None):
 
         detected_month = "UNKNOWN"
 
-        # 🔍 coba ambil dari kolom Periode
-        for idx in range(len(df_data)):
-            val = str(df_data.iloc[idx, 1]).strip()
+        for idx in range(len(df_raw)):
+            val = str(df_raw.iloc[idx].astype(str)).upper()
 
-            if val in MONTH_MAP:
-                detected_month = MONTH_MAP[val]
+            for k, v in MONTH_MAP.items():
+                if k in val or v in val:
+                    detected_month = v
+                    break
+
+            if detected_month != "UNKNOWN":
                 break
 
-        # 🔥 fallback terakhir (biar tidak hilang dari dropdown)
         if detected_month == "UNKNOWN":
-            detected_month = "MARET"
+            detected_month = "MARET"  # fallback aman
 
     # ===============================
-    # METADATA FINAL
+    # METADATA
     # ===============================
-    df["Bulan"] = detected_month.upper()
+    df["Bulan"] = detected_month
     df["Tahun"] = str(year)
     df["Source"] = "Upload"
 
     # ===============================
-    # RANKING
+    # 🏆 RANKING
     # ===============================
     nilai_col = "Nilai Akhir (Nilai Total/Konversi Bobot)"
-
-    df[nilai_col] = pd.to_numeric(df[nilai_col], errors="coerce").fillna(0)
 
     df = df.sort_values(nilai_col, ascending=False)
 
@@ -2848,65 +2880,42 @@ def process_excel_file_kppn(uploaded_file, year, detected_month=None):
     )
 
     return df, detected_month, year
-    
-    
 
 def process_kppn_flat(df):
+    
     # ===============================
-    # 1. AMBIL HEADER BARIS KE-2
+    # HEADER BARIS PERTAMA
     # ===============================
-    header2 = df.iloc[0]
+    header = df.iloc[0]
 
-    new_cols = []
-    for col, sub in zip(df.columns, header2):
-        if pd.notna(sub):
-            new_cols.append(str(sub).strip())
-        else:
-            new_cols.append(str(col).strip())
-
-    df.columns = new_cols
-
-    # ===============================
-    # 2. BUANG BARIS HEADER
-    # ===============================
+    df.columns = [str(c).strip() for c in header]
     df = df.iloc[1:].reset_index(drop=True)
 
     # ===============================
-    # 🔥 3. FILTER HANYA "NILAI" (SAFE)
+    # FILTER NILAI (JIKA ADA)
     # ===============================
     if "Keterangan" in df.columns:
-        df["Keterangan"] = df["Keterangan"].astype(str)
-        df = df[df["Keterangan"].str.upper().str.contains("NILAI", na=False)]
-    else:
-        # format baru → tidak ada kolom Keterangan
-        pass
+        df = df[df["Keterangan"].astype(str).str.upper().str.contains("NILAI", na=False)]
 
     # ===============================
-    # 4. DROP KOLOM TIDAK PERLU
+    # DROP KOLOM SAMPAH
     # ===============================
     df = df.loc[:, ~df.columns.str.contains("Unnamed", case=False)]
 
     # ===============================
-    # 5. CLEAN KOLOM
+    # CLEAN ANGKA
     # ===============================
-    df.columns = (
-        df.columns
-        .str.strip()
-        .str.replace(r"\s+", " ", regex=True)
-    )
+    for col in df.columns:
+        if col not in ["Kode KPPN", "Nama KPPN"]:
+            df[col] = (
+                df[col]
+                .astype(str)
+                .str.replace(".", "", regex=False)
+                .str.replace(",", ".", regex=False)
+            )
+            df[col] = pd.to_numeric(df[col], errors="coerce")
 
-    # ===============================
-    # 🔥 6. HAPUS BARIS KOSONG / ZERO
-    # ===============================
-    df = df.dropna(how="all")
-
-    # optional: buang baris yang semua angka = 0
-    df = df[~(df.fillna(0) == 0).all(axis=1)]
-
-    # ===============================
-    # 7. RESET INDEX
-    # ===============================
-    df = df.reset_index(drop=True)
+    df = df.dropna(how="all").reset_index(drop=True)
 
     return df
 
