@@ -12032,16 +12032,21 @@ def main():
     if "data_storage" not in st.session_state:
         st.session_state.data_storage = {}
 
-    # Selalu load ulang dari GitHub (tidak bergantung session yang hilang saat refresh)
-    with st.spinner("🔄 Memuat data IKPA dari GitHub..."):
-        loaded = load_data_from_github()
-        if loaded:
-            st.session_state.data_storage = loaded
+    # ===============================
+    # LOAD IKPA (HANYA SEKALI)
+    # ===============================
+    if "ikpa_loaded" not in st.session_state:
+    
+        with st.spinner("🔄 Memuat data IKPA dari GitHub..."):
+            loaded = load_data_from_github()
 
-    if st.session_state.data_storage:
-        add_notification("Data IKPA berhasil dimuat dari GitHub")
-    else:
-        st.warning("⚠️ Data IKPA belum tersedia")
+            if loaded:
+                st.session_state.data_storage = loaded
+                add_notification("Data IKPA berhasil dimuat dari GitHub")
+            else:
+                st.warning("⚠️ Data IKPA belum tersedia")
+
+        st.session_state.ikpa_loaded = True
 
 
     # ===============================
@@ -12096,16 +12101,21 @@ def main():
     # ============================================================
     # AUTO MERGE IKPA + DIPA — selalu jalankan ulang setelah load
     # ============================================================
-    st.session_state.ikpa_dipa_merged = False
+    # ===============================
+    # AUTO MERGE (HANYA SEKALI)
+    # ===============================
+    if not st.session_state.get("ikpa_dipa_merged", False):
 
-    if (
-        st.session_state.data_storage and
-        st.session_state.DATA_DIPA_by_year
-    ):
-        try:
-            merge_ikpa_dipa_auto()
-        except Exception as e:
-            st.error(f"Gagal merge IKPA & DIPA: {e}")
+        if (
+            st.session_state.data_storage and
+            st.session_state.DATA_DIPA_by_year
+        ):
+            try:
+                merge_ikpa_dipa_auto()
+                st.session_state.ikpa_dipa_merged = True
+            except Exception as e:
+                st.error(f"Gagal merge IKPA & DIPA: {e}")
+                
             
     # ============================================================
     # NOTIF GLOBAL STATUS DATA (MUNCUL SAAT APP DIBUKA)
