@@ -2489,8 +2489,13 @@ def post_process_ikpa_satker(df, source="Upload"):
             (df["Kode Satker"] != "000000")
         ]
 
+    # 🔥 FIX: Hanya filter baris null jika kolom Uraian Satker ada
+    # DAN tidak semua nilainya null (mencegah data hilang total)
     if "Uraian Satker" in df.columns:
-        df = df[df["Uraian Satker"].notna()]
+        non_null_mask = df["Uraian Satker"].notna()
+        # Hanya filter jika ada minimal beberapa baris valid — jangan kosongkan semua data
+        if non_null_mask.sum() > 0:
+            df = df[non_null_mask]
 
     df = df.reset_index(drop=True)
 
@@ -2548,10 +2553,17 @@ def post_process_ikpa_satker(df, source="Upload"):
         df["Period_Sort"] = "0000-00"
 
     # =========================
-    # 🔥 MERGE DIPA
+    # 🔥 MERGE DIPA — hanya jika DATA_DIPA_by_year sudah tersedia
     # =========================
     try:
-        df = merge_ikpa_with_dipa(df)
+        dipa_dict = st.session_state.get("DATA_DIPA_by_year", {})
+        if dipa_dict:
+            df = merge_ikpa_with_dipa(df)
+        else:
+            df["Total Pagu"] = 0
+    except KeyError as e:
+        # 'Total Pagu' tidak ditemukan di DIPA → lanjut tanpa merge
+        df["Total Pagu"] = 0
     except Exception as e:
         st.warning(f"⚠️ Merge DIPA gagal: {e}")
         df["Total Pagu"] = 0
@@ -3164,7 +3176,9 @@ def load_data_from_github(_cache_buster: int = 0):
     MONTH_ORDER = {
         "JANUARI": 1, "FEBRUARI": 2, "MARET": 3, "APRIL": 4,
         "MEI": 5, "JUNI": 6, "JULI": 7, "AGUSTUS": 8,
-        "SEPTEMBER": 9, "OKTOBER": 10, "NOVEMBER": 11, "DESEMBER": 12
+        "SEPTEMBER": 9, "OKTOBER": 10,
+        "NOVEMBER": 11, "NOPEMBER": 11,
+        "DESEMBER": 12
     }
 
     # ===============================
@@ -3221,9 +3235,32 @@ def load_data_from_github(_cache_buster: int = 0):
             # ===============================
             # POST PROCESS
             # ===============================
+            rows_before = len(df)
             df = post_process_ikpa_satker(df)
             df = normalize_ikpa_columns(df)
             df = ensure_ikpa_columns(df)
+
+            # 🔥 FIX: jika post_process mengosongkan df, coba recover dari data asli
+            if df is None or df.empty:
+                st.warning(f"⚠️ post_process mengosongkan {file.name} ({rows_before} baris → 0). Coba recover...")
+                # baca ulang dan skip post_process yang merusak
+                df = pd.read_excel(io.BytesIO(decoded))
+                df.columns = [str(c).strip() for c in df.columns]
+                if "Kode Satker" in df.columns:
+                    df["Kode Satker"] = (
+                        df["Kode Satker"].astype(str)
+                        .str.extract(r"(\d+)")[0]
+                        .fillna("").str.zfill(6)
+                    )
+                    df = df[(df["Kode Satker"] != "") & (df["Kode Satker"] != "000000")]
+                df["Bulan"] = month
+                df["Tahun"] = year
+                df = normalize_ikpa_columns(df)
+                df = ensure_ikpa_columns(df)
+                if df.empty:
+                    st.error(f"❌ Recovery gagal untuk {file.name}, skip file ini")
+                    continue
+                st.success(f"✅ Recovery berhasil: {len(df)} baris dari {file.name}")
 
             # ===============================
             # METADATA
@@ -3235,8 +3272,12 @@ def load_data_from_github(_cache_buster: int = 0):
             df["Period_Sort"] = f"{int(year):04d}-{month_num:02d}"
 
             # ===============================
-            # SIMPAN
+            # SIMPAN — hanya jika df tidak kosong
             # ===============================
+            if df is None or df.empty:
+                st.warning(f"⚠️ Skip menyimpan {file.name} karena data kosong")
+                continue
+
             key = (month, year)
             data_storage[key] = df
 
@@ -4083,8 +4124,14 @@ def merge_ikpa_with_dipa(df):
     #  FIX 1: CEK KOLOM PAGU
     # ===============================
     if "Total Pagu" not in df_dipa.columns:
-        st.error("❌ Merge gagal: kolom 'Total Pagu' tidak ditemukan di DIPA")
-        st.stop()
+        # Cari kolom alternatif yang mengandung kata PAGU
+        pagu_candidates = [c for c in df_dipa.columns if "PAGU" in str(c).upper()]
+        if pagu_candidates:
+            df_dipa = df_dipa.rename(columns={pagu_candidates[0]: "Total Pagu"})
+        else:
+            # Tidak ada kolom pagu sama sekali → lanjut tanpa merge
+            df["Total Pagu"] = 0
+            return df
 
     # ===============================
     #  FIX 2: SAMAKAN KODE SATKER
@@ -9215,8 +9262,8 @@ def merge_ikpa_dipa_auto():
         jumlah_satker = df_ikpa["Kode Satker"].nunique()
 
 
-        # 🔥 FILTER DATA RUSAK
-        if jumlah_satker < 20:
+        # 🔥 FILTER DATA RUSAK (threshold diturunkan — awal tahun satker bisa sedikit)
+        if jumlah_satker < 5:
             st.error(f"❌ IKPA tidak normal (hanya {jumlah_satker} satker) → SKIP")
             continue
 
