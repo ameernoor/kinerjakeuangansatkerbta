@@ -3297,8 +3297,7 @@ def load_data_from_github(_cache_buster: int = 0):
 
     return data_storage
 
-
-#load data ikpa kppn
+# load data ikpa kppn
 def load_data_ikpa_kppn_from_github():
     from github import Github, Auth
     import base64, io
@@ -3341,9 +3340,10 @@ def load_data_ikpa_kppn_from_github():
     for f in xlsx_files:
         try:
             file_bytes = io.BytesIO(base64.b64decode(f.content))
+            file_bytes.seek(0)
 
             # =========================
-            # AMBIL TAHUN DARI PATH
+            # AMBIL TAHUN
             # =========================
             path_parts = f.path.split("/")
             tahun = next(
@@ -3352,18 +3352,88 @@ def load_data_ikpa_kppn_from_github():
             )
 
             # =========================
-            # 🔥 PROCESS KPPN (FIX)
+            # PARSER (COBA FORMAT BARU)
             # =========================
-            df, bulan, tahun = process_excel_file_kppn(
-                file_bytes,
-                year=tahun
-            )
+            try:
+                df, bulan, tahun = process_excel_file_kppn(
+                    file_bytes,
+                    year=tahun
+                )
 
+            except Exception:
+                # =========================
+                # FALLBACK FORMAT LAMA
+                # =========================
+                file_bytes.seek(0)
+
+                df_raw = pd.read_excel(file_bytes, header=None)
+
+                header_row = detect_header_row(df_raw)
+
+                file_bytes.seek(0)
+                df = pd.read_excel(file_bytes, header=header_row)
+
+                df = process_kppn_flat(df)
+
+                # =========================
+                # 🔥 NORMALISASI NILAI AKHIR (VERSI KUAT)
+                # =========================
+                target_col = None
+
+                for col in df.columns:
+                    col_up = str(col).upper()
+                    if (
+                        "AKHIR" in col_up or
+                        "TOTAL" in col_up or
+                        "IKPA" in col_up or
+                        "NILAI" in col_up
+                    ):
+                        target_col = col
+                        break
+
+                if target_col is None:
+                    numeric_cols = df.select_dtypes(include=["number"]).columns
+                    if len(numeric_cols) > 0:
+                        target_col = numeric_cols[-1]
+
+                if target_col:
+                    df["Nilai Akhir (Nilai Total/Konversi Bobot)"] = df[target_col]
+                else:
+                    df["Nilai Akhir (Nilai Total/Konversi Bobot)"] = 0
+
+                df["Nilai Akhir (Nilai Total/Konversi Bobot)"] = pd.to_numeric(
+                    df["Nilai Akhir (Nilai Total/Konversi Bobot)"],
+                    errors="coerce"
+                ).fillna(0)
+
+                # =========================
+                # DETEKSI BULAN DARI NAMA FILE
+                # =========================
+                name = f.name.upper()
+                bulan = "UNKNOWN"
+
+                for m in [
+                    "JANUARI","FEBRUARI","MARET","APRIL","MEI","JUNI",
+                    "JULI","AGUSTUS","SEPTEMBER","OKTOBER","NOVEMBER","DESEMBER"
+                ]:
+                    if m in name:
+                        bulan = m
+                        break
+
+            # =========================
+            # SIMPAN
+            # =========================
             key = (bulan, tahun)
             data[key] = df
 
         except Exception as e:
             st.error(f"❌ Error file {f.path}: {e}")
+
+    # =========================
+    # DEBUG
+    # =========================
+    st.write("📂 FILES TERBACA:", [f.path for f in xlsx_files])
+    st.write("📊 TOTAL DATA KPPN:", len(data))
 
     return data
 
