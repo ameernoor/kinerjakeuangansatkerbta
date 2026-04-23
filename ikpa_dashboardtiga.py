@@ -8649,6 +8649,28 @@ def menu_highlights():
     # ===============================
     # PILIH KPPN
     # ===============================
+    # ===============================
+    # 🔥 NORMALISASI KOLOM NAMA KPPN
+    # ===============================
+    if "Nama KPPN" not in df_all.columns:
+
+        kandidat = None
+
+        for col in df_all.columns:
+            col_up = str(col).upper()
+
+            if "KPPN" in col_up and "NAMA" in col_up:
+                kandidat = col
+                break
+
+            elif "KPPN" in col_up:
+                kandidat = col
+
+        if kandidat:
+            df_all["Nama KPPN"] = df_all[kandidat]
+        else:
+            df_all["Nama KPPN"] = "UNKNOWN"
+    
     kppn_list = sorted(df_all["Nama KPPN"].dropna().unique())
     selected_kppn = st.selectbox("Pilih KPPN", kppn_list)
 
