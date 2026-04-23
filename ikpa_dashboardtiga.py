@@ -8721,10 +8721,8 @@ def menu_tabel_ikpa_kppn():
 
         temp = df.copy()
 
-        # FIX DUPLIKAT KOLOM
         temp = temp.loc[:, ~temp.columns.duplicated()].copy()
 
-        # RAPIIKAN KOLOM
         temp.columns = (
             temp.columns.astype(str)
             .str.strip()
@@ -8736,12 +8734,11 @@ def menu_tabel_ikpa_kppn():
 
         all_data.append(temp)
 
-    # CONCAT AMAN
     df_all = pd.concat(all_data, ignore_index=True)
     df_all = df_all.loc[:, ~df_all.columns.duplicated()]
 
     # ===============================
-    # NORMALISASI KOLOM ERROR
+    # NORMALISASI KOLOM
     # ===============================
     rename_map = {
         "Halaman": "Deviasi Halaman III DIPA",
@@ -8753,23 +8750,45 @@ def menu_tabel_ikpa_kppn():
     df_all = df_all.rename(columns=rename_map)
 
     # ===============================
-    # 🔥 CLEAN NUMERIC
+    # PILIH INDIKATOR
     # ===============================
-    target_col = "Nilai Akhir (Nilai Total/Konversi Bobot)"
+    indikator_list = [
+        "Revisi DIPA",
+        "Deviasi Halaman III DIPA",
+        "Penyerapan Anggaran",
+        "Belanja Kontraktual",
+        "Penyelesaian Tagihan",
+        "Pengelolaan UP dan TUP",
+        "Capaian Output",
+        "Nilai Total",
+        "Konversi Bobot",
+        "Dispensasi SPM (Pengurangan)",
+        "Nilai Akhir (Nilai Total/Konversi Bobot)"
+    ]
 
-    if target_col not in df_all.columns:
-        st.error("Kolom Nilai Akhir tidak ditemukan")
+    default_indikator = "Deviasi Halaman III DIPA"
+
+    indikator = st.selectbox(
+        "Pilih Indikator IKPA KPPN",
+        indikator_list,
+        index=indikator_list.index(default_indikator)
+    )
+
+    if indikator not in df_all.columns:
+        st.error(f"Kolom {indikator} tidak ditemukan")
         return
 
-    df_all[target_col] = (
-        df_all[target_col]
+    # ===============================
+    # CLEAN NUMERIC (AMAN)
+    # ===============================
+    df_all[indikator] = (
+        df_all[indikator]
         .astype(str)
         .str.replace("%", "", regex=False)
-        .str.replace(".", "", regex=False)
         .str.replace(",", ".", regex=False)
     )
 
-    df_all[target_col] = pd.to_numeric(df_all[target_col], errors="coerce")
+    df_all[indikator] = pd.to_numeric(df_all[indikator], errors="coerce")
 
     # ===============================
     # NORMALISASI BULAN
@@ -8804,9 +8823,7 @@ def menu_tabel_ikpa_kppn():
     )
 
     # ===============================
-    # ===============================
-    # 🔵 MONTHLY / QUARTERLY
-    # ===============================
+    # BULANAN / TRIWULAN
     # ===============================
     if mode in ["monthly", "quarterly"]:
 
@@ -8831,16 +8848,16 @@ def menu_tabel_ikpa_kppn():
             })
 
         # ===============================
-        # PIVOT
+        # PIVOT (🔥 SUDAH ADA KODE KPPN)
         # ===============================
         df_pivot = df[
-            ["Nama KPPN", "Period", target_col]
+            ["Kode KPPN", "Nama KPPN", "Period", indikator]
         ]
 
         df_wide = df_pivot.pivot_table(
-            index="Nama KPPN",
+            index=["Kode KPPN", "Nama KPPN"],
             columns="Period",
-            values=target_col,
+            values=indikator,
             aggfunc="last"
         ).reset_index()
 
@@ -8849,13 +8866,23 @@ def menu_tabel_ikpa_kppn():
         # ===============================
         if mode == "monthly":
             ordered = sorted(
-                [c for c in df_wide.columns if c != "Nama KPPN"],
+                [c for c in df_wide.columns if c not in ["Kode KPPN", "Nama KPPN"]],
                 key=lambda x: MONTH_ORDER.get(x, 99)
             )
         else:
             ordered = [c for c in ["Tw I","Tw II","Tw III","Tw IV"] if c in df_wide.columns]
 
-        df_wide = df_wide[["Nama KPPN"] + ordered]
+        df_wide = df_wide[["Kode KPPN", "Nama KPPN"] + ordered]
+
+        # ===============================
+        # FORMAT KODE KPPN
+        # ===============================
+        df_wide["Kode KPPN"] = (
+            df_wide["Kode KPPN"]
+            .astype(str)
+            .str.replace(r"\.0$", "", regex=True)
+            .str.zfill(3)
+        )
 
         # ===============================
         # RANKING
@@ -8868,12 +8895,26 @@ def menu_tabel_ikpa_kppn():
                 .astype("Int64")
             )
 
+        # ===============================
+        # FORMAT ANGKA (🔥 SESUAI REQUEST)
+        # ===============================
+        def format_angka(x):
+            if pd.isna(x):
+                return "–"
+            if float(x).is_integer():
+                return str(int(x))  # 100 → "100"
+            return f"{x:.2f}"      # 99.88 → "99.88"
+
+        for col in df_wide.columns:
+            if col not in ["Kode KPPN", "Nama KPPN", "Peringkat"]:
+                df_wide[col] = df_wide[col].apply(format_angka)
+
         df_wide = df_wide.sort_values("Peringkat")
 
         render_table_pin_satker(df_wide)
 
     # ===============================
-    # 🔴 COMPARE
+    # COMPARE
     # ===============================
     else:
 
@@ -8907,20 +8948,26 @@ def menu_tabel_ikpa_kppn():
 
         rows = []
 
-        for kppn in df_all["Nama KPPN"].unique():
+        for _, row_kppn in df_all[["Kode KPPN","Nama KPPN"]].drop_duplicates().iterrows():
 
-            row = {"Nama KPPN": kppn}
+            kode = row_kppn["Kode KPPN"]
+            nama = row_kppn["Nama KPPN"]
+
+            row = {
+                "Kode KPPN": kode,
+                "Nama KPPN": nama
+            }
 
             last_a, last_b = None, None
 
             for tw in ["Tw I","Tw II","Tw III","Tw IV"]:
 
                 valA = tw_a[tw].loc[
-                    tw_a[tw]["Nama KPPN"] == kppn, target_col
+                    tw_a[tw]["Nama KPPN"] == nama, indikator
                 ]
 
                 valB = tw_b[tw].loc[
-                    tw_b[tw]["Nama KPPN"] == kppn, target_col
+                    tw_b[tw]["Nama KPPN"] == nama, indikator
                 ]
 
                 valA = valA.values[0] if len(valA) else None
