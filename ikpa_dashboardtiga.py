@@ -2760,129 +2760,92 @@ def reprocess_all_ikpa_satker():
 def process_excel_file_kppn(uploaded_file, year, detected_month=None):
     import pandas as pd
 
+    # ===============================
+    # BACA FILE
+    # ===============================
+    try:
+        uploaded_file.seek(0)
+    except:
+        pass
+
     df_raw = pd.read_excel(uploaded_file, header=None)
 
     # ===============================
-    # 🔍 DETEKSI HEADER (LEBIH AMAN)
+    # 🔍 DETEKSI HEADER (TANPA .str)
     # ===============================
     header_row = None
+
     for i in range(min(10, len(df_raw))):
-
         row_cells = df_raw.iloc[i]
-        row = " ".join([str(cell).upper() for cell in row_cells])
+        text = " ".join([str(x).upper() for x in row_cells])
 
-        if "KPPN" in row and "NILAI" in row:
+        if "KPPN" in text:
             header_row = i
             break
 
     if header_row is None:
-        raise ValueError("Header IKPA KPPN tidak ditemukan")
-
-    df_data = df_raw.iloc[header_row+2:].reset_index(drop=True)
-
-    processed_rows = []
-    i = 0
-
-    while i + 2 < len(df_data):
-
-        nilai = df_data.iloc[i]
-        bobot = df_data.iloc[i + 1]
-        nilai_akhir = df_data.iloc[i + 2]
-
-        kode = str(nilai[2]).strip()
-        nama = str(nilai[3]).strip()
-
-        # skip baris tidak valid
-        if not kode.isdigit():
-            i += 1
-            continue
-
-        row = {
-            "Kode KPPN": kode,
-            "Nama KPPN": nama,
-
-            "Revisi DIPA": nilai[5],
-            "Deviasi Halaman III DIPA": nilai[6],
-            "Penyerapan Anggaran": nilai[8],
-            "Belanja Kontraktual": nilai[9],
-            "Penyelesaian Tagihan": nilai[10],
-            "Pengelolaan UP dan TUP": nilai[11],
-            "Capaian Output": nilai[13],
-
-            "Nilai Total": nilai[15],
-            "Konversi Bobot": nilai[16],
-            "Dispensasi SPM (Pengurangan)": nilai[17],
-            "Nilai Akhir (Nilai Total/Konversi Bobot)": nilai[18],
-        }
-
-        processed_rows.append(row)
-
-        i += 3  # lompat per blok NILAI-BOBOT-NILAI AKHIR
-
-    df = pd.DataFrame(processed_rows)
+        raise ValueError("Header tidak ditemukan")
 
     # ===============================
-    # 🔥 CLEAN NUMERIC (WAJIB)
+    # AMBIL DATA
     # ===============================
+    df_data = df_raw.iloc[header_row+1:].reset_index(drop=True)
+
+    # ===============================
+    # 🔥 MODE AMAN: TANPA BLOK 3 BARIS
+    # ===============================
+    df = df_data.copy()
+
+    # jadikan header
+    header = df.iloc[0]
+    df.columns = [str(c).strip() for c in header]
+    df = df.iloc[1:].reset_index(drop=True)
+
+    # ===============================
+    # 🔥 NORMALISASI KOLOM NILAI
+    # ===============================
+    target_col = None
+
     for col in df.columns:
-        if col not in ["Kode KPPN", "Nama KPPN"]:
-            df[col] = (
-                df[col]
-                .astype(str)
-                .str.replace(".", "", regex=False)
-                .str.replace(",", ".", regex=False)
-            )
-            df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0)
+        col_up = str(col).upper()
 
-    # ===============================
-    # 📅 DETEKSI BULAN
-    # ===============================
-    if not detected_month or detected_month == "UNKNOWN":
+        if "AKHIR" in col_up or "TOTAL" in col_up or "NILAI" in col_up:
+            target_col = col
+            break
 
-        MONTH_MAP = {
-            "01": "JANUARI", "02": "FEBRUARI", "03": "MARET",
-            "04": "APRIL", "05": "MEI", "06": "JUNI",
-            "07": "JULI", "08": "AGUSTUS", "09": "SEPTEMBER",
-            "10": "OKTOBER", "11": "NOVEMBER", "12": "DESEMBER"
-        }
+    if target_col is None:
+        numeric_cols = df.select_dtypes(include=["number"]).columns
+        if len(numeric_cols) > 0:
+            target_col = numeric_cols[-1]
 
-        detected_month = "UNKNOWN"
+    if target_col:
+        df["Nilai Akhir (Nilai Total/Konversi Bobot)"] = df[target_col]
+    else:
+        df["Nilai Akhir (Nilai Total/Konversi Bobot)"] = 0
 
-        for idx in range(len(df_raw)):
-            val = str(df_raw.iloc[idx].astype(str)).upper()
-
-            for k, v in MONTH_MAP.items():
-                if k in val or v in val:
-                    detected_month = v
-                    break
-
-            if detected_month != "UNKNOWN":
-                break
-
-        if detected_month == "UNKNOWN":
-            detected_month = "MARET"  # fallback aman
+    df["Nilai Akhir (Nilai Total/Konversi Bobot)"] = pd.to_numeric(
+        df["Nilai Akhir (Nilai Total/Konversi Bobot)"],
+        errors="coerce"
+    ).fillna(0)
 
     # ===============================
     # METADATA
     # ===============================
-    df["Bulan"] = detected_month
+    df["Bulan"] = detected_month or "UNKNOWN"
     df["Tahun"] = str(year)
-    df["Source"] = "Upload"
 
     # ===============================
-    # 🏆 RANKING
+    # RANKING
     # ===============================
-    nilai_col = "Nilai Akhir (Nilai Total/Konversi Bobot)"
-
-    df = df.sort_values(nilai_col, ascending=False)
+    df = df.sort_values("Nilai Akhir (Nilai Total/Konversi Bobot)", ascending=False)
 
     df["Peringkat"] = (
-        df[nilai_col]
+        df["Nilai Akhir (Nilai Total/Konversi Bobot)"]
         .rank(method="dense", ascending=False)
         .astype(int)
     )
 
-    return df, detected_month, year
+    return df, detected_month or "UNKNOWN", year
 
 
 def process_kppn_flat(df):
