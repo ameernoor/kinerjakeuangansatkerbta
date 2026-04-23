@@ -9479,15 +9479,17 @@ def push_to_github(file_bytes, repo_path, repo_name, token, commit_message):
     except Exception as e:
         st.error(f"❌ Gagal push ke GitHub: {e}")
         
-# Deteksi IKPA KPPN
+        
+        
 def detect_header_row(file_or_df, max_scan=15):
+    import pandas as pd
+
     # ===============================
-    # 🔥 HANDLE DUA TIPE INPUT
+    # HANDLE INPUT
     # ===============================
     if isinstance(file_or_df, pd.DataFrame):
         df_raw = file_or_df.copy()
     else:
-        # file (BytesIO / upload)
         try:
             file_or_df.seek(0)
         except:
@@ -9496,15 +9498,19 @@ def detect_header_row(file_or_df, max_scan=15):
         df_raw = pd.read_excel(file_or_df, header=None, nrows=max_scan)
 
     # ===============================
-    # 🔍 DETEKSI HEADER
+    # DETEKSI HEADER (AMAN TANPA .str)
     # ===============================
     keywords = ["KODE", "KPPN", "SATKER", "NILAI"]
 
     for i in range(min(max_scan, len(df_raw))):
-        row = df_raw.iloc[i].astype(str).str.upper()
+
+        row = df_raw.iloc[i]
+
+        # ubah semua cell jadi string aman
+        row_str = [str(cell).upper() for cell in row]
 
         score = sum(
-            any(k in cell for cell in row)
+            any(k in cell for cell in row_str)
             for k in keywords
         )
 
