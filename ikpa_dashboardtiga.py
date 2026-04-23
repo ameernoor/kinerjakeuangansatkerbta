@@ -63,6 +63,16 @@ def add_notification(msg):
     if msg not in st.session_state.loading_notifications:
         st.session_state.loading_notifications.append(msg)
 
+@st.cache_data(show_spinner=False)
+def build_base_grid_options(columns):
+    from st_aggrid import GridOptionsBuilder
+    
+    gb = GridOptionsBuilder()
+    
+    for col in columns:
+        gb.configure_column(col)
+    
+    return gb
 
 def render_table_pin_satker(df):
     df = df.copy()
@@ -82,7 +92,7 @@ def render_table_pin_satker(df):
 
         return min(height, max_height)
 
-    gb = GridOptionsBuilder.from_dataframe(df)
+    gb = build_base_grid_options(tuple(df.columns))
     
     # =====================================================
     # ALIGNMENT OTOMATIS
