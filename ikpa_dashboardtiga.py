@@ -8806,7 +8806,7 @@ def menu_tabel_ikpa_kppn():
     years = sorted(df_all["Tahun"].unique(), reverse=True)
     selected_year = st.selectbox("Pilih Tahun", years)
 
-    df_all = df_all[df_all["Tahun"] == selected_year]
+    df_filtered = df_all[df_all["Tahun"] == selected_year]
 
     # ===============================
     # PILIH MODE
@@ -8827,7 +8827,7 @@ def menu_tabel_ikpa_kppn():
     # ===============================
     if mode in ["monthly", "quarterly"]:
 
-        df = df_all.copy()
+        df = df_filtered.copy()
 
         if mode == "monthly":
             df["Period"] = df["Bulan_upper"]
@@ -8848,7 +8848,7 @@ def menu_tabel_ikpa_kppn():
             })
 
         # ===============================
-        # PIVOT (🔥 SUDAH ADA KODE KPPN)
+        # PIVOT SUDAH ADA KODE KPPN
         # ===============================
         df_pivot = df[
             ["Kode KPPN", "Nama KPPN", "Period", indikator]
