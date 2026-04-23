@@ -8920,10 +8920,17 @@ def menu_tabel_ikpa_kppn():
 
         years = sorted(df_all["Tahun"].unique())
 
+        # ===============================
+        # VALIDASI MINIMAL 2 TAHUN
+        # ===============================
+        if len(years) < 2:
+            st.warning("Data minimal harus 2 tahun untuk perbandingan")
+            return
+
         col1, col2 = st.columns(2)
 
         with col1:
-            year_a = st.selectbox("Tahun A", years)
+            year_a = st.selectbox("Tahun A", years, index=0)
 
         with col2:
             year_b = st.selectbox("Tahun B", years, index=1)
