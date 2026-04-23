@@ -8917,87 +8917,141 @@ def menu_tabel_ikpa_kppn():
     # COMPARE
     # ===============================
     else:
-
-        years = sorted(df_all["Tahun"].unique())
+        st.markdown("### 📊 Perbandingan Antar Tahun (KPPN)")
 
         # ===============================
-        # VALIDASI MINIMAL 2 TAHUN
+        # VALIDASI TAHUN
         # ===============================
-        if len(years) < 2:
+        available_years = sorted(df_all["Tahun"].dropna().unique())
+
+        if len(available_years) < 2:
             st.warning("Data minimal harus 2 tahun untuk perbandingan")
             return
 
-        col1, col2 = st.columns(2)
+        # ===============================
+        # PILIH 2 TAHUN (MODEL SATKER)
+        # ===============================
+        colA, colB = st.columns(2)
 
-        with col1:
-            year_a = st.selectbox("Tahun A", years, index=0)
+        with colA:
+            year_a = st.selectbox(
+                "Tahun A (Awal)",
+                available_years,
+                index=0,
+                key="kppn_year_a"
+            )
 
-        with col2:
-            year_b = st.selectbox("Tahun B", years, index=1)
+        with colB:
+            year_b = st.selectbox(
+                "Tahun B (Akhir)",
+                available_years,
+                index=1,
+                key="kppn_year_b"
+            )
 
         if year_a == year_b:
-            st.warning("Pilih tahun berbeda")
+            st.warning("Pilih dua tahun yang berbeda")
             return
 
+        # ===============================
+        # FILTER DATA
+        # ===============================
         df_a = df_all[df_all["Tahun"] == year_a]
         df_b = df_all[df_all["Tahun"] == year_b]
 
-        def ambil_tw(df):
+        def extract_tw(df_):
             return {
-                "Tw I": df[df["Bulan_upper"] == "MARET"],
-                "Tw II": df[df["Bulan_upper"] == "JUNI"],
-                "Tw III": df[df["Bulan_upper"] == "SEPTEMBER"],
-                "Tw IV": df[df["Bulan_upper"] == "DESEMBER"]
+                "Tw I": df_[df_["Bulan_upper"] == "MARET"],
+                "Tw II": df_[df_["Bulan_upper"] == "JUNI"],
+                "Tw III": df_[df_["Bulan_upper"] == "SEPTEMBER"],
+                "Tw IV": df_[df_["Bulan_upper"] == "DESEMBER"],
             }
 
-        tw_a = ambil_tw(df_a)
-        tw_b = ambil_tw(df_b)
+        tw_a = extract_tw(df_a)
+        tw_b = extract_tw(df_b)
+
+        # ===============================
+        # LIST KPPN
+        # ===============================
+        kppn_list = (
+            df_all[["Kode KPPN", "Nama KPPN"]]
+            .dropna(subset=["Nama KPPN"])
+            .drop_duplicates()
+            .sort_values("Nama KPPN")
+        )
 
         rows = []
 
-        for _, row_kppn in df_all[["Kode KPPN","Nama KPPN"]].drop_duplicates().iterrows():
+        for _, m in kppn_list.iterrows():
 
-            kode = row_kppn["Kode KPPN"]
-            nama = row_kppn["Nama KPPN"]
+            kode = m["Kode KPPN"]
+            nama = m["Nama KPPN"]
 
             row = {
                 "Kode KPPN": kode,
                 "Nama KPPN": nama
             }
 
-            last_a, last_b = None, None
+            latest_a, latest_b = None, None
+            has_data = False
 
-            for tw in ["Tw I","Tw II","Tw III","Tw IV"]:
+            for tw in ["Tw I", "Tw II", "Tw III", "Tw IV"]:
 
                 valA = tw_a[tw].loc[
                     tw_a[tw]["Nama KPPN"] == nama, indikator
-                ]
+                ].values
 
                 valB = tw_b[tw].loc[
                     tw_b[tw]["Nama KPPN"] == nama, indikator
-                ]
+                ].values
 
-                valA = valA.values[0] if len(valA) else None
-                valB = valB.values[0] if len(valB) else None
+                valA = valA[0] if len(valA) else None
+                valB = valB[0] if len(valB) else None
 
                 row[f"{tw} {year_a}"] = valA
                 row[f"{tw} {year_b}"] = valB
 
                 if valA is not None:
-                    last_a = valA
+                    latest_a = valA
+                    has_data = True
                 if valB is not None:
-                    last_b = valB
+                    latest_b = valB
+                    has_data = True
 
-            row["Δ"] = (
-                last_b - last_a
-                if last_a is not None and last_b is not None
+            if not has_data:
+                continue
+
+            row[f"Δ ({year_b}-{year_a})"] = (
+                latest_b - latest_a
+                if latest_a is not None and latest_b is not None
                 else None
             )
 
             rows.append(row)
 
+        if not rows:
+            st.warning("Tidak ada data untuk perbandingan")
+            return
+
         df_compare = pd.DataFrame(rows)
 
+        # ===============================
+        # FORMAT ANGKA (SAMA SEPERTI TABEL)
+        # ===============================
+        def format_angka(x):
+            if pd.isna(x):
+                return "–"
+            if float(x).is_integer():
+                return str(int(x))
+            return f"{x:.2f}"
+
+        for col in df_compare.columns:
+            if col not in ["Kode KPPN", "Nama KPPN"]:
+                df_compare[col] = df_compare[col].apply(format_angka)
+
+        # ===============================
+        # TAMPILKAN
+        # ===============================
         render_table_pin_satker(df_compare)
         
 
