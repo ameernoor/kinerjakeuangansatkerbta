@@ -2758,79 +2758,175 @@ def reprocess_all_ikpa_satker():
 
 
 def process_excel_file_kppn(uploaded_file, year, detected_month=None):
-    try:
-        import pandas as pd
+    import pandas as pd
+
+    df_raw = pd.read_excel(uploaded_file, header=None)
+
+    # ===============================
+    # 🔍 DETEKSI HEADER
+    # ===============================
+    header_row = detect_header_row(df_raw)
+
+    # ambil data setelah header
+    df_data = df_raw.iloc[header_row+2:].reset_index(drop=True)
+
+    processed_rows = []
+    i = 0
+
+    while i + 2 < len(df_data):
+
+        nilai = df_data.iloc[i]
+        bobot = df_data.iloc[i + 1]
+        nilai_akhir = df_data.iloc[i + 2]
 
         # ===============================
-        # 1️⃣ BULAN (WAJIB DARI UI)
+        # VALIDASI BARIS UTAMA
         # ===============================
-        month = detected_month if detected_month and detected_month != "UNKNOWN" else "UNKNOWN"
+        kode = str(nilai[2]).strip()
+        nama = str(nilai[3]).strip()
 
-        # ===============================
-        # 2️⃣ BACA FILE (FORMAT RINGKAS)
-        # ===============================
-        uploaded_file.seek(0)
-        df = pd.read_excel(uploaded_file)
+        if not kode.isdigit():
+            i += 1
+            continue
 
-        # ===============================
-        # 3️⃣ NORMALISASI NAMA KOLOM
-        # ===============================
-        df.columns = (
-            df.columns.astype(str)
-            .str.strip()
-            .str.replace(r"\s+", " ", regex=True)
-        )
+        row = {
+            "Kode KPPN": kode,
+            "Nama KPPN": nama,
 
-        # ===============================
-        # 4️⃣ VALIDASI KOLOM WAJIB
-        # ===============================
-        nilai_col = "Nilai Akhir (Nilai Total/Konversi Bobot)"
-        if nilai_col not in df.columns:
-            raise ValueError(
-                "File IKPA KPPN tidak valid.\n"
-                "Kolom 'Nilai Akhir (Nilai Total/Konversi Bobot)' tidak ditemukan."
-            )
+            "Revisi DIPA": nilai[5],
+            "Deviasi Halaman III DIPA": nilai[6],
+            "Penyerapan Anggaran": nilai[8],
+            "Belanja Kontraktual": nilai[9],
+            "Penyelesaian Tagihan": nilai[10],
+            "Pengelolaan UP dan TUP": nilai[11],
+            "Capaian Output": nilai[13],
 
-        # ===============================
-        # 5️⃣ KONVERSI DESIMAL (KOMA → TITIK)
-        # ===============================
-        df = df.applymap(
-            lambda x: str(x).replace(",", ".") if isinstance(x, str) else x
-        )
+            "Nilai Total": nilai[15],
+            "Konversi Bobot": nilai[16],
+            "Dispensasi SPM (Pengurangan)": nilai[17],
+            "Nilai Akhir (Nilai Total/Konversi Bobot)": nilai[18],
+        }
 
-        # ===============================
-        # 6️⃣ CAST NUMERIK (AMAN)
-        # ===============================
-        NON_NUMERIC = ["Nama KPPN", "Bulan", "Tahun", "Source"]
+        processed_rows.append(row)
 
-        for col in df.columns:
-            if col not in NON_NUMERIC:
-                df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0)
+        i += 3  # lompat per blok
 
-        # ===============================
-        # 7️⃣ METADATA
-        # ===============================
-        df["Bulan"] = month
-        df["Tahun"] = year
-        df["Source"] = "Upload"
+    df = pd.DataFrame(processed_rows)
 
-        # ===============================
-        # 🔑 8️⃣ DENSE RANKING (FINAL & BENAR)
-        # ===============================
-        df = df.sort_values(nilai_col, ascending=False)
+    # ===============================
+    # METADATA
+    # ===============================
+    # ===============================
+    # DETEKSI BULAN OTOMATIS (FIX)
+    # ===============================
+    if not detected_month or detected_month == "UNKNOWN":
 
-        df["Peringkat"] = (
-            df[nilai_col]
-            .rank(method="dense", ascending=False)
-            .astype(int)
-        )
+        MONTH_MAP = {
+            "01": "JANUARI", "02": "FEBRUARI", "03": "MARET",
+            "04": "APRIL", "05": "MEI", "06": "JUNI",
+            "07": "JULI", "08": "AGUSTUS", "09": "SEPTEMBER",
+            "10": "OKTOBER", "11": "NOVEMBER", "12": "DESEMBER"
+        }
 
-        return df, month, year
+        detected_month = "UNKNOWN"
 
-    except Exception as e:
-        st.error(f"❌ Error memproses IKPA KPPN: {e}")
-        return None, None, None
+        # 🔍 coba ambil dari kolom Periode
+        for idx in range(len(df_data)):
+            val = str(df_data.iloc[idx, 1]).strip()
+
+            if val in MONTH_MAP:
+                detected_month = MONTH_MAP[val]
+                break
+
+        # 🔥 fallback terakhir (biar tidak hilang dari dropdown)
+        if detected_month == "UNKNOWN":
+            detected_month = "MARET"
+
+    # ===============================
+    # METADATA FINAL
+    # ===============================
+    df["Bulan"] = detected_month.upper()
+    df["Tahun"] = str(year)
+    df["Source"] = "Upload"
+
+    # ===============================
+    # RANKING
+    # ===============================
+    nilai_col = "Nilai Akhir (Nilai Total/Konversi Bobot)"
+
+    df[nilai_col] = pd.to_numeric(df[nilai_col], errors="coerce").fillna(0)
+
+    df = df.sort_values(nilai_col, ascending=False)
+
+    df["Peringkat"] = (
+        df[nilai_col]
+        .rank(method="dense", ascending=False)
+        .astype(int)
+    )
+
+    return df, detected_month, year
     
+    
+
+def process_kppn_flat(df):
+    # ===============================
+    # 1. AMBIL HEADER BARIS KE-2
+    # ===============================
+    header2 = df.iloc[0]
+
+    new_cols = []
+    for col, sub in zip(df.columns, header2):
+        if pd.notna(sub):
+            new_cols.append(str(sub).strip())
+        else:
+            new_cols.append(str(col).strip())
+
+    df.columns = new_cols
+
+    # ===============================
+    # 2. BUANG BARIS HEADER
+    # ===============================
+    df = df.iloc[1:].reset_index(drop=True)
+
+    # ===============================
+    # 🔥 3. FILTER HANYA "NILAI" (SAFE)
+    # ===============================
+    if "Keterangan" in df.columns:
+        df["Keterangan"] = df["Keterangan"].astype(str)
+        df = df[df["Keterangan"].str.upper().str.contains("NILAI", na=False)]
+    else:
+        # format baru → tidak ada kolom Keterangan
+        pass
+
+    # ===============================
+    # 4. DROP KOLOM TIDAK PERLU
+    # ===============================
+    df = df.loc[:, ~df.columns.str.contains("Unnamed", case=False)]
+
+    # ===============================
+    # 5. CLEAN KOLOM
+    # ===============================
+    df.columns = (
+        df.columns
+        .str.strip()
+        .str.replace(r"\s+", " ", regex=True)
+    )
+
+    # ===============================
+    # 🔥 6. HAPUS BARIS KOSONG / ZERO
+    # ===============================
+    df = df.dropna(how="all")
+
+    # optional: buang baris yang semua angka = 0
+    df = df[~(df.fillna(0) == 0).all(axis=1)]
+
+    # ===============================
+    # 7. RESET INDEX
+    # ===============================
+    df = df.reset_index(drop=True)
+
+    return df
+
 
 
 # ============================================================
@@ -3214,35 +3310,88 @@ def load_data_from_github(_cache_buster: int = 0):
 def load_data_ikpa_kppn_from_github():
     from github import Github, Auth
     import base64, io
+    import pandas as pd
 
     token = st.secrets.get("GITHUB_TOKEN")
     repo_name = st.secrets.get("GITHUB_REPO")
 
-    g = Github(auth=Auth.Token(token))
-    repo = g.get_repo(repo_name)
-
-    # GANTI PATH INI SESUAI HASIL DEBUG
-    KPPN_PATH = "data_kppn"   # <- UBAH DI SINI
-
-    try:
-        contents = repo.get_contents(KPPN_PATH)
-    except Exception as e:
-        st.error(f"Folder '{KPPN_PATH}' tidak ditemukan di GitHub")
+    if not token or not repo_name:
         return {}
 
+    try:
+        g = Github(auth=Auth.Token(token))
+        repo = g.get_repo(repo_name)
+    except Exception:
+        return {}
+
+    KPPN_PATH = "Data IKPA KPPN"   # ✅ konsisten
+
+    # 🔥 recursive scan semua folder tahun
+    def collect_xlsx_files(path):
+        all_files = []
+        try:
+            items = repo.get_contents(path)
+        except Exception:
+            return all_files
+
+        for item in items:
+            if item.type == "dir":
+                all_files.extend(collect_xlsx_files(item.path))
+            elif item.name.endswith(".xlsx"):
+                all_files.append(item)
+
+        return all_files
+
+    xlsx_files = collect_xlsx_files(KPPN_PATH)
+
     data = {}
-    for f in contents:
-        if f.name.endswith(".xlsx"):
-            df = pd.read_excel(io.BytesIO(base64.b64decode(f.content)))
-            if "Bulan" in df.columns and "Tahun" in df.columns:
-                key = (
-                    str(df["Bulan"].iloc[0]).upper(),
-                    str(df["Tahun"].iloc[0])
-                )
-                data[key] = df
+
+    for f in xlsx_files:
+        try:
+            file_bytes = io.BytesIO(base64.b64decode(f.content))
+
+            header_row = detect_header_row(file_bytes)
+
+            file_bytes.seek(0)
+            df = pd.read_excel(file_bytes, header=header_row)
+            df = process_kppn_flat(df)
+
+            df.columns = (
+                df.columns.astype(str)
+                .str.strip()
+                .str.replace(r"\s+", " ", regex=True)
+            )
+
+            # =========================
+            # 🔥 AMBIL TAHUN DARI PATH
+            # =========================
+            path_parts = f.path.split("/")
+            tahun = next((p for p in path_parts if p.isdigit()), str(datetime.now().year))
+
+            # =========================
+            # 🔥 AMBIL BULAN DARI NAMA FILE
+            # =========================
+            name = f.name.upper()
+            bulan = "UNKNOWN"
+
+            for m in [
+                "JANUARI","FEBRUARI","MARET","APRIL","MEI","JUNI",
+                "JULI","AGUSTUS","SEPTEMBER","OKTOBER","NOVEMBER","DESEMBER"
+            ]:
+                if m in name:
+                    bulan = m
+                    break
+
+            df["Bulan"] = bulan
+            df["Tahun"] = tahun
+
+            key = (bulan, tahun)
+            data[key] = df
+
+        except Exception as e:
+            pass  # skip file error
 
     return data
-
 
 
 def find_header_row_kkp(uploaded_file, max_rows=10):
@@ -8374,10 +8523,23 @@ def menu_highlights():
     # ===============================
     all_data = []
     for (bulan, tahun), df in st.session_state.data_storage_kppn.items():
+        
+        # 🔥 WAJIB: COPY DULU
         df_copy = df.copy()
+
+        # 🔥 CLEAN KOLOM (ANTI ERROR)
+        df_copy = df_copy.loc[:, ~df_copy.columns.duplicated()]
+        df_copy.columns = (
+            df_copy.columns.astype(str)
+            .str.strip()
+            .str.replace(r"\s+", " ", regex=True)
+        )
+
+        # metadata
         df_copy["Periode"] = f"{bulan} {tahun}"
         df_copy["Tahun"] = int(tahun)
         df_copy["Bulan"] = bulan
+
         all_data.append(df_copy)
 
     df_all = pd.concat(all_data, ignore_index=True)
@@ -8448,7 +8610,8 @@ def menu_highlights():
         st.warning("⚠️ Data kosong pada rentang periode tersebut.")
         return
 
-    st.success(f"Data IKPA KPPN dimuat ({len(df_all)} baris)")
+    add_notification(f"Data IKPA KPPN dimuat ({len(df_all)} baris)")
+    
 
     # ===============================
     # PILIH KPPN
@@ -8531,6 +8694,7 @@ def menu_highlights():
     )
 
     st.plotly_chart(fig, use_container_width=True)
+
 
 
 def page_trend():
