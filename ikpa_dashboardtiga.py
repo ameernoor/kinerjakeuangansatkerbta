@@ -74,7 +74,13 @@ def render_table_pin_satker(df):
     df.insert(0, "__rowNum__", range(1, len(df) + 1))
 
     def calc_grid_height(df, row_height=45, header_height=40, max_height=600):
-        return min(header_height + len(df) * row_height, max_height)
+        min_rows = 5
+
+        total_rows = max(len(df), min_rows)
+
+        height = header_height + total_rows * row_height
+
+        return min(height, max_height)
 
     gb = GridOptionsBuilder.from_dataframe(df)
     
@@ -676,7 +682,7 @@ def render_table_pin_satker(df):
     """)
 
     # =====================================================
-    # GRID OPTIONS (🔥 SCROLL AKTIF)
+    # GRID OPTIONS 
     # =====================================================
     gb.configure_grid_options(
         domLayout="normal",
@@ -692,7 +698,7 @@ def render_table_pin_satker(df):
     grid_response = AgGrid(
         df,
         gridOptions=gb.build(),
-        height=calc_grid_height(df),
+        height=max(450, calc_grid_height(df)),
         width="100%",
         theme="streamlit",
         allow_unsafe_jscode=True,
