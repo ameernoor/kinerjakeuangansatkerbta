@@ -2757,12 +2757,9 @@ def reprocess_all_ikpa_satker():
         st.success("✅ Reprocess IKPA Satker selesai (multi-year siap digunakan)")
 
 
-def process_excel_file_kppn(uploaded_file, year, detected_month=None):
+def process_excel_file_kppn(uploaded_file, year):
     import pandas as pd
 
-    # ===============================
-    # BACA FILE
-    # ===============================
     try:
         uploaded_file.seek(0)
     except:
@@ -2771,44 +2768,36 @@ def process_excel_file_kppn(uploaded_file, year, detected_month=None):
     df_raw = pd.read_excel(uploaded_file, header=None)
 
     # ===============================
-    # 🔍 DETEKSI HEADER (TANPA .str)
+    # 🔍 DETEKSI HEADER
     # ===============================
     header_row = None
 
     for i in range(min(10, len(df_raw))):
-        row_cells = df_raw.iloc[i]
-        text = " ".join([str(x).upper() for x in row_cells])
+        row = " ".join([str(x).upper() for x in df_raw.iloc[i]])
 
-        if "KPPN" in text:
+        if "KPPN" in row:
             header_row = i
             break
 
     if header_row is None:
         raise ValueError("Header tidak ditemukan")
 
-    # ===============================
-    # AMBIL DATA
-    # ===============================
-    df_data = df_raw.iloc[header_row+1:].reset_index(drop=True)
+    df = df_raw.iloc[header_row+1:].reset_index(drop=True)
 
     # ===============================
-    # 🔥 MODE AMAN: TANPA BLOK 3 BARIS
+    # HEADER
     # ===============================
-    df = df_data.copy()
-
-    # jadikan header
     header = df.iloc[0]
     df.columns = [str(c).strip() for c in header]
     df = df.iloc[1:].reset_index(drop=True)
 
     # ===============================
-    # 🔥 NORMALISASI KOLOM NILAI
+    # 🔥 NORMALISASI NILAI
     # ===============================
     target_col = None
 
     for col in df.columns:
         col_up = str(col).upper()
-
         if "AKHIR" in col_up or "TOTAL" in col_up or "NILAI" in col_up:
             target_col = col
             break
@@ -2829,10 +2818,10 @@ def process_excel_file_kppn(uploaded_file, year, detected_month=None):
     ).fillna(0)
 
     # ===============================
-    # METADATA
+    # CLEAN NUMERIC
     # ===============================
-    df["Bulan"] = detected_month or "UNKNOWN"
-    df["Tahun"] = str(year)
+    for col in df.columns:
+        df[col] = pd.to_numeric(df[col], errors="ignore")
 
     # ===============================
     # RANKING
@@ -2845,7 +2834,7 @@ def process_excel_file_kppn(uploaded_file, year, detected_month=None):
         .astype(int)
     )
 
-    return df, detected_month or "UNKNOWN", year
+    return df, "UNKNOWN", year
 
 
 def process_kppn_flat(df):
@@ -3325,87 +3314,47 @@ def load_data_ikpa_kppn_from_github():
             )
 
             # =========================
-            # PARSER (COBA FORMAT BARU)
+            # PARSER UTAMA
             # =========================
-            try:
-                df, bulan, tahun = process_excel_file_kppn(
-                    file_bytes,
-                    year=tahun
-                )
+            df, bulan, tahun = process_excel_file_kppn(
+                file_bytes,
+                year=tahun
+            )
 
-            except Exception:
-                # =========================
-                # FALLBACK FORMAT LAMA
-                # =========================
-                file_bytes.seek(0)
-
-                df_raw = pd.read_excel(file_bytes, header=None)
-
-                header_row = detect_header_row(df_raw)
-
-                file_bytes.seek(0)
-                df = pd.read_excel(file_bytes, header=header_row)
-
-                df = process_kppn_flat(df)
-
-                # =========================
-                # 🔥 NORMALISASI NILAI AKHIR (VERSI KUAT)
-                # =========================
-                target_col = None
-
+            # =========================
+            # 🔥 FIX NAMA KPPN
+            # =========================
+            if "Nama KPPN" not in df.columns:
                 for col in df.columns:
-                    col_up = str(col).upper()
-                    if (
-                        "AKHIR" in col_up or
-                        "TOTAL" in col_up or
-                        "IKPA" in col_up or
-                        "NILAI" in col_up
-                    ):
-                        target_col = col
+                    if "KPPN" in str(col).upper():
+                        df["Nama KPPN"] = df[col]
                         break
 
-                if target_col is None:
-                    numeric_cols = df.select_dtypes(include=["number"]).columns
-                    if len(numeric_cols) > 0:
-                        target_col = numeric_cols[-1]
-
-                if target_col:
-                    df["Nilai Akhir (Nilai Total/Konversi Bobot)"] = df[target_col]
-                else:
-                    df["Nilai Akhir (Nilai Total/Konversi Bobot)"] = 0
-
-                df["Nilai Akhir (Nilai Total/Konversi Bobot)"] = pd.to_numeric(
-                    df["Nilai Akhir (Nilai Total/Konversi Bobot)"],
-                    errors="coerce"
-                ).fillna(0)
-
-                # =========================
-                # DETEKSI BULAN DARI NAMA FILE
-                # =========================
-                name = f.name.upper()
-                bulan = "UNKNOWN"
-
-                for m in [
-                    "JANUARI","FEBRUARI","MARET","APRIL","MEI","JUNI",
-                    "JULI","AGUSTUS","SEPTEMBER","OKTOBER","NOVEMBER","DESEMBER"
-                ]:
-                    if m in name:
-                        bulan = m
-                        break
+            if "Nama KPPN" not in df.columns:
+                df["Nama KPPN"] = "UNKNOWN"
 
             # =========================
-            # SIMPAN
+            # 🔥 FIX BULAN DARI NAMA FILE
             # =========================
+            name = f.name.upper()
+
+            for m in [
+                "JANUARI","FEBRUARI","MARET","APRIL","MEI","JUNI",
+                "JULI","AGUSTUS","SEPTEMBER","OKTOBER","NOVEMBER","DESEMBER"
+            ]:
+                if m in name:
+                    bulan = m
+                    break
+
+            df["Bulan"] = bulan
+            df["Tahun"] = str(tahun)
+
             key = (bulan, tahun)
             data[key] = df
 
         except Exception as e:
             st.error(f"❌ Error file {f.path}: {e}")
 
-    # =========================
-    # DEBUG
-    # =========================
-    st.write("📂 FILES TERBACA:", [f.path for f in xlsx_files])
     st.write("📊 TOTAL DATA KPPN:", len(data))
 
     return data
