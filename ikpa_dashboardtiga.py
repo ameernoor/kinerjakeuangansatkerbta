@@ -8696,13 +8696,12 @@ def menu_highlights():
 
     st.plotly_chart(fig, use_container_width=True)
     
+    
+    
 def menu_tabel_ikpa_kppn():
     
     st.subheader("📊 Tabel IKPA KPPN")
 
-    # ===============================
-    # VALIDASI DATA
-    # ===============================
     if "data_storage_kppn" not in st.session_state or not st.session_state.data_storage_kppn:
         st.warning("Data IKPA KPPN belum tersedia")
         return
@@ -8713,29 +8712,58 @@ def menu_tabel_ikpa_kppn():
     all_data = []
 
     for (bulan, tahun), df in st.session_state.data_storage_kppn.items():
-    
+
         temp = df.copy()
 
-        # ===============================
-        # FIX UTAMA (WAJIB)
-        # ===============================
+        # FIX DUPLIKAT KOLOM
         temp = temp.loc[:, ~temp.columns.duplicated()].copy()
 
+        # RAPIIKAN KOLOM
         temp.columns = (
             temp.columns.astype(str)
             .str.strip()
             .str.replace(r"\s+", " ", regex=True)
         )
 
-        # ===============================
-        # TAMBAH METADATA
-        # ===============================
         temp["Bulan"] = bulan
         temp["Tahun"] = int(tahun)
 
         all_data.append(temp)
 
+    # CONCAT AMAN
     df_all = pd.concat(all_data, ignore_index=True)
+    df_all = df_all.loc[:, ~df_all.columns.duplicated()]
+
+    # ===============================
+    # NORMALISASI KOLOM ERROR
+    # ===============================
+    rename_map = {
+        "Halaman": "Deviasi Halaman III DIPA",
+        "Angja": "Penyerapan Anggaran",
+        "Kontrak": "Belanja Kontraktual",
+        "Tagihan": "Penyelesaian Tagihan",
+        "Output": "Capaian Output",
+    }
+    df_all = df_all.rename(columns=rename_map)
+
+    # ===============================
+    # 🔥 CLEAN NUMERIC
+    # ===============================
+    target_col = "Nilai Akhir (Nilai Total/Konversi Bobot)"
+
+    if target_col not in df_all.columns:
+        st.error("Kolom Nilai Akhir tidak ditemukan")
+        return
+
+    df_all[target_col] = (
+        df_all[target_col]
+        .astype(str)
+        .str.replace("%", "", regex=False)
+        .str.replace(".", "", regex=False)
+        .str.replace(",", ".", regex=False)
+    )
+
+    df_all[target_col] = pd.to_numeric(df_all[target_col], errors="coerce")
 
     # ===============================
     # NORMALISASI BULAN
@@ -8770,34 +8798,14 @@ def menu_tabel_ikpa_kppn():
     )
 
     # ===============================
-    # PILIH INDIKATOR
     # ===============================
-    indikator_list = [
-        "Kualitas Perencanaan Anggaran",
-        "Kualitas Pelaksanaan Anggaran",
-        "Kualitas Hasil Pelaksanaan Anggaran",
-        "Revisi DIPA",
-        "Deviasi Halaman III DIPA",
-        "Penyerapan Anggaran",
-        "Belanja Kontraktual",
-        "Penyelesaian Tagihan",
-        "Pengelolaan UP dan TUP",
-        "Capaian Output",
-        "Nilai Akhir (Nilai Total/Konversi Bobot)"
-    ]
-
-    indikator = st.selectbox("Pilih Indikator", indikator_list)
-
-    # ===============================
-    # ===============================
-    # 🔵 MONTHLY & QUARTERLY
+    # 🔵 MONTHLY / QUARTERLY
     # ===============================
     # ===============================
     if mode in ["monthly", "quarterly"]:
 
         df = df_all.copy()
 
-        # ===== PERIOD =====
         if mode == "monthly":
             df["Period"] = df["Bulan_upper"]
             df["Order"] = df["Bulan_upper"].map(MONTH_ORDER)
@@ -8816,31 +8824,38 @@ def menu_tabel_ikpa_kppn():
                 "Tw I":1,"Tw II":2,"Tw III":3,"Tw IV":4
             })
 
-        # ===== PIVOT =====
-        df_pivot = df[[
-            "Nama KPPN",
-            "Period",
-            indikator
-        ]]
+        # ===============================
+        # PIVOT
+        # ===============================
+        df_pivot = df[
+            ["Nama KPPN", "Period", target_col]
+        ]
 
         df_wide = df_pivot.pivot_table(
             index="Nama KPPN",
             columns="Period",
-            values=indikator,
+            values=target_col,
             aggfunc="last"
         ).reset_index()
 
-        # ===== URUT KOLOM =====
-        period_cols = sorted(
-            [c for c in df_wide.columns if c != "Nama KPPN"],
-            key=lambda x: MONTH_ORDER.get(x, 99)
-        )
+        # ===============================
+        # URUT KOLOM
+        # ===============================
+        if mode == "monthly":
+            ordered = sorted(
+                [c for c in df_wide.columns if c != "Nama KPPN"],
+                key=lambda x: MONTH_ORDER.get(x, 99)
+            )
+        else:
+            ordered = [c for c in ["Tw I","Tw II","Tw III","Tw IV"] if c in df_wide.columns]
 
-        df_wide = df_wide[["Nama KPPN"] + period_cols]
+        df_wide = df_wide[["Nama KPPN"] + ordered]
 
-        # ===== RANKING =====
-        if period_cols:
-            last_col = period_cols[-1]
+        # ===============================
+        # RANKING
+        # ===============================
+        if ordered:
+            last_col = ordered[-1]
             df_wide["Peringkat"] = (
                 df_wide[last_col]
                 .rank(ascending=False, method="dense")
@@ -8886,9 +8901,7 @@ def menu_tabel_ikpa_kppn():
 
         rows = []
 
-        kppn_list = df_all["Nama KPPN"].unique()
-
-        for kppn in kppn_list:
+        for kppn in df_all["Nama KPPN"].unique():
 
             row = {"Nama KPPN": kppn}
 
@@ -8897,11 +8910,11 @@ def menu_tabel_ikpa_kppn():
             for tw in ["Tw I","Tw II","Tw III","Tw IV"]:
 
                 valA = tw_a[tw].loc[
-                    tw_a[tw]["Nama KPPN"] == kppn, indikator
+                    tw_a[tw]["Nama KPPN"] == kppn, target_col
                 ]
 
                 valB = tw_b[tw].loc[
-                    tw_b[tw]["Nama KPPN"] == kppn, indikator
+                    tw_b[tw]["Nama KPPN"] == kppn, target_col
                 ]
 
                 valA = valA.values[0] if len(valA) else None
@@ -8926,7 +8939,7 @@ def menu_tabel_ikpa_kppn():
         df_compare = pd.DataFrame(rows)
 
         render_table_pin_satker(df_compare)
-
+        
 
 def page_trend():
     st.title("📈 Dashboard Internal KPPN")
