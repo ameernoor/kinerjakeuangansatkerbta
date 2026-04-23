@@ -2881,6 +2881,7 @@ def process_excel_file_kppn(uploaded_file, year, detected_month=None):
 
     return df, detected_month, year
 
+
 def process_kppn_flat(df):
     
     # ===============================
@@ -2895,12 +2896,15 @@ def process_kppn_flat(df):
     # FILTER NILAI (JIKA ADA)
     # ===============================
     if "Keterangan" in df.columns:
-        df = df[df["Keterangan"].astype(str).str.upper().str.contains("NILAI", na=False)]
+        df["Keterangan"] = df["Keterangan"].astype(str)
+        df = df[df["Keterangan"].str.upper().str.contains("NILAI", na=False)]
 
     # ===============================
-    # DROP KOLOM SAMPAH
+    # 🔥 FIX KOLOM (ANTI ERROR .str)
     # ===============================
-    df = df.loc[:, ~df.columns.str.contains("Unnamed", case=False)]
+    df.columns = [str(c) for c in df.columns]
+
+    df = df.loc[:, [c for c in df.columns if "UNNAMED" not in c.upper()]]
 
     # ===============================
     # CLEAN ANGKA
@@ -2915,6 +2919,9 @@ def process_kppn_flat(df):
             )
             df[col] = pd.to_numeric(df[col], errors="coerce")
 
+    # ===============================
+    # DROP BARIS KOSONG
+    # ===============================
     df = df.dropna(how="all").reset_index(drop=True)
 
     return df
