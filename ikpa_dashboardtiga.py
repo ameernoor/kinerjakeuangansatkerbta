@@ -8505,6 +8505,7 @@ def menu_ews_satker():
             st.markdown("---")
     else:
         st.success("✅ Tidak ada satker dengan tren menurun.")
+        
 
         
 #HIGHLIGHTS
@@ -8694,7 +8695,222 @@ def menu_highlights():
     )
 
     st.plotly_chart(fig, use_container_width=True)
+    
+def menu_tabel_ikpa_kppn():
+    
+    st.subheader("📊 Tabel IKPA KPPN")
 
+    # ===============================
+    # VALIDASI DATA
+    # ===============================
+    if "data_storage_kppn" not in st.session_state or not st.session_state.data_storage_kppn:
+        st.warning("Data IKPA KPPN belum tersedia")
+        return
+
+    # ===============================
+    # GABUNGKAN DATA
+    # ===============================
+    all_data = []
+
+    for (bulan, tahun), df in st.session_state.data_storage_kppn.items():
+        temp = df.copy()
+
+        temp["Bulan"] = bulan
+        temp["Tahun"] = int(tahun)
+
+        all_data.append(temp)
+
+    df_all = pd.concat(all_data, ignore_index=True)
+
+    # ===============================
+    # NORMALISASI BULAN
+    # ===============================
+    df_all["Bulan_upper"] = (
+        df_all["Bulan"]
+        .astype(str)
+        .str.upper()
+        .str.strip()
+    )
+
+    # ===============================
+    # PILIH TAHUN
+    # ===============================
+    years = sorted(df_all["Tahun"].unique(), reverse=True)
+    selected_year = st.selectbox("Pilih Tahun", years)
+
+    df_all = df_all[df_all["Tahun"] == selected_year]
+
+    # ===============================
+    # PILIH MODE
+    # ===============================
+    mode = st.radio(
+        "Jenis Periode",
+        ["monthly", "quarterly", "compare"],
+        format_func=lambda x: {
+            "monthly": "Bulanan",
+            "quarterly": "Triwulan",
+            "compare": "Perbandingan"
+        }[x],
+        horizontal=True
+    )
+
+    # ===============================
+    # PILIH INDIKATOR
+    # ===============================
+    indikator_list = [
+        "Kualitas Perencanaan Anggaran",
+        "Kualitas Pelaksanaan Anggaran",
+        "Kualitas Hasil Pelaksanaan Anggaran",
+        "Revisi DIPA",
+        "Deviasi Halaman III DIPA",
+        "Penyerapan Anggaran",
+        "Belanja Kontraktual",
+        "Penyelesaian Tagihan",
+        "Pengelolaan UP dan TUP",
+        "Capaian Output",
+        "Nilai Akhir (Nilai Total/Konversi Bobot)"
+    ]
+
+    indikator = st.selectbox("Pilih Indikator", indikator_list)
+
+    # ===============================
+    # ===============================
+    # 🔵 MONTHLY & QUARTERLY
+    # ===============================
+    # ===============================
+    if mode in ["monthly", "quarterly"]:
+
+        df = df_all.copy()
+
+        # ===== PERIOD =====
+        if mode == "monthly":
+            df["Period"] = df["Bulan_upper"]
+            df["Order"] = df["Bulan_upper"].map(MONTH_ORDER)
+
+        else:
+            def to_tw(x):
+                return {
+                    "MARET": "Tw I",
+                    "JUNI": "Tw II",
+                    "SEPTEMBER": "Tw III",
+                    "DESEMBER": "Tw IV"
+                }.get(x)
+
+            df["Period"] = df["Bulan_upper"].map(to_tw)
+            df["Order"] = df["Period"].map({
+                "Tw I":1,"Tw II":2,"Tw III":3,"Tw IV":4
+            })
+
+        # ===== PIVOT =====
+        df_pivot = df[[
+            "Nama KPPN",
+            "Period",
+            indikator
+        ]]
+
+        df_wide = df_pivot.pivot_table(
+            index="Nama KPPN",
+            columns="Period",
+            values=indikator,
+            aggfunc="last"
+        ).reset_index()
+
+        # ===== URUT KOLOM =====
+        period_cols = sorted(
+            [c for c in df_wide.columns if c != "Nama KPPN"],
+            key=lambda x: MONTH_ORDER.get(x, 99)
+        )
+
+        df_wide = df_wide[["Nama KPPN"] + period_cols]
+
+        # ===== RANKING =====
+        if period_cols:
+            last_col = period_cols[-1]
+            df_wide["Peringkat"] = (
+                df_wide[last_col]
+                .rank(ascending=False, method="dense")
+                .astype("Int64")
+            )
+
+        df_wide = df_wide.sort_values("Peringkat")
+
+        render_table_pin_satker(df_wide)
+
+    # ===============================
+    # 🔴 COMPARE
+    # ===============================
+    else:
+
+        years = sorted(df_all["Tahun"].unique())
+
+        col1, col2 = st.columns(2)
+
+        with col1:
+            year_a = st.selectbox("Tahun A", years)
+
+        with col2:
+            year_b = st.selectbox("Tahun B", years, index=1)
+
+        if year_a == year_b:
+            st.warning("Pilih tahun berbeda")
+            return
+
+        df_a = df_all[df_all["Tahun"] == year_a]
+        df_b = df_all[df_all["Tahun"] == year_b]
+
+        def ambil_tw(df):
+            return {
+                "Tw I": df[df["Bulan_upper"] == "MARET"],
+                "Tw II": df[df["Bulan_upper"] == "JUNI"],
+                "Tw III": df[df["Bulan_upper"] == "SEPTEMBER"],
+                "Tw IV": df[df["Bulan_upper"] == "DESEMBER"]
+            }
+
+        tw_a = ambil_tw(df_a)
+        tw_b = ambil_tw(df_b)
+
+        rows = []
+
+        kppn_list = df_all["Nama KPPN"].unique()
+
+        for kppn in kppn_list:
+
+            row = {"Nama KPPN": kppn}
+
+            last_a, last_b = None, None
+
+            for tw in ["Tw I","Tw II","Tw III","Tw IV"]:
+
+                valA = tw_a[tw].loc[
+                    tw_a[tw]["Nama KPPN"] == kppn, indikator
+                ]
+
+                valB = tw_b[tw].loc[
+                    tw_b[tw]["Nama KPPN"] == kppn, indikator
+                ]
+
+                valA = valA.values[0] if len(valA) else None
+                valB = valB.values[0] if len(valB) else None
+
+                row[f"{tw} {year_a}"] = valA
+                row[f"{tw} {year_b}"] = valB
+
+                if valA is not None:
+                    last_a = valA
+                if valB is not None:
+                    last_b = valB
+
+            row["Δ"] = (
+                last_b - last_a
+                if last_a is not None and last_b is not None
+                else None
+            )
+
+            rows.append(row)
+
+        df_compare = pd.DataFrame(rows)
+
+        render_table_pin_satker(df_compare)
 
 
 def page_trend():
@@ -8740,7 +8956,17 @@ def page_trend():
         menu_ews_satker()
 
     elif menu == "🎯 IKPA KPPN":
-        menu_highlights()
+    
+        tab1, tab2 = st.tabs([
+            "🎯 Highlights IKPA KPPN",
+            "📊 Tabel IKPA KPPN"
+        ])
+
+        with tab1:
+            menu_highlights()
+
+        with tab2:
+            menu_tabel_ikpa_kppn()
    
 # ============================================================
 # HALAMAN 3: ADMIN 
