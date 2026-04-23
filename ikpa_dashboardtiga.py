@@ -8585,14 +8585,30 @@ def menu_highlights():
     df_all = df_all.rename(columns=rename_map)
 
     # ===============================
-    # 🔑 PASTIKAN PERIOD_SORT ADA
+    # PASTIKAN PERIOD_SORT ADA
     # ===============================
     if "Period_Sort" not in df_all.columns:
-        df_all["Month_Num"] = df_all["Bulan"].str.upper().map(MONTH_ORDER)
+
+        # 🔥 MAP BULAN → ANGKA
+        df_all["Month_Num"] = (
+            df_all["Bulan"]
+            .astype(str)
+            .str.upper()
+            .map(MONTH_ORDER)
+        )
+
+        # HANDLE NaN (WAJIB)
+        df_all["Month_Num"] = (
+            pd.to_numeric(df_all["Month_Num"], errors="coerce")
+            .fillna(0)
+            .astype(int)
+        )
+
+        # BUAT PERIOD_SORT AMAN
         df_all["Period_Sort"] = (
             df_all["Tahun"].astype(str)
             + "-"
-            + df_all["Month_Num"].astype(int).astype(str).str.zfill(2)
+            + df_all["Month_Num"].astype(str).str.zfill(2)
         )
 
     # ===============================
