@@ -2767,7 +2767,10 @@ def process_excel_file_kppn(uploaded_file, year, detected_month=None):
     # ===============================
     header_row = None
     for i in range(min(10, len(df_raw))):
-        row = " ".join(df_raw.iloc[i].astype(str).str.upper())
+
+        row_cells = df_raw.iloc[i]
+        row = " ".join([str(cell).upper() for cell in row_cells])
+
         if "KPPN" in row and "NILAI" in row:
             header_row = i
             break
