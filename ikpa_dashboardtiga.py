@@ -8713,8 +8713,23 @@ def menu_tabel_ikpa_kppn():
     all_data = []
 
     for (bulan, tahun), df in st.session_state.data_storage_kppn.items():
+    
         temp = df.copy()
 
+        # ===============================
+        # FIX UTAMA (WAJIB)
+        # ===============================
+        temp = temp.loc[:, ~temp.columns.duplicated()].copy()
+
+        temp.columns = (
+            temp.columns.astype(str)
+            .str.strip()
+            .str.replace(r"\s+", " ", regex=True)
+        )
+
+        # ===============================
+        # TAMBAH METADATA
+        # ===============================
         temp["Bulan"] = bulan
         temp["Tahun"] = int(tahun)
 
