@@ -20,6 +20,11 @@ import time
 from st_aggrid import GridUpdateMode
 import uuid
 
+# ===============================
+# CONTROL FIRST LOAD
+# ===============================
+if "app_loaded" not in st.session_state:
+    st.session_state.app_loaded = False
 
 st.markdown("""
 <style>
@@ -50,6 +55,20 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
+# ===============================
+# 🔥 LOADING SCREEN (HANYA 1X)
+# ===============================
+if not st.session_state.app_loaded:
+
+    st.markdown("""
+    <div class="loading-container">
+        <img src="https://raw.githubusercontent.com/ameernoor/kinerjakeuangansatkerbta/main/logo_kppn_baturaja.png" class="loading-logo">
+    </div>
+    """, unsafe_allow_html=True)
+
+    st.session_state.app_loaded = True
+    st.rerun()
+
 
 # ===============================
 # SISTEM NOTIFIKASI LOADING
@@ -74,70 +93,13 @@ def build_base_grid_options(columns):
     
     return gb
 
-def render_table_pin_satker(df):
-    df = df.copy()
-
-    if "__rowNum__" in df.columns:
-        df = df.drop(columns="__rowNum__")
-
-    df = df.loc[:, ~df.columns.duplicated()].copy()
-    df.insert(0, "__rowNum__", range(1, len(df) + 1))
-
-    def calc_grid_height(df, row_height=45, header_height=40, max_height=600):
-        min_rows = 5
-
-        total_rows = max(len(df), min_rows)
-
-        height = header_height + total_rows * row_height
-
-        return min(height, max_height)
-
-    gb = build_base_grid_options(tuple(df.columns))
-    
-    # =====================================================
-    # ALIGNMENT OTOMATIS
-    # =====================================================
-    exclude_cols = [
-        "__rowNum__",
-        "Kode Satker",
-        "KODE SATKER",
-        "SATKER",
-        "Nama Satker",
-        "NAMA SATKER",
-        "Uraian Satker-RINGKAS"
-    ]
-
-    for col in df.columns:
-
-        if col in exclude_cols:
-            gb.configure_column(col, cellStyle={"textAlign": "left"})
-            continue
-
-        # ambil sample data
-        sample = df[col].astype(str).dropna()
-
-        if len(sample) == 0:
-            continue
-
-        # cek apakah mayoritas angka / persen
-        ratio_numeric = sample.str.contains(r"\d").mean()
-
-        if ratio_numeric > 0.7:
-            gb.configure_column(
-                col,
-                cellStyle={"textAlign": "right"}
-            )
-    
-    # =====================================================
-    # SEMBUNYIKAN KOLOM INTERNAL (JIKA ADA)
-    # =====================================================
-    if "Nilai Total" in df.columns:
-        gb.configure_column("Nilai Total", hide=True)
-
-    # =====================================================
-    # CELL POPUP RENDERER (KLIK = POPUP DI TABEL)
-    # =====================================================
-    cell_popup_renderer = JsCode("""
+# =====================================================
+# CELL POPUP RENDERER (KLIK = POPUP DI TABEL)
+# =====================================================
+@st.cache_resource
+def get_popup_renderer():
+    from st_aggrid import JsCode
+    return JsCode("""
     class CellPopupRenderer {
         init(params) {
             this.eGui = document.createElement('span');
@@ -565,9 +527,29 @@ def render_table_pin_satker(df):
     """)
 
 
-    # =====================================================
-    # PASANG POPUP KE KOLOM NILAI
-    # =====================================================
+
+def render_table_pin_satker(df):
+    df = df.copy()
+
+    if "__rowNum__" in df.columns:
+        df = df.drop(columns="__rowNum__")
+
+    df = df.loc[:, ~df.columns.duplicated()].copy()
+    df.insert(0, "__rowNum__", range(1, len(df) + 1))
+
+    def calc_grid_height(df, row_height=45, header_height=40, max_height=600):
+        min_rows = 5
+
+        total_rows = max(len(df), min_rows)
+
+        height = header_height + total_rows * row_height
+
+        return min(height, max_height)
+
+    gb = build_base_grid_options(tuple(df.columns))
+
+    cell_popup_renderer = get_popup_renderer()
+    
     POPUP_COLUMNS = [
         "Kualitas Perencanaan Anggaran",
         "Kualitas Pelaksanaan Anggaran",
@@ -587,6 +569,48 @@ def render_table_pin_satker(df):
     for col in POPUP_COLUMNS:
         if col in df.columns:
             gb.configure_column(col, cellRenderer=cell_popup_renderer)
+    
+    # =====================================================
+    # ALIGNMENT OTOMATIS
+    # =====================================================
+    exclude_cols = [
+        "__rowNum__",
+        "Kode Satker",
+        "KODE SATKER",
+        "SATKER",
+        "Nama Satker",
+        "NAMA SATKER",
+        "Uraian Satker-RINGKAS"
+    ]
+
+    for col in df.columns:
+
+        if col in exclude_cols:
+            gb.configure_column(col, cellStyle={"textAlign": "left"})
+            continue
+
+        # ambil sample data
+        sample = df[col].astype(str).dropna()
+
+        if len(sample) == 0:
+            continue
+
+        # cek apakah mayoritas angka / persen
+        ratio_numeric = sample.str.contains(r"\d").mean()
+
+        if ratio_numeric > 0.7:
+            gb.configure_column(
+                col,
+                cellStyle={"textAlign": "right"}
+            )
+    
+    # =====================================================
+    # SEMBUNYIKAN KOLOM INTERNAL (JIKA ADA)
+    # =====================================================
+    if "Nilai Total" in df.columns:
+        gb.configure_column("Nilai Total", hide=True)
+
+
 
     # =====================================================
     # KOLOM NOMOR
@@ -705,9 +729,12 @@ def render_table_pin_satker(df):
     # =====================================================
     # GRID
     # =====================================================
+    grid_options = gb.build()
     grid_response = AgGrid(
         df,
-        gridOptions=gb.build(),
+        gridOptions=grid_options,
+        key="main_grid",          # 🔥 WAJIB
+        reload_data=False,        # 🔥 WAJIB
         height=max(450, calc_grid_height(df)),
         width="100%",
         theme="streamlit",
