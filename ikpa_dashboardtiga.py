@@ -74,6 +74,24 @@ def build_base_grid_options(columns):
     
     return gb
 
+@st.cache_data(show_spinner=False)
+def _detect_numeric_cols(col_values_tuple):
+    """Cache deteksi kolom numerik berdasarkan sample data."""
+    exclude_cols = {
+        "__rowNum__", "Kode Satker", "KODE SATKER", "SATKER",
+        "Nama Satker", "NAMA SATKER", "Uraian Satker-RINGKAS"
+    }
+    numeric_cols = set()
+    for col, sample_tuple in col_values_tuple:
+        if col in exclude_cols:
+            continue
+        sample = pd.Series(list(sample_tuple)).astype(str).dropna()
+        if len(sample) == 0:
+            continue
+        if sample.str.contains(r"\d").mean() > 0.7:
+            numeric_cols.add(col)
+    return numeric_cols
+
 def render_table_pin_satker(df):
     df = df.copy()
 
@@ -95,9 +113,9 @@ def render_table_pin_satker(df):
     gb = build_base_grid_options(tuple(df.columns))
     
     # =====================================================
-    # ALIGNMENT OTOMATIS
+    # ALIGNMENT OTOMATIS (CACHED)
     # =====================================================
-    exclude_cols = [
+    exclude_cols = {
         "__rowNum__",
         "Kode Satker",
         "KODE SATKER",
@@ -105,28 +123,21 @@ def render_table_pin_satker(df):
         "Nama Satker",
         "NAMA SATKER",
         "Uraian Satker-RINGKAS"
-    ]
+    }
+
+    # Buat tuple hashable untuk cache: (col, sample_values[:30])
+    col_samples = tuple(
+        (col, tuple(df[col].astype(str).dropna().head(30).tolist()))
+        for col in df.columns
+        if col not in exclude_cols
+    )
+    numeric_cols = _detect_numeric_cols(col_samples)
 
     for col in df.columns:
-
         if col in exclude_cols:
             gb.configure_column(col, cellStyle={"textAlign": "left"})
-            continue
-
-        # ambil sample data
-        sample = df[col].astype(str).dropna()
-
-        if len(sample) == 0:
-            continue
-
-        # cek apakah mayoritas angka / persen
-        ratio_numeric = sample.str.contains(r"\d").mean()
-
-        if ratio_numeric > 0.7:
-            gb.configure_column(
-                col,
-                cellStyle={"textAlign": "right"}
-            )
+        elif col in numeric_cols:
+            gb.configure_column(col, cellStyle={"textAlign": "right"})
     
     # =====================================================
     # SEMBUNYIKAN KOLOM INTERNAL (JIKA ADA)
@@ -1784,295 +1795,136 @@ st.set_page_config(
     layout="wide"
 )
 
+# ===============================
+# CSS GLOBAL (DIGABUNG JADI SATU)
+# ===============================
 st.markdown("""
 <style>
 
-/* SIDEBAR MENU BUTTON */
+/* SIDEBAR MENU BUTTON (lama) */
 section[data-testid="stSidebar"] div.stButton > button{
-
     width:100%;
-
-    background:#e6f2f5;
-
+    background:linear-gradient(135deg,#ffffff,#f1f7ff);
     border:none;
-
-    border-radius:6px;
-
+    border-radius:12px;
     text-align:left;
-
-    padding:10px 12px;
-
+    padding:10px 14px;
     font-size:15px;
-
-    color:#0f4c5c;
-
+    color:#1e293b;
     height:auto;
-
+    font-weight:600;
+    box-shadow:0 6px 18px rgba(0,0,0,0.08);
+    transition:all 0.25s ease;
 }
-
-/* HOVER EFFECT */
 section[data-testid="stSidebar"] div.stButton > button:hover{
-
-    background:#d0e7ec;
-
+    background:linear-gradient(135deg,#e0ecff,#c7dbff);
+    transform:translateX(4px);
 }
-
-/* JARAK ANTAR MENU */
 section[data-testid="stSidebar"] div.stButton{
-
     margin-bottom:6px;
-
 }
 
-</style>
-""", unsafe_allow_html=True)
-
-# =========================================================
-st.markdown("""
-<style>
-
-/* Jarak atas halaman */
+/* LAYOUT */
 .block-container{
     padding-top:0rem !important;
 }
-
-/* Kecilkan header streamlit tanpa menghilangkan layout */
 header[data-testid="stHeader"]{
-    height:40px;
+    height:0px;
 }
-
-/* Rapikan main */
 section.main > div{
     padding-top:0rem !important;
 }
-
-/* Hilangkan gap pertama */
 div[data-testid="stVerticalBlock"] > div:first-child{
     margin-top:0rem !important;
 }
 
-</style>
-""", unsafe_allow_html=True)
-
-# ===============================
-# CSS DASHBOARD MODERN
-# ===============================
-st.markdown("""
-<style>
-
-/* HILANGKAN MARGIN ATAS STREAMLIT */
-.block-container{
-    padding-top:0rem;
-}
-
-/* HILANGKAN HEADER SPACE */
-header[data-testid="stHeader"]{
-    height:0px;
-}
-
-/* KONTEN LEBIH KE ATAS */
-section.main > div{
-    padding-top:0rem;
-}
-
-
-/* HERO CONTAINER */
+/* HERO */
 .hero{
     position:relative;
     border-radius:22px;
     overflow:hidden;
-
     padding:240px 60px;
     margin-bottom:30px;
 }
-
-
-/* BACKGROUND IMAGE */
 .hero::before{
     content:"";
     position:absolute;
     inset:0;
-
     background-image:url("https://raw.githubusercontent.com/ameernoor/kinerjakeuangansatkerbta/main/kppn_backgound.png");
-
     background-size:cover;
-
     background-position:center 20%;
-
     filter:blur(0.5px);
     opacity:0.9;
-
     transform:scale(1.0);
 }
-
-
-/* LIGHT OVERLAY */
 .hero::after{
     content:"";
     position:absolute;
     inset:0;
-
     background:rgba(255,255,255,0.15);
 }
-
-
-/* TEXT CONTENT */
 .hero-content{
     position:relative;
     z-index:2;
 }
-
-
-/* TITLE BESAR */
 .hero-title{
     font-size:56px;
     font-weight:800;
     color:#1f2937;
 }
-
-
-/* SUBTITLE */
 .hero-sub{
     font-size:26px;
     font-weight:500;
     color:#374151;
 }
 
-</style>
-""", unsafe_allow_html=True)
-
-
-# ====================================================
-st.markdown("""
-<style>
-
-/* CONTAINER MENU */
+/* MENU CARD */
 .menu-container{
     margin-top:20px;
 }
-
-/* CARD MENU */
 .menu-container div.stButton > button{
-
     height:150px;
-
     border-radius:18px;
-
     border:1px solid #dbeafe;
-
     background:linear-gradient(135deg,#f5f9ff,#e0ecff);
-
     color:#1e293b;
-
     font-size:24px;
-
     font-weight:700;
-
     text-align:center;
-
     display:flex;
     flex-direction:column;
     align-items:center;
     justify-content:center;
-
     line-height:1.4;
-
     box-shadow:0 8px 25px rgba(0,0,0,0.06);
-
     transition:all 0.3s ease;
-
-}
-
-/* HOVER EFFECT */
-.menu-container div.stButton > button:hover{
-
-    transform:translateY(-6px);
-
-    background:linear-gradient(135deg,#e0ecff,#c7dbff);
-
-    box-shadow:0 18px 45px rgba(37,99,235,0.25);
-
-}
-
-/* ANIMASI MASUK */
-.menu-container div.stButton > button{
     animation:fadeUp 0.5s ease;
 }
-
+.menu-container div.stButton > button:hover{
+    transform:translateY(-6px);
+    background:linear-gradient(135deg,#e0ecff,#c7dbff);
+    box-shadow:0 18px 45px rgba(37,99,235,0.25);
+}
 @keyframes fadeUp{
-    from{
-        opacity:0;
-        transform:translateY(15px);
-    }
-    to{
-        opacity:1;
-        transform:translateY(0);
-    }
+    from{ opacity:0; transform:translateY(15px); }
+    to{ opacity:1; transform:translateY(0); }
 }
 
-</style>
-""", unsafe_allow_html=True)
-
-# =========================================================
-st.markdown("""
-<style>
-
-/* SIDEBAR BACKGROUND SOFT BLUE */
+/* SIDEBAR */
 section[data-testid="stSidebar"]{
     background:linear-gradient(180deg,#eaf4ff,#dbeafe);
 }
-
-/* JUDUL NAVIGASI */
 section[data-testid="stSidebar"] h1{
     color:#1e3a8a;
 }
-
-/* GARIS PEMISAH */
 section[data-testid="stSidebar"] hr{
     border-color:#c7dbff;
 }
-
-/* TOMBOL MENU SIDEBAR */
-section[data-testid="stSidebar"] div.stButton > button{
-
-    background:linear-gradient(135deg,#ffffff,#f1f7ff);
-
-    color:#1e293b;
-
-    border:none;
-
-    border-radius:12px;
-
-    padding:10px 14px;
-
-    font-weight:600;
-
-    box-shadow:0 6px 18px rgba(0,0,0,0.08);
-
-    transition:all 0.25s ease;
-
-}
-
-/* HOVER EFFECT */
-section[data-testid="stSidebar"] div.stButton > button:hover{
-
-    background:linear-gradient(135deg,#e0ecff,#c7dbff);
-
-    transform:translateX(4px);
-
-}
-
-/* BOX INFO BAWAH */
 section[data-testid="stSidebar"] .stAlert{
-
     background:#e6f0ff;
-
     border:none;
-
     border-radius:14px;
-
     color:#1e3a8a;
-
 }
 
 </style>
@@ -3323,6 +3175,8 @@ def load_data_from_github(_cache_buster: int = 0):
     return data_storage
 
 # load data ikpa kppn
+@st.cache_data(show_spinner=False, ttl=300)
+@st.cache_data(show_spinner=False, ttl=300)
 def load_data_ikpa_kppn_from_github():
     from github import Github, Auth
     import base64, io
@@ -3442,14 +3296,14 @@ def normalize_kkp_for_dashboard(df):
 # ============================================================
 # LOAD DATA KKP FROM GITHUB
 # ============================================================
+@st.cache_data(show_spinner=False, ttl=300)
 def load_kkp_master_from_github():
 
     token = st.secrets.get("GITHUB_TOKEN")
     repo_name = st.secrets.get("GITHUB_REPO")
 
     if not token or not repo_name:
-        st.session_state.kkp_master = pd.DataFrame()
-        return False
+        return pd.DataFrame(), False
 
     try:
         g = Github(auth=Auth.Token(token))
@@ -3461,41 +3315,32 @@ def load_kkp_master_from_github():
         file_bytes = base64.b64decode(file.content)
         df_master = pd.read_excel(io.BytesIO(file_bytes))
 
-        st.session_state.kkp_master = df_master
-        return True
+        return df_master, True
 
     except Exception:
-        # Jika file memang belum ada
-        st.session_state.kkp_master = pd.DataFrame()
-        return False
+        return pd.DataFrame(), False
 
 
-# Selalu load setiap app jalan (tidak pakai flag session)
-load_success = load_kkp_master_from_github()
-
-if load_success:
-    add_notification("Database utama KKP berhasil dimuat dari GitHub")
-else:
-    st.info("ℹ️ Belum ada database utama KKP di GitHub")
 
 
 # ============================================================
 # LOAD DIGIPAY FROM GITHUB
 # ============================================================
+@st.cache_data(show_spinner=False, ttl=300)
 def load_digipay_from_github():
     
     token = st.secrets.get("GITHUB_TOKEN")
     repo_name = st.secrets.get("GITHUB_REPO")
 
     if not token or not repo_name:
-        return 0
+        return pd.DataFrame(), 0
 
     try:
         g = Github(auth=Auth.Token(token))
         repo = g.get_repo(repo_name)
         contents = repo.get_contents("data_Digipay")
     except:
-        return 0
+        return pd.DataFrame(), 0
 
     all_df = []
     file_count = 0
@@ -3513,30 +3358,28 @@ def load_digipay_from_github():
                 continue
 
     if all_df:
-        st.session_state.digipay_master = pd.concat(all_df, ignore_index=True)
-    else:
-        st.session_state.digipay_master = pd.DataFrame()
-
-    return file_count
+        return pd.concat(all_df, ignore_index=True), file_count
+    return pd.DataFrame(), file_count
 
 
 # ============================================================
 # LOAD CMS FROM GITHUB
 # ============================================================
+@st.cache_data(show_spinner=False, ttl=300)
 def load_cms_from_github():
     
     token = st.secrets.get("GITHUB_TOKEN")
     repo_name = st.secrets.get("GITHUB_REPO")
 
     if not token or not repo_name:
-        return 0
+        return pd.DataFrame(), 0
 
     try:
         g = Github(auth=Auth.Token(token))
         repo = g.get_repo(repo_name)
         contents = repo.get_contents("data_CMS")
     except Exception:
-        return 0
+        return pd.DataFrame(), 0
 
     all_df = []
     file_count = 0
@@ -3551,11 +3394,8 @@ def load_cms_from_github():
                 file_count += 1
 
     if all_df:
-        st.session_state.cms_master = pd.concat(all_df, ignore_index=True)
-    else:
-        st.session_state.cms_master = pd.DataFrame()
-
-    return file_count
+        return pd.concat(all_df, ignore_index=True), file_count
+    return pd.DataFrame(), file_count
 
 
 # FILE KKP
@@ -11183,7 +11023,8 @@ def page_admin():
         # AUTO LOAD CMS SAAT PAGE DIBUKA
         # =========================================
         if "cms_master" not in st.session_state:
-            load_cms_from_github()
+            cms_df, _ = load_cms_from_github()
+            st.session_state.cms_master = cms_df
 
         # ============================================================
         # UPLOAD DATA CMS 
@@ -12385,191 +12226,181 @@ st.markdown("""
 # MAIN APP
 # ===============================
 def main():
-    
-    # flag aplikasi baru dibuka
+
+    # ============================================================
+    # FLAG: apakah ini pertama kali app dibuka (bukan navigasi menu)
+    # ============================================================
+    is_first_load = "app_fully_loaded" not in st.session_state
+
+    # flag untuk panel status sistem (hanya tampil saat pertama buka)
     if "show_system_status" not in st.session_state:
         st.session_state.show_system_status = True
-    
+
     loading_placeholder = st.empty()
 
-    with loading_placeholder.container():
-        show_loading_logo()
-
     # ============================================================
-    # 1️⃣ LOAD REFERENCE DATA (SEKALI SAJA)
+    # LOGO & SEMUA PROSES LOADING — HANYA SAAT PERTAMA KALI BUKA
+    # Saat pindah menu, seluruh blok ini di-skip → navigasi cepat
     # ============================================================
-    if "reference_df" not in st.session_state:
+    if is_first_load:
 
-        token = st.secrets.get("GITHUB_TOKEN")
-        repo_name = st.secrets.get("GITHUB_REPO")
+        # Tampilkan logo splash screen
+        with loading_placeholder.container():
+            show_loading_logo()
 
-        if not token or not repo_name:
-            st.session_state.reference_df = pd.DataFrame({
-                'Kode BA': [], 'K/L': [], 'Kode Satker': [],
-                'Uraian Satker-SINGKAT': [], 'Uraian Satker-LENGKAP': []
-            })
-        else:
-            try:
-                g = Github(auth=Auth.Token(token))
-                repo = g.get_repo(repo_name)
-                ref_path = "templates/Template_Data_Referensi.xlsx"
+        # --------------------------------------------------------
+        # 1. LOAD REFERENCE DATA
+        # --------------------------------------------------------
+        if "reference_df" not in st.session_state:
 
-                ref_file = repo.get_contents(ref_path)
-                ref_data = base64.b64decode(ref_file.content)
+            token = st.secrets.get("GITHUB_TOKEN")
+            repo_name = st.secrets.get("GITHUB_REPO")
 
-                ref_df = pd.read_excel(io.BytesIO(ref_data))
-                ref_df.columns = [c.strip() for c in ref_df.columns]
-
-                st.session_state.reference_df = ref_df
-
-            except Exception:
+            if not token or not repo_name:
                 st.session_state.reference_df = pd.DataFrame({
                     'Kode BA': [], 'K/L': [], 'Kode Satker': [],
                     'Uraian Satker-SINGKAT': [], 'Uraian Satker-LENGKAP': []
                 })
-
-    # ============================================================
-    # LOAD IKPA — reload dari GitHub setiap kali app dibuka/refresh
-    # ============================================================
-    if "data_storage" not in st.session_state:
-        st.session_state.data_storage = {}
-
-    # ===============================
-    # LOAD IKPA (HANYA SEKALI)
-    # ===============================
-    if "ikpa_loaded" not in st.session_state:
-    
-        with st.spinner("🔄 Memuat data IKPA dari GitHub..."):
-            loaded = load_data_from_github()
-
-            if loaded:
-                st.session_state.data_storage = loaded
-                add_notification("Data IKPA berhasil dimuat dari GitHub")
             else:
-                st.warning("⚠️ Data IKPA belum tersedia")
+                try:
+                    g = Github(auth=Auth.Token(token))
+                    repo = g.get_repo(repo_name)
+                    ref_path = "templates/Template_Data_Referensi.xlsx"
 
-        st.session_state.ikpa_loaded = True
+                    ref_file = repo.get_contents(ref_path)
+                    ref_data = base64.b64decode(ref_file.content)
 
+                    ref_df = pd.read_excel(io.BytesIO(ref_data))
+                    ref_df.columns = [c.strip() for c in ref_df.columns]
 
-    # ===============================
-    # LOAD IKPA KPPN DARI GITHUB (AUTO REFRESH)
-    # ===============================
-    if "data_storage_kppn" not in st.session_state:
-        st.session_state.data_storage_kppn = {}
+                    st.session_state.reference_df = ref_df
 
-    # 🔥 LOAD SELALU SAAT APP RUN
-    result_kppn = load_data_ikpa_kppn_from_github()
+                except Exception:
+                    st.session_state.reference_df = pd.DataFrame({
+                        'Kode BA': [], 'K/L': [], 'Kode Satker': [],
+                        'Uraian Satker-SINGKAT': [], 'Uraian Satker-LENGKAP': []
+                    })
 
-    if result_kppn:
-        st.session_state.data_storage_kppn = result_kppn
+        # --------------------------------------------------------
+        # 2. LOAD IKPA
+        # --------------------------------------------------------
+        if "data_storage" not in st.session_state:
+            st.session_state.data_storage = {}
 
-    # ===============================
-    # NOTIF BERHASIL LOAD (SEKALI)
-    # ===============================
-    if st.session_state.data_storage_kppn and not st.session_state.get("_kppn_loaded_notif"):
-        add_notification("Data IKPA KPPN berhasil dimuat dari GitHub")
-        st.session_state["_kppn_loaded_notif"] = True
-        
-    # ===============================
-    # INIT & LOAD DIPA — hanya load jika belum ada (tidak reset tiap run)
-    # ===============================
-    if "DATA_DIPA_by_year" not in st.session_state:
-        st.session_state.DATA_DIPA_by_year = {}
+        if "ikpa_loaded" not in st.session_state:
+            with st.spinner("🔄 Memuat data IKPA dari GitHub..."):
+                loaded = load_data_from_github()
+                if loaded:
+                    st.session_state.data_storage = loaded
+                    add_notification("Data IKPA berhasil dimuat dari GitHub")
+                else:
+                    st.warning("⚠️ Data IKPA belum tersedia")
+            st.session_state.ikpa_loaded = True
 
-    if not st.session_state.DATA_DIPA_by_year:
-        with st.spinner("🔄 Memuat data DIPA dari GitHub..."):
-            load_DATA_DIPA_from_github()
+        # --------------------------------------------------------
+        # 3. LOAD IKPA KPPN
+        # --------------------------------------------------------
+        if "data_storage_kppn" not in st.session_state:
+            st.session_state.data_storage_kppn = {}
 
-    # ===============================
-    # FINALISASI DIPA (AMAN)
-    # ===============================
-    if st.session_state.DATA_DIPA_by_year:
-        for tahun, df in st.session_state.DATA_DIPA_by_year.items():
+        if not st.session_state.data_storage_kppn:
+            result_kppn = load_data_ikpa_kppn_from_github()
+            if result_kppn:
+                st.session_state.data_storage_kppn = result_kppn
 
-            df = df.copy()
+        if st.session_state.data_storage_kppn and not st.session_state.get("_kppn_loaded_notif"):
+            add_notification("Data IKPA KPPN berhasil dimuat dari GitHub")
+            st.session_state["_kppn_loaded_notif"] = True
 
-            if "Uraian Satker" in df.columns:
-                df["Uraian Satker-RINGKAS"] = (
-                    df["Uraian Satker"]
-                    .fillna("-")
-                    .astype(str)
-                    .str[:30]
-                )
-            else:
-                df["Uraian Satker-RINGKAS"] = "-"
+        # --------------------------------------------------------
+        # 4. LOAD DIPA
+        # --------------------------------------------------------
+        if "DATA_DIPA_by_year" not in st.session_state:
+            st.session_state.DATA_DIPA_by_year = {}
 
-            st.session_state.DATA_DIPA_by_year[tahun] = df
-    
-    # ============================================================
-    # AUTO MERGE IKPA + DIPA — selalu jalankan ulang setelah load
-    # ============================================================
-    # ===============================
-    # AUTO MERGE (HANYA SEKALI)
-    # ===============================
-    if not st.session_state.get("ikpa_dipa_merged", False):
+        if not st.session_state.DATA_DIPA_by_year:
+            with st.spinner("🔄 Memuat data DIPA dari GitHub..."):
+                load_DATA_DIPA_from_github()
+
+        # Finalisasi kolom RINGKAS (hanya sekali)
+        if st.session_state.DATA_DIPA_by_year and not st.session_state.get("_dipa_finalized"):
+            for tahun, df in st.session_state.DATA_DIPA_by_year.items():
+                df = df.copy()
+                if "Uraian Satker" in df.columns:
+                    df["Uraian Satker-RINGKAS"] = (
+                        df["Uraian Satker"]
+                        .fillna("-")
+                        .astype(str)
+                        .str[:30]
+                    )
+                else:
+                    df["Uraian Satker-RINGKAS"] = "-"
+                st.session_state.DATA_DIPA_by_year[tahun] = df
+            st.session_state["_dipa_finalized"] = True
+
+        # --------------------------------------------------------
+        # 5. AUTO MERGE IKPA + DIPA
+        # --------------------------------------------------------
+        if not st.session_state.get("ikpa_dipa_merged", False):
+            if st.session_state.data_storage and st.session_state.DATA_DIPA_by_year:
+                try:
+                    merge_ikpa_dipa_auto()
+                    st.session_state.ikpa_dipa_merged = True
+                except Exception as e:
+                    st.error(f"Gagal merge IKPA & DIPA: {e}")
+
+        if st.session_state.get("ikpa_dipa_merged", False):
+            add_notification("Data IKPA & DIPA berhasil dimuat dan siap digunakan")
+
+        # --------------------------------------------------------
+        # 6. LOAD KKP
+        # --------------------------------------------------------
+        if "kkp_master" not in st.session_state:
+            kkp_df, kkp_loaded = load_kkp_master_from_github()
+            st.session_state.kkp_master = kkp_df
+            if kkp_loaded:
+                add_notification("Database utama KKP berhasil dimuat dari GitHub")
+
+        # --------------------------------------------------------
+        # 7. LOAD CMS & DIGIPAY
+        # --------------------------------------------------------
+        cms_sudah_ada = (
+            "cms_master" in st.session_state and
+            not st.session_state.cms_master.empty
+        )
+        if not cms_sudah_ada:
+            cms_df, cms_count = load_cms_from_github()
+            st.session_state.cms_master = cms_df
+            st.session_state.auto_loaded_cms = True
+            if cms_count > 0:
+                add_notification("Data CMS berhasil dimuat")
+        elif "auto_loaded_cms" not in st.session_state:
+            st.session_state.auto_loaded_cms = True
+
+        digipay_sudah_ada = (
+            "digipay_master" in st.session_state and
+            not st.session_state.digipay_master.empty
+        )
+        if not digipay_sudah_ada:
+            digipay_df, digipay_count = load_digipay_from_github()
+            st.session_state.digipay_master = digipay_df
+            st.session_state.auto_loaded_digipay = True
+            if digipay_count > 0:
+                add_notification("Data DIGIPAY berhasil dimuat")
+        elif "auto_loaded_digipay" not in st.session_state:
+            st.session_state.auto_loaded_digipay = True
 
         if (
-            st.session_state.data_storage and
-            st.session_state.DATA_DIPA_by_year
+            st.session_state.get("auto_loaded_cms") or
+            st.session_state.get("auto_loaded_digipay")
         ):
-            try:
-                merge_ikpa_dipa_auto()
-                st.session_state.ikpa_dipa_merged = True
-            except Exception as e:
-                st.error(f"Gagal merge IKPA & DIPA: {e}")
-                
-            
-    # ============================================================
-    # NOTIF GLOBAL STATUS DATA (MUNCUL SAAT APP DIBUKA)
-    # ============================================================
-    if st.session_state.get("ikpa_dipa_merged", False):
-        add_notification("Data IKPA & DIPA berhasil dimuat dan siap digunakan")
-        
+            add_notification("Data CMS & DIGIPAY berhasil dimuat dan siap digunakan")
 
-    # ============================================================
-    # AUTO LOAD KKP SAAT PAGE DIBUKA
-    # ============================================================
-    if "kkp_master" not in st.session_state:
-        kkp_loaded = load_kkp_master_from_github()
+        # Tandai bahwa loading sudah selesai — saat pindah menu, is_first_load = False
+        st.session_state.app_fully_loaded = True
 
-        if kkp_loaded:
-            add_notification("Database utama KKP berhasil dimuat dari GitHub")
-
-
-    # ============================================================
-    # AUTO LOAD CMS & DIGIPAY
-    # ============================================================
-    cms_sudah_ada = (
-        "cms_master" in st.session_state and
-        not st.session_state.cms_master.empty
-    )
-    if not cms_sudah_ada:
-        cms_count = load_cms_from_github()
-        st.session_state.auto_loaded_cms = True
-        if cms_count > 0:
-            add_notification("Data CMS berhasil dimuat")
-    elif "auto_loaded_cms" not in st.session_state:
-        st.session_state.auto_loaded_cms = True
-
-    digipay_sudah_ada = (
-        "digipay_master" in st.session_state and
-        not st.session_state.digipay_master.empty
-    )
-    if not digipay_sudah_ada:
-        digipay_count = load_digipay_from_github()
-        st.session_state.auto_loaded_digipay = True
-        if digipay_count > 0:
-            add_notification("Data DIGIPAY berhasil dimuat")
-    elif "auto_loaded_digipay" not in st.session_state:
-        st.session_state.auto_loaded_digipay = True
-
-    if (
-        st.session_state.get("auto_loaded_cms") or
-        st.session_state.get("auto_loaded_digipay")
-    ):
-        add_notification("Data CMS & DIGIPAY berhasil dimuat dan siap digunakan")
-        
-    loading_placeholder.empty()
+        # Hapus logo splash
+        loading_placeholder.empty()
 
     # ===============================
     # PANEL STATUS SISTEM
