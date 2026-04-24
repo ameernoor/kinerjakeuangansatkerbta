@@ -2628,87 +2628,161 @@ def reprocess_all_ikpa_satker():
 def process_excel_file_kppn(uploaded_file, year, detected_month=None):
     import pandas as pd
 
+    VALID_MONTHS_KPPN = {
+        "JANUARI": "JANUARI", "FEBRUARI": "FEBRUARI", "MARET": "MARET",
+        "APRIL": "APRIL", "MEI": "MEI", "JUNI": "JUNI",
+        "JULI": "JULI", "AGUSTUS": "AGUSTUS", "SEPTEMBER": "SEPTEMBER",
+        "OKTOBER": "OKTOBER", "NOVEMBER": "NOVEMBER", "DESEMBER": "DESEMBER",
+        "PEBRUARI": "FEBRUARI", "NOPEMBER": "NOVEMBER",
+        "01": "JANUARI", "02": "FEBRUARI", "03": "MARET",
+        "04": "APRIL", "05": "MEI", "06": "JUNI",
+        "07": "JULI", "08": "AGUSTUS", "09": "SEPTEMBER",
+        "10": "OKTOBER", "11": "NOVEMBER", "12": "DESEMBER"
+    }
+
     df_raw = pd.read_excel(uploaded_file, header=None)
 
     # ===============================
-    # 🔍 DETEKSI HEADER
+    # 🔍 DETEKSI FORMAT FILE
+    # Format FLAT: header di baris 0, data langsung di baris 1+
+    #   - Kolom sudah bernama lengkap (Nama KPPN, Revisi DIPA, dll)
+    #   - Biasanya ada kolom "Bulan" dan "Tahun"
+    # Format BLOK: header multi-baris dari OM-SPAN/MyIntress raw
+    #   - Data per-blok 3 baris (nilai/bobot/nilai_akhir)
     # ===============================
-    header_row = detect_header_row(df_raw)
 
-    # ambil data setelah header
-    df_data = df_raw.iloc[header_row+2:].reset_index(drop=True)
+    # Cek apakah format FLAT dengan melihat baris pertama
+    first_row_text = " ".join(df_raw.iloc[0].astype(str).str.upper().tolist())
+    is_flat_format = (
+        "NAMA KPPN" in first_row_text or "NAMA KANTOR" in first_row_text
+    ) and (
+        "BULAN" in first_row_text or "NILAI AKHIR" in first_row_text
+    )
 
-    processed_rows = []
-    i = 0
+    # ===============================
+    # FORMAT FLAT — baca langsung sebagai tabel
+    # ===============================
+    if is_flat_format:
+        df_flat = pd.read_excel(
+            uploaded_file if hasattr(uploaded_file, 'seek') else uploaded_file,
+            header=0
+        )
+        # Reset file pointer jika bisa
+        try:
+            uploaded_file.seek(0)
+        except Exception:
+            pass
 
-    while i + 2 < len(df_data):
+        df_flat.columns = (
+            df_flat.columns.astype(str)
+            .str.strip()
+            .str.replace(r"\s+", " ", regex=True)
+        )
 
-        nilai = df_data.iloc[i]
-        bobot = df_data.iloc[i + 1]
-        nilai_akhir = df_data.iloc[i + 2]
-
-        # ===============================
-        # VALIDASI BARIS UTAMA
-        # ===============================
-        kode = str(nilai[2]).strip()
-        nama = str(nilai[3]).strip()
-
-        if not kode.isdigit():
-            i += 1
-            continue
-
-        row = {
-            "Kode KPPN": kode,
-            "Nama KPPN": nama,
-
-            "Revisi DIPA": nilai[5],
-            "Deviasi Halaman III DIPA": nilai[6],
-            "Penyerapan Anggaran": nilai[8],
-            "Belanja Kontraktual": nilai[9],
-            "Penyelesaian Tagihan": nilai[10],
-            "Pengelolaan UP dan TUP": nilai[11],
-            "Capaian Output": nilai[13],
-
-            "Nilai Total": nilai[15],
-            "Konversi Bobot": nilai[16],
-            "Dispensasi SPM (Pengurangan)": nilai[17],
-            "Nilai Akhir (Nilai Total/Konversi Bobot)": nilai[18],
+        # Normalisasi nama kolom (Kualitas Perencanaan → sudah ada, OK)
+        rename_flat = {
+            "Dispensasi SPM (Pengurang)": "Dispensasi SPM (Pengurangan)",
         }
+        df_flat = df_flat.rename(columns={k: v for k, v in rename_flat.items() if k in df_flat.columns})
 
-        processed_rows.append(row)
+        # Ambil bulan dari kolom Bulan jika ada
+        if not detected_month or detected_month == "UNKNOWN":
+            if "Bulan" in df_flat.columns:
+                bulan_vals = df_flat["Bulan"].astype(str).str.upper().str.strip()
+                for bv in bulan_vals:
+                    if bv in VALID_MONTHS_KPPN:
+                        detected_month = VALID_MONTHS_KPPN[bv]
+                        break
 
-        i += 3  # lompat per blok
+        # Ambil tahun dari kolom Tahun jika ada dan sesuai
+        if "Tahun" in df_flat.columns:
+            tahun_vals = df_flat["Tahun"].dropna().unique()
+            if len(tahun_vals) > 0:
+                try:
+                    year_from_data = int(tahun_vals[0])
+                    if year_from_data > 2000:
+                        year = year_from_data
+                except Exception:
+                    pass
 
-    df = pd.DataFrame(processed_rows)
+        # Pastikan kolom wajib ada
+        needed_cols = [
+            "Kode KPPN", "Nama KPPN",
+            "Revisi DIPA", "Deviasi Halaman III DIPA",
+            "Penyerapan Anggaran", "Belanja Kontraktual",
+            "Penyelesaian Tagihan", "Pengelolaan UP dan TUP",
+            "Capaian Output", "Nilai Total", "Konversi Bobot",
+            "Dispensasi SPM (Pengurangan)",
+            "Nilai Akhir (Nilai Total/Konversi Bobot)"
+        ]
+        for col in needed_cols:
+            if col not in df_flat.columns:
+                df_flat[col] = 0
+
+        df = df_flat[needed_cols].copy()
 
     # ===============================
-    # METADATA
+    # FORMAT BLOK (OM-SPAN raw) — 3 baris per KPPN
     # ===============================
+    else:
+        header_row = detect_header_row(df_raw)
+
+        # ambil data setelah header (skip 2 baris header)
+        df_data = df_raw.iloc[header_row+2:].reset_index(drop=True)
+
+        processed_rows = []
+        i = 0
+
+        while i + 2 < len(df_data):
+
+            nilai = df_data.iloc[i]
+
+            # Validasi baris utama — kode KPPN di kolom 2
+            kode = str(nilai[2]).strip()
+            nama = str(nilai[3]).strip()
+
+            if not kode.isdigit():
+                i += 1
+                continue
+
+            row = {
+                "Kode KPPN": kode,
+                "Nama KPPN": nama,
+
+                "Revisi DIPA": nilai[5],
+                "Deviasi Halaman III DIPA": nilai[6],
+                "Penyerapan Anggaran": nilai[8],
+                "Belanja Kontraktual": nilai[9],
+                "Penyelesaian Tagihan": nilai[10],
+                "Pengelolaan UP dan TUP": nilai[11],
+                "Capaian Output": nilai[13],
+
+                "Nilai Total": nilai[15],
+                "Konversi Bobot": nilai[16],
+                "Dispensasi SPM (Pengurangan)": nilai[17],
+                "Nilai Akhir (Nilai Total/Konversi Bobot)": nilai[18],
+            }
+
+            processed_rows.append(row)
+            i += 3  # lompat per blok
+
+        df = pd.DataFrame(processed_rows)
+
+        # Deteksi bulan dari kolom Periode (kolom index 1) di data blok
+        if not detected_month or detected_month == "UNKNOWN":
+            for idx in range(len(df_data)):
+                val = str(df_data.iloc[idx, 1]).strip().upper()
+                if val in VALID_MONTHS_KPPN:
+                    detected_month = VALID_MONTHS_KPPN[val]
+                    break
+
     # ===============================
-    # DETEKSI BULAN OTOMATIS (FIX)
+    # FALLBACK BULAN — dari parameter detected_month yang dikirim caller
+    # (sudah dideteksi dari header/nama file sebelum fungsi ini dipanggil)
     # ===============================
     if not detected_month or detected_month == "UNKNOWN":
-
-        MONTH_MAP = {
-            "01": "JANUARI", "02": "FEBRUARI", "03": "MARET",
-            "04": "APRIL", "05": "MEI", "06": "JUNI",
-            "07": "JULI", "08": "AGUSTUS", "09": "SEPTEMBER",
-            "10": "OKTOBER", "11": "NOVEMBER", "12": "DESEMBER"
-        }
-
+        # Jangan hardcode "MARET" — biarkan UNKNOWN agar tidak misleading
         detected_month = "UNKNOWN"
-
-        # 🔍 coba ambil dari kolom Periode
-        for idx in range(len(df_data)):
-            val = str(df_data.iloc[idx, 1]).strip()
-
-            if val in MONTH_MAP:
-                detected_month = MONTH_MAP[val]
-                break
-
-        # 🔥 fallback terakhir (biar tidak hilang dari dropdown)
-        if detected_month == "UNKNOWN":
-            detected_month = "MARET"
 
     # ===============================
     # METADATA FINAL
@@ -2726,11 +2800,14 @@ def process_excel_file_kppn(uploaded_file, year, detected_month=None):
 
     df = df.sort_values(nilai_col, ascending=False)
 
-    df["Peringkat"] = (
-        df[nilai_col]
-        .rank(method="dense", ascending=False)
-        .astype(int)
-    )
+    if not df.empty:
+        df["Peringkat"] = (
+            df[nilai_col]
+            .rank(method="dense", ascending=False)
+            .astype(int)
+        )
+    else:
+        df["Peringkat"] = 0
 
     return df, detected_month, year
     
@@ -10005,34 +10082,39 @@ def page_admin():
                     st.stop()
 
                 # ===============================
-                # 🔍 DETEKSI BULAN (HEADER + FILENAME)
+                # 🔍 DETEKSI BULAN (HEADER + DATA + FILENAME)
                 # ===============================
                 uploaded_file_kppn.seek(0)
                 df_info = pd.read_excel(uploaded_file_kppn, header=None)
 
                 MONTH_MAP = {
-                    "JAN": "JANUARI", "JANUARI": "JANUARI",
-                    "FEB": "FEBRUARI", "FEBRUARI": "FEBRUARI",
-                    "MAR": "MARET", "MARET": "MARET",
-                    "APR": "APRIL", "APRIL": "APRIL",
+                    "JANUARI": "JANUARI", "JAN": "JANUARI",
+                    "FEBRUARI": "FEBRUARI", "FEB": "FEBRUARI", "PEBRUARI": "FEBRUARI",
+                    "MARET": "MARET", "MAR": "MARET",
+                    "APRIL": "APRIL", "APR": "APRIL",
                     "MEI": "MEI",
-                    "JUN": "JUNI", "JUNI": "JUNI",
-                    "JUL": "JULI", "JULI": "JULI",
-                    "AGT": "AGUSTUS", "AGS": "AGUSTUS", "AGUSTUS": "AGUSTUS",
-                    "SEP": "SEPTEMBER", "SEPTEMBER": "SEPTEMBER",
-                    "OKT": "OKTOBER", "OKTOBER": "OKTOBER",
-                    "NOV": "NOVEMBER", "NOVEMBER": "NOVEMBER",
-                    "DES": "DESEMBER", "DESEMBER": "DESEMBER"
+                    "JUNI": "JUNI", "JUN": "JUNI",
+                    "JULI": "JULI", "JUL": "JULI",
+                    "AGUSTUS": "AGUSTUS", "AGT": "AGUSTUS", "AGS": "AGUSTUS",
+                    "SEPTEMBER": "SEPTEMBER", "SEP": "SEPTEMBER",
+                    "OKTOBER": "OKTOBER", "OKT": "OKTOBER",
+                    "NOVEMBER": "NOVEMBER", "NOV": "NOVEMBER", "NOPEMBER": "NOVEMBER",
+                    "DESEMBER": "DESEMBER", "DES": "DESEMBER"
                 }
 
                 month_preview = None
 
-                # 1️⃣ Cari bulan di header (baris & kolom awal)
+                # 1️⃣ Cari bulan di header (baris & kolom awal) — untuk raw OM-SPAN
                 for r in range(min(6, df_info.shape[0])):
                     for c in range(min(5, df_info.shape[1])):
-                        cell = str(df_info.iloc[r, c]).upper()
+                        cell = str(df_info.iloc[r, c]).upper().strip()
+                        # exact match dulu (lebih aman dari substring)
+                        if cell in MONTH_MAP:
+                            month_preview = MONTH_MAP[cell]
+                            break
+                        # substring fallback
                         for k, v in MONTH_MAP.items():
-                            if k in cell:
+                            if len(k) >= 4 and k in cell:
                                 month_preview = v
                                 break
                         if month_preview:
@@ -10040,15 +10122,29 @@ def page_admin():
                     if month_preview:
                         break
 
-                # 2️⃣ Fallback: cari di nama file
+                # 2️⃣ Cari dari kolom "Bulan" jika format FLAT
+                # (file sudah diproses sebelumnya, punya kolom Bulan)
+                if not month_preview:
+                    # Cari indeks kolom "Bulan" di baris header
+                    header_row_vals = df_info.iloc[0].astype(str).str.upper().str.strip().tolist()
+                    if "BULAN" in header_row_vals:
+                        bulan_col_idx = header_row_vals.index("BULAN")
+                        # Cari nilai di kolom tersebut di baris data
+                        for r in range(1, min(df_info.shape[0], 10)):
+                            cell = str(df_info.iloc[r, bulan_col_idx]).upper().strip()
+                            if cell in MONTH_MAP:
+                                month_preview = MONTH_MAP[cell]
+                                break
+
+                # 3️⃣ Fallback: cari di nama file
                 if not month_preview:
                     fname = uploaded_file_kppn.name.upper()
                     for k, v in MONTH_MAP.items():
-                        if k in fname:
+                        if len(k) >= 4 and k in fname:
                             month_preview = v
                             break
 
-                # 3️⃣ Final fallback
+                # 4️⃣ Final fallback
                 if not month_preview:
                     month_preview = "UNKNOWN"
 
