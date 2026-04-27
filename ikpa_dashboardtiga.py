@@ -2626,15 +2626,6 @@ def reprocess_all_ikpa_satker():
 
 
 def process_excel_file_kppn(uploaded_file, year, detected_month=None):
-    """
-    Parser IKPA KPPN universal.
-    Mendukung dua sumber file:
-      1. File hasil simpan/export dashboard (format FLAT dengan kolom Bulan/Tahun)
-         → Langsung dibaca, filter Kode KPPN = 109
-      2. File raw OM-SPAN / MyIntress (multi-KPPN, bisa flat atau blok 3-baris)
-         → Diproses, filter hanya Kode KPPN = 109 (BATURAJA)
-    Output selalu berformat standar sesuai template Januari 2024.
-    """
     import pandas as pd
     import re as _re
 
@@ -2652,7 +2643,6 @@ def process_excel_file_kppn(uploaded_file, year, detected_month=None):
         "10": "OKTOBER", "11": "NOVEMBER", "12": "DESEMBER"
     }
 
-    # Kolom output standar (urutan sesuai format Januari 2024)
     OUTPUT_COLS = [
         "Kode KPPN", "Nama KPPN",
         "Kualitas Perencanaan Anggaran",
@@ -2668,196 +2658,107 @@ def process_excel_file_kppn(uploaded_file, year, detected_month=None):
 
     try:
         uploaded_file.seek(0)
-    except Exception:
+    except:
         pass
 
     df_raw = pd.read_excel(uploaded_file, header=None)
 
-    # ===============================
-    # DETEKSI FORMAT FILE
-    # ===============================
-    first_row_upper = df_raw.iloc[0].astype(str).str.upper().str.strip().tolist()
-    first_row_text = " ".join(first_row_upper)
+    first_row_text = " ".join(df_raw.iloc[0].astype(str).str.upper())
 
-    has_kode_kppn_col = "KODE KPPN" in first_row_text or "KODEKPPN" in first_row_text
-    has_bulan_col = "BULAN" in first_row_text
-    has_tahun_col = "TAHUN" in first_row_text
-
-    # Format FLAT: header di baris 0, data mulai baris 1
-    # Ini mencakup: file hasil simpan dashboard DAN file flat OM-SPAN
-    is_flat = has_kode_kppn_col and (has_bulan_col or has_tahun_col or "NILAI AKHIR" in first_row_text)
+    is_flat = "KODE KPPN" in first_row_text and "NILAI AKHIR" in first_row_text
 
     # ===============================
-    # A) FORMAT FLAT
+    # A) FORMAT FLAT (AMAN)
     # ===============================
     if is_flat:
-        try:
-            uploaded_file.seek(0)
-        except Exception:
-            pass
-        df = pd.read_excel(uploaded_file, header=0)
-        df.columns = (
-            df.columns.astype(str)
-            .str.strip()
-            .str.replace(r"\s+", " ", regex=True)
-        )
+        uploaded_file.seek(0)
+        df = pd.read_excel(uploaded_file)
 
-        # Normalisasi nama kolom Dispensasi
-        for old, new in [
-            ("Dispensasi SPM (Pengurangan)", "Dispensasi SPM (Pengurang)"),
-        ]:
-            if old in df.columns and new not in df.columns:
-                df = df.rename(columns={old: new})
+        df.columns = df.columns.astype(str).str.strip()
 
-        # Ambil bulan dari kolom Bulan jika ada
-        if (not detected_month or detected_month == "UNKNOWN") and "Bulan" in df.columns:
-            for bv in df["Bulan"].astype(str).str.upper().str.strip():
-                if bv in VALID_MONTHS_KPPN:
-                    detected_month = VALID_MONTHS_KPPN[bv]
-                    break
+        df = df.applymap(lambda x: str(x).replace(",", ".") if isinstance(x, str) else x)
 
-        # Ambil tahun dari kolom Tahun jika ada
-        if "Tahun" in df.columns:
-            tahun_vals = df["Tahun"].dropna().unique()
-            for tv in tahun_vals:
-                try:
-                    y = int(tv)
-                    if y > 2000:
-                        year = y
-                        break
-                except Exception:
-                    pass
+        for col in df.columns:
+            if col not in ["Nama KPPN", "Bulan", "Tahun"]:
+                df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0)
 
-        # -----------------------------------------------
-        # DETEKSI apakah kolom "Kode KPPN" berisi
-        # benar-benar kode KPPN (3 digit: 109) ataukah
-        # berisi Kode BA (2-3 digit: 25, 5, 6, 54, dst)
-        # -----------------------------------------------
-        if "Kode KPPN" in df.columns:
-            sample_kode = df["Kode KPPN"].dropna().astype(str).str.strip()
-            # Jika nilai unik tidak ada yang == 109 dan semua < 3 digit angka → salah format
-            kode_vals = sample_kode.unique().tolist()
-            ada_109 = any(str(k).zfill(3) == "109" for k in kode_vals)
-
-            if not ada_109:
-                # Kolom "Kode KPPN" mungkin berisi Kode BA
-                # Coba cari kolom yang berisi 109
-                kppn_col_found = None
-                for col in df.columns:
-                    vals = df[col].astype(str).str.strip().unique()
-                    if any(str(v).zfill(3) == "109" for v in vals):
-                        kppn_col_found = col
-                        break
-
-                if kppn_col_found and kppn_col_found != "Kode KPPN":
-                    # Swap nama kolom
-                    df = df.rename(columns={
-                        "Kode KPPN": "_kode_ba_temp",
-                        kppn_col_found: "Kode KPPN"
-                    })
-
-            # Filter hanya KPPN 109
-            df["_kode_kppn_str"] = df["Kode KPPN"].astype(str).str.strip().str.zfill(3)
-            df = df[df["_kode_kppn_str"] == "109"].copy()
-            df = df.drop(columns=["_kode_kppn_str"], errors="ignore")
-            df = df.drop(columns=["_kode_ba_temp"], errors="ignore")
+        df["Kode KPPN"] = df["Kode KPPN"].astype(str).str.zfill(3)
+        df = df[df["Kode KPPN"] == "109"]
 
     # ===============================
-    # B) FORMAT BLOK OM-SPAN (3 baris per KPPN)
+    # B) FORMAT BLOK (FIX UTAMA 🔥)
     # ===============================
     else:
-        header_row = detect_header_row(df_raw)
-        df_data = df_raw.iloc[header_row + 2:].reset_index(drop=True)
+        df_data = df_raw.iloc[4:].reset_index(drop=True)
 
-        processed_rows = []
+        rows = []
         i = 0
 
-        while i + 2 < len(df_data):
+        while i + 3 < len(df_data):
+
             nilai = df_data.iloc[i]
+            nilai_aspek = df_data.iloc[i + 3]  # 🔥 INI KUNCI
 
-            kode = str(nilai[2]).strip().zfill(3)
-            nama = str(nilai[3]).strip()
+            kode = str(nilai[1]).strip().zfill(3)
+            nama = str(nilai[2]).strip()
 
-            if not _re.match(r"^\d+$", str(nilai[2]).strip()):
+            if not kode.isdigit():
                 i += 1
                 continue
 
-            # Hanya ambil KPPN 109
             if kode != KODE_KPPN_BATURAJA:
-                i += 3
+                i += 4
                 continue
 
             row = {
                 "Kode KPPN": kode,
                 "Nama KPPN": nama,
-                "Revisi DIPA": nilai[5],
-                "Deviasi Halaman III DIPA": nilai[6],
+
+                # 🔥 NILAI ASPEK (FIX TOTAL)
+                "Kualitas Perencanaan Anggaran": nilai_aspek[6],
+                "Kualitas Pelaksanaan Anggaran": nilai_aspek[8],
+                "Kualitas Hasil Pelaksanaan Anggaran": nilai_aspek[12],
+
+                "Revisi DIPA": nilai[6],
+                "Deviasi Halaman III DIPA": nilai[7],
                 "Penyerapan Anggaran": nilai[8],
                 "Belanja Kontraktual": nilai[9],
                 "Penyelesaian Tagihan": nilai[10],
                 "Pengelolaan UP dan TUP": nilai[11],
-                "Capaian Output": nilai[13],
-                "Nilai Total": nilai[15],
-                "Konversi Bobot": nilai[16],
-                "Dispensasi SPM (Pengurang)": nilai[17],
-                "Nilai Akhir (Nilai Total/Konversi Bobot)": nilai[18],
+                "Capaian Output": nilai[12],
+
+                "Nilai Total": nilai[13],
+                "Konversi Bobot": nilai[14],
+                "Dispensasi SPM (Pengurang)": nilai[15],
+                "Nilai Akhir (Nilai Total/Konversi Bobot)": nilai[16],
             }
-            processed_rows.append(row)
-            i += 3
 
-        df = pd.DataFrame(processed_rows)
+            rows.append(row)
+            i += 4  # 🔥 WAJIB 4
 
-        # Deteksi bulan dari kolom Periode (kolom index 1)
-        if not detected_month or detected_month == "UNKNOWN":
-            for idx in range(len(df_data)):
-                val = str(df_data.iloc[idx, 1]).strip().upper()
-                if val in VALID_MONTHS_KPPN:
-                    detected_month = VALID_MONTHS_KPPN[val]
-                    break
+        df = pd.DataFrame(rows)
 
     # ===============================
-    # PASTIKAN KOLOM OUTPUT LENGKAP
+    # FINAL PROCESS
     # ===============================
     for col in OUTPUT_COLS:
         if col not in df.columns:
             df[col] = 0 if col not in ["Kode KPPN", "Nama KPPN"] else ""
 
-    # Pastikan Kode KPPN = "109" dan Nama KPPN = "BATURAJA"
-    if df.empty:
-        # Tidak ada data KPPN 109 ditemukan
-        return None, detected_month or "UNKNOWN", year
-
-    df["Kode KPPN"] = df["Kode KPPN"].astype(str).str.strip().str.zfill(3)
-    df = df[df["Kode KPPN"] == "109"].copy()
-
     if df.empty:
         return None, detected_month or "UNKNOWN", year
 
-    # ===============================
-    # METADATA FINAL
-    # ===============================
-    if not detected_month or detected_month == "UNKNOWN":
-        detected_month = "UNKNOWN"
-
-    df["Bulan"] = detected_month.upper()
+    df["Bulan"] = (detected_month or "UNKNOWN").upper()
     df["Tahun"] = str(year)
     df["Source"] = "Upload"
 
-    # ===============================
-    # RANKING
-    # ===============================
     nilai_col = "Nilai Akhir (Nilai Total/Konversi Bobot)"
     df[nilai_col] = pd.to_numeric(df[nilai_col], errors="coerce").fillna(0)
+
     df = df.sort_values(nilai_col, ascending=False)
-    df["Peringkat"] = (
-        df[nilai_col].rank(method="dense", ascending=False).astype(int)
-    )
 
-    # Reorder kolom output standar + metadata
-    final_col_order = OUTPUT_COLS + ["Bulan", "Tahun", "Source", "Peringkat"]
-    df = df[[c for c in final_col_order if c in df.columns]]
+    df["Peringkat"] = df[nilai_col].rank(method="dense", ascending=False).astype(int)
 
-    # Tambah nomor urut
     df.insert(0, "No", range(1, len(df) + 1))
 
     return df, detected_month, year
