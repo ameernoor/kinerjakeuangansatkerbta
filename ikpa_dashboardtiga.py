@@ -2625,33 +2625,7 @@ def reprocess_all_ikpa_satker():
         st.success("✅ Reprocess IKPA Satker selesai (multi-year siap digunakan)")
 
 
-"""
-FUNGSI PENGGANTI: process_excel_file_kppn()
-============================================
 
-Mendeteksi dan memproses OTOMATIS semua format file IKPA KPPN:
-
-  FORMAT A — FLAT (hasil proses sebelumnya / GitHub)
-    Ciri: baris pertama sudah header bersih, ada kolom 'Kode KPPN' / 'Nama KPPN'
-
-  FORMAT B — OM-SPAN Modern / MyIntress (Desember 2025+)
-    Ciri: 19 kolom, header 2 baris (baris 2+3), 3 baris per KPPN (NILAI/BOBOT/NILAI AKHIR)
-    Kolom: NO|Periode|Kode|Nama|Ket|RevDIPA|Dev|AspPerenc|Serap|Kontrak|
-            Tagihan|UP|AspPelaks|Output|AspHasil|NilaiTotal|KonversBobot|Dispensasi|NilaiAkhir
-
-  FORMAT C — OM-SPAN Lama (s.d. 2025)
-    Ciri: 15 kolom, header 2 baris (baris 2+3), 4 baris per KPPN (NILAI/BOBOT/NILAI AKHIR/NILAI ASPEK)
-    Kolom: No|KodeKPPN|NamaKPPN|Ket|RevDIPA|Dev|Serap|Kontrak|Tagihan|UP|Output|
-            NilaiTotal|KonversBobot|Dispensasi|NilaiAkhir
-    Aspek: dibaca dari baris ke-4 (NILAI ASPEK): idx 4=Perenc, 6=Pelaks, 10=Hasil
-
-Output SELALU sama persis:
-  No | Kode KPPN | Nama KPPN | Kualitas Perencanaan Anggaran | Kualitas Pelaksanaan Anggaran
-  | Kualitas Hasil Pelaksanaan Anggaran | Revisi DIPA | Deviasi Halaman III DIPA
-  | Penyerapan Anggaran | Belanja Kontraktual | Penyelesaian Tagihan | Pengelolaan UP dan TUP
-  | Capaian Output | Nilai Total | Konversi Bobot | Dispensasi SPM (Pengurang) 
-  | Nilai Akhir (Nilai Total/Konversi Bobot) | Bulan | Tahun | Source | Peringkat
-"""
 
 import pandas as pd
 import re
