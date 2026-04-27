@@ -798,13 +798,18 @@ def render_table_pin_satker(df):
     # =====================================================
     # GRID
     # =====================================================
-    st.markdown('<div style="overflow-x:auto;">', unsafe_allow_html=True)
+    st.markdown("""
+    <div style="
+        overflow-x: auto;
+        width: 100%;
+    ">
+    """, unsafe_allow_html=True)
 
     grid_response = AgGrid(
         df,
         gridOptions=gb.build(),
         height=450,
-        width=1200,  
+        width=2000,   # 🔥 kunci utama (harus BESAR)
         fit_columns_on_grid_load=False,
         theme="streamlit",
         allow_unsafe_jscode=True,
@@ -812,7 +817,7 @@ def render_table_pin_satker(df):
         update_mode="MODEL_CHANGED",
     )
 
-    st.markdown('</div>', unsafe_allow_html=True)
+    st.markdown("</div>", unsafe_allow_html=True)
 
     # ===== AMBIL DATA HASIL FILTER =====
     filtered_df = pd.DataFrame(grid_response["data"])
