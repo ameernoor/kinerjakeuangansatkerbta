@@ -87,6 +87,50 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
+st.markdown("""
+<style>
+
+/* ========================= */
+/* FORCE HORIZONTAL SCROLL */
+/* ========================= */
+
+/* Container utama Streamlit */
+[data-testid="stHorizontalBlock"] {
+    overflow-x: auto !important;
+}
+
+/* AgGrid wrapper */
+.ag-root-wrapper {
+    overflow-x: auto !important;
+}
+
+/* Viewport horizontal */
+.ag-body-horizontal-scroll {
+    display: block !important;
+    height: 14px !important;
+}
+
+.ag-body-horizontal-scroll-viewport {
+    overflow-x: auto !important;
+}
+
+/* Scrollbar styling biar kelihatan */
+.ag-body-horizontal-scroll::-webkit-scrollbar {
+    height: 12px;
+}
+
+.ag-body-horizontal-scroll::-webkit-scrollbar-thumb {
+    background: #6b7280;
+    border-radius: 10px;
+}
+
+.ag-body-horizontal-scroll::-webkit-scrollbar-track {
+    background: #1f2937;
+}
+
+</style>
+""", unsafe_allow_html=True)
+
 
 # ===============================
 # SISTEM NOTIFIKASI LOADING
@@ -754,17 +798,21 @@ def render_table_pin_satker(df):
     # =====================================================
     # GRID
     # =====================================================
+    st.markdown('<div style="overflow-x:auto;">', unsafe_allow_html=True)
+
     grid_response = AgGrid(
         df,
         gridOptions=gb.build(),
         height=450,
-        width="100%",
+        width=1200,  # 🔥 penting (jangan 100%)
         fit_columns_on_grid_load=False,
-        theme="streamlit",
+        theme="alpine-dark",
         allow_unsafe_jscode=True,
         data_return_mode="FILTERED_AND_SORTED",
         update_mode="MODEL_CHANGED",
     )
+
+    st.markdown('</div>', unsafe_allow_html=True)
 
     # ===== AMBIL DATA HASIL FILTER =====
     filtered_df = pd.DataFrame(grid_response["data"])
