@@ -656,7 +656,7 @@ def render_table_pin_satker(df):
         resizable=True,
         sortable=True,
         filter=True,
-        minWidth=160   
+        minWidth=180   
     )
 
     # =====================================================
