@@ -2631,6 +2631,10 @@ def process_excel_file_kppn(uploaded_file, year, detected_month=None):
     try:
         uploaded_file.seek(0)
         df_raw = pd.read_excel(uploaded_file, header=None).fillna("")
+        
+        st.write("DEBUG: shape =", df_raw.shape)
+        st.write("DEBUG preview:")
+        st.write(df_raw.head(10))
 
         # =========================
         # 1. COBA FORMAT HEADER (MODERN)
@@ -2771,7 +2775,12 @@ def process_excel_file_kppn(uploaded_file, year, detected_month=None):
         return df_out, detected_month, year
 
     except Exception as e:
-        print("ERROR IKPA KPPN:", e)
+        import traceback
+        traceback.print_exc()
+
+        import streamlit as st
+        st.error(f"❌ ERROR IKPA KPPN: {e}")
+
         return None, detected_month, year
     
     
