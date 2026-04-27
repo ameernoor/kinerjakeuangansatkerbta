@@ -2841,7 +2841,11 @@ def process_excel_file_kppn(uploaded_file, year, detected_month=None):
                             except Exception:
                                 return fallback
 
-                        # Posisi kolom versi 18-kolom (standar OM-SPAN)
+                        # -----------------------------------------------
+                        # Peta kolom berdasarkan jumlah kolom (ncol)
+                        # >= 18: OM-SPAN standar (ada kolom Aspek)
+                        # >= 15: Format kompak Image 1 (tanpa kolom Aspek)
+                        # -----------------------------------------------
                         if ncol >= 18:
                             rev_dipa     = _get(baris_akhir, 4)
                             dev_hal3     = _get(baris_akhir, 5)
@@ -2857,8 +2861,21 @@ def process_excel_file_kppn(uploaded_file, year, detected_month=None):
                             konversi     = _get(baris_akhir, 15) or 100
                             dispensasi   = _get(baris_akhir, 16)
                             nilai_akhir  = _get(baris_akhir, 17)
-                        # Posisi kolom versi 17-kolom (format lama)
-                        elif ncol >= 17:
+                        elif ncol >= 15:
+                            # Format kompak (Image 1): tanpa kolom Aspek di tengah
+                            # Ambil nilai mentah (0-100) dari baris_nilai (baris NILAI)
+                            # Ambil hasil akhir dari baris_akhir (baris NILAI AKHIR)
+                            # idx: 4=RevDIPA 5=Hal3 6=Serap 7=Kontrak
+                            #      8=Selesai 9=UP 10=Output 11=NilTotal
+                            #      12=Konversi 13=Dispens 14=NilAkhir
+                            rev_dipa_raw  = _get(baris_nilai, 4)
+                            dev_hal3_raw  = _get(baris_nilai, 5)
+                            penyerapan_raw= _get(baris_nilai, 6)
+                            kontrak_raw   = _get(baris_nilai, 7)
+                            selesai_raw   = _get(baris_nilai, 8)
+                            up_raw        = _get(baris_nilai, 9)
+                            output_raw    = _get(baris_nilai, 10)
+                            # Nilai akhir & summary dari baris NILAI AKHIR
                             rev_dipa     = _get(baris_akhir, 4)
                             dev_hal3     = _get(baris_akhir, 5)
                             penyerapan   = _get(baris_akhir, 6)
@@ -2867,18 +2884,18 @@ def process_excel_file_kppn(uploaded_file, year, detected_month=None):
                             pengelolaan  = _get(baris_akhir, 9)
                             capaian_out  = _get(baris_akhir, 10)
                             nilai_total  = _get(baris_akhir, 11)
-                            konversi     = _get(baris_akhir, 12) or 100
-                            dispensasi   = _get(baris_akhir, 14)
-                            nilai_akhir  = _get(baris_akhir, 16)
-                            # Hitung aspek
-                            asp_perenc   = round(rev_dipa * 0.10 + dev_hal3 * 0.15, 4) * 4
-                            asp_pelaks   = round(
-                                penyerapan * 0.20 + bel_kontrak * 0.10 +
-                                penyelesaian * 0.10 + pengelolaan * 0.10, 4
-                            ) * 2
-                            asp_hasil    = capaian_out
+                            konversi     = _to_float(str(baris_akhir.iloc[12]).replace('%','')) or 100
+                            dispensasi   = _get(baris_akhir, 13)
+                            nilai_akhir  = _get(baris_akhir, 14)
+                            # Hitung aspek dari nilai mentah baris NILAI
+                            _p = rev_dipa_raw * 0.10 + dev_hal3_raw * 0.15
+                            _l = (penyerapan_raw * 0.20 + kontrak_raw * 0.10
+                                  + selesai_raw * 0.10 + up_raw * 0.10)
+                            asp_perenc = round(_p / 0.25 * 100, 2) if _p > 0 else 0
+                            asp_pelaks = round(_l / 0.50 * 100, 2) if _l > 0 else 0
+                            asp_hasil  = output_raw
                         else:
-                            # Kolom tidak cukup, skip
+                            # Kolom tidak cukup, skip blok ini
                             i += 4
                             continue
 
