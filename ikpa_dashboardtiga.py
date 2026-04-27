@@ -2657,10 +2657,17 @@ def process_excel_file_kppn(uploaded_file, year, detected_month=None):
         df_raw = pd.read_excel(uploaded_file, header=None).fillna("")
 
         # =====================================================================
-        # FORMAT A — FLAT (kolom sudah bersih, ada "Nilai Akhir (Nilai Total/…)")
+        # FORMAT A — FLAT (file hasil proses/GitHub — kolom sudah bersih)
+        # Ciri khas: baris pertama adalah header, ada kolom "Kode KPPN" / "Nama KPPN"
+        # TIDAK boleh terdeteksi jika kolom berisi "Kode Satker" (itu file satker bukan KPPN)
         # =====================================================================
         first_row_str = " ".join(df_raw.iloc[0].astype(str).str.upper())
-        if "NILAI AKHIR" in first_row_str or "KODE KPPN" in first_row_str:
+        is_kppn_flat = (
+            ("KODE KPPN" in first_row_str or "NAMA KPPN" in first_row_str)
+            and "KODE SATKER" not in first_row_str
+            and "SATKER" not in first_row_str
+        )
+        if is_kppn_flat:
             uploaded_file.seek(0)
             df_flat = pd.read_excel(uploaded_file)
             df_flat.columns = df_flat.columns.astype(str).str.strip()
@@ -2932,6 +2939,25 @@ def process_excel_file_kppn(uploaded_file, year, detected_month=None):
             st.error(
                 "❌ Gagal memproses file IKPA KPPN.\n\n"
                 "Pastikan file bersumber dari OM-SPAN atau MyIntress dengan format yang benar."
+            )
+            return None, detected_month, year
+
+        # ------------------------------------------------------------------
+        # VALIDASI: Pastikan ini benar data KPPN, bukan data Satker
+        # Ciri data satker: ada kolom "Kode Satker" atau "Kode BA"
+        # atau baris sangat banyak (KPPN harusnya hanya 1 baris per KPPN)
+        # ------------------------------------------------------------------
+        col_names_upper = [str(c).upper() for c in df_out.columns]
+        ada_satker_col = any(
+            "SATKER" in c or "KODE BA" in c or "URAIAN" in c
+            for c in col_names_upper
+        )
+        if ada_satker_col or len(df_out) > 10:
+            st.error(
+                "❌ **File yang diupload adalah Data IKPA Satker, bukan IKPA KPPN.**\n\n"
+                "File IKPA KPPN hanya berisi **1 baris** (nilai agregat KPPN 109 Baturaja).\n"
+                "Pastikan Anda mengunduh file dari menu **IKPA KPPN** di OM-SPAN/MyIntress, "
+                "bukan dari menu IKPA Satker."
             )
             return None, detected_month, year
 
