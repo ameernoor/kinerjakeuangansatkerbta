@@ -757,7 +757,7 @@ def render_table_pin_satker(df):
     grid_response = AgGrid(
         df,
         gridOptions=gb.build(),
-        height=max(450, calc_grid_height(df)),
+        height=450,
         width="100%",
         fit_columns_on_grid_load=False,
         theme="streamlit",
