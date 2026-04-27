@@ -50,6 +50,43 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
+st.markdown("""
+<style>
+
+/* ========================= */
+/* SCROLLBAR HORIZONTAL GRID */
+/* ========================= */
+
+.ag-body-horizontal-scroll {
+    height: 12px !important;
+    display: block !important;
+}
+
+.ag-body-horizontal-scroll-viewport {
+    overflow-x: scroll !important;
+}
+
+/* biar kelihatan */
+.ag-body-horizontal-scroll::-webkit-scrollbar {
+    height: 10px;
+}
+
+.ag-body-horizontal-scroll::-webkit-scrollbar-track {
+    background: #1f2937;
+}
+
+.ag-body-horizontal-scroll::-webkit-scrollbar-thumb {
+    background: #6b7280;
+    border-radius: 10px;
+}
+
+.ag-body-horizontal-scroll::-webkit-scrollbar-thumb:hover {
+    background: #9ca3af;
+}
+
+</style>
+""", unsafe_allow_html=True)
+
 
 # ===============================
 # SISTEM NOTIFIKASI LOADING
@@ -709,6 +746,7 @@ def render_table_pin_satker(df):
         domLayout="normal",
         alwaysShowHorizontalScroll=True,
         suppressHorizontalScroll=False,
+        suppressColumnVirtualisation=True, 
         getRowStyle=zebra_dark,
         headerHeight=40
     )
@@ -721,7 +759,7 @@ def render_table_pin_satker(df):
         gridOptions=gb.build(),
         height=max(450, calc_grid_height(df)),
         width="100%",
-        theme="streamlit",
+        theme="alpine",
         allow_unsafe_jscode=True,
         data_return_mode="FILTERED_AND_SORTED",
         update_mode="MODEL_CHANGED",
