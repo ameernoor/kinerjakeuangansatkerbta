@@ -2625,379 +2625,451 @@ def reprocess_all_ikpa_satker():
         st.success("✅ Reprocess IKPA Satker selesai (multi-year siap digunakan)")
 
 
-def process_excel_file_kppn(uploaded_file, year, detected_month=None):
-    """
-    Parser IKPA KPPN — mendukung 3 format:
-      A. Format FLAT (hasil proses sebelumnya / GitHub)
-      B. Format MyIntress  — "INDIKATOR PELAKSANAAN ANGGARAN KPPN"
-         header multi-level: baris 0 = judul, baris 1 = sub-header, baris 3 = data NILAI AKHIR
-      C. Format OM-SPAN lama — blok 4 baris per KPPN (NILAI / BOBOT / NILAI AKHIR / NILAI ASPEK)
-    """
-    import streamlit as st
-    import pandas as pd
+"""
+FUNGSI PENGGANTI: process_excel_file_kppn()
+============================================
 
-    def _to_float(v):
-        """Konversi nilai ke float aman."""
-        try:
-            return float(str(v).replace(",", ".").strip())
-        except Exception:
-            return 0.0
+Mendeteksi dan memproses OTOMATIS semua format file IKPA KPPN:
 
-    def _find_col(columns, *keywords):
-        """Cari nama kolom yang mengandung salah satu keyword (case-insensitive)."""
-        for kw in keywords:
-            kw_up = kw.upper()
-            for c in columns:
-                if kw_up in str(c).upper():
-                    return c
+  FORMAT A — FLAT (hasil proses sebelumnya / GitHub)
+    Ciri: baris pertama sudah header bersih, ada kolom 'Kode KPPN' / 'Nama KPPN'
+
+  FORMAT B — OM-SPAN Modern / MyIntress (Desember 2025+)
+    Ciri: 19 kolom, header 2 baris (baris 2+3), 3 baris per KPPN (NILAI/BOBOT/NILAI AKHIR)
+    Kolom: NO|Periode|Kode|Nama|Ket|RevDIPA|Dev|AspPerenc|Serap|Kontrak|
+            Tagihan|UP|AspPelaks|Output|AspHasil|NilaiTotal|KonversBobot|Dispensasi|NilaiAkhir
+
+  FORMAT C — OM-SPAN Lama (s.d. 2025)
+    Ciri: 15 kolom, header 2 baris (baris 2+3), 4 baris per KPPN (NILAI/BOBOT/NILAI AKHIR/NILAI ASPEK)
+    Kolom: No|KodeKPPN|NamaKPPN|Ket|RevDIPA|Dev|Serap|Kontrak|Tagihan|UP|Output|
+            NilaiTotal|KonversBobot|Dispensasi|NilaiAkhir
+    Aspek: dibaca dari baris ke-4 (NILAI ASPEK): idx 4=Perenc, 6=Pelaks, 10=Hasil
+
+Output SELALU sama persis:
+  No | Kode KPPN | Nama KPPN | Kualitas Perencanaan Anggaran | Kualitas Pelaksanaan Anggaran
+  | Kualitas Hasil Pelaksanaan Anggaran | Revisi DIPA | Deviasi Halaman III DIPA
+  | Penyerapan Anggaran | Belanja Kontraktual | Penyelesaian Tagihan | Pengelolaan UP dan TUP
+  | Capaian Output | Nilai Total | Konversi Bobot | Dispensasi SPM (Pengurang) 
+  | Nilai Akhir (Nilai Total/Konversi Bobot) | Bulan | Tahun | Source | Peringkat
+"""
+
+import pandas as pd
+import re
+
+
+# ============================================================
+# VALID MONTHS MAP
+# ============================================================
+VALID_MONTHS = {
+    "JANUARI": "JANUARI", "JAN": "JANUARI",
+    "FEBRUARI": "FEBRUARI", "FEB": "FEBRUARI", "PEBRUARI": "FEBRUARI",
+    "MARET": "MARET", "MAR": "MARET",
+    "APRIL": "APRIL", "APR": "APRIL",
+    "MEI": "MEI",
+    "JUNI": "JUNI", "JUN": "JUNI",
+    "JULI": "JULI", "JUL": "JULI",
+    "AGUSTUS": "AGUSTUS", "AGT": "AGUSTUS", "AGS": "AGUSTUS",
+    "SEPTEMBER": "SEPTEMBER", "SEP": "SEPTEMBER", "SEPT": "SEPTEMBER",
+    "OKTOBER": "OKTOBER", "OKT": "OKTOBER",
+    "NOVEMBER": "NOVEMBER", "NOV": "NOVEMBER", "NOPEMBER": "NOVEMBER",
+    "DESEMBER": "DESEMBER", "DES": "DESEMBER",
+}
+
+MONTH_NUM = {
+    "JANUARI": 1, "FEBRUARI": 2, "MARET": 3, "APRIL": 4,
+    "MEI": 5, "JUNI": 6, "JULI": 7, "AGUSTUS": 8,
+    "SEPTEMBER": 9, "OKTOBER": 10, "NOVEMBER": 11, "DESEMBER": 12,
+}
+
+
+def _to_float(v):
+    """Konversi nilai ke float, mendukung format Indonesia (koma sebagai desimal)."""
+    try:
+        s = str(v).strip().replace('%', '').strip()
+        # Format Indonesia: '99,71' atau '1.234,56'
+        if ',' in s:
+            s = s.replace('.', '').replace(',', '.')
+        s = re.sub(r'[^\d.\-]', '', s)
+        return float(s) if s not in ('', '-') else 0.0
+    except Exception:
+        return 0.0
+
+
+def _detect_month_from_raw(df_raw):
+    """Cari nama bulan di 6 baris pertama, 5 kolom pertama."""
+    for r in range(min(6, df_raw.shape[0])):
+        for c in range(min(5, df_raw.shape[1])):
+            cell = str(df_raw.iloc[r, c]).upper().strip()
+            if cell in VALID_MONTHS:
+                return VALID_MONTHS[cell]
+            for k, v in VALID_MONTHS.items():
+                if len(k) >= 4 and k in cell:
+                    return v
+    return None
+
+
+def _detect_month_from_filename(filename):
+    """Cari nama bulan di nama file."""
+    fname = str(filename).upper()
+    for k, v in VALID_MONTHS.items():
+        if len(k) >= 4 and k in fname:
+            return v
+    return None
+
+
+def _finalize(rows, detected_month, year, source="Upload"):
+    """
+    Dari list of dict hasil parsing, buat DataFrame akhir yang seragam.
+    Lakukan ranking dan tambahkan metadata.
+    """
+    if not rows:
         return None
 
+    df = pd.DataFrame(rows)
+
+    # Pastikan semua kolom numerik bersih
+    NUMERIC_COLS = [
+        "Kualitas Perencanaan Anggaran", "Kualitas Pelaksanaan Anggaran",
+        "Kualitas Hasil Pelaksanaan Anggaran",
+        "Revisi DIPA", "Deviasi Halaman III DIPA",
+        "Penyerapan Anggaran", "Belanja Kontraktual",
+        "Penyelesaian Tagihan", "Pengelolaan UP dan TUP",
+        "Capaian Output", "Nilai Total", "Konversi Bobot",
+        "Dispensasi SPM (Pengurang)",
+        "Nilai Akhir (Nilai Total/Konversi Bobot)",
+    ]
+    for col in NUMERIC_COLS:
+        if col in df.columns:
+            df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
+
+    # Metadata
+    df["Bulan"] = detected_month or "UNKNOWN"
+    df["Tahun"] = int(year)
+    df["Source"] = source
+
+    # Ranking
+    nilai_col = "Nilai Akhir (Nilai Total/Konversi Bobot)"
+    if nilai_col in df.columns:
+        df = df.sort_values(nilai_col, ascending=False).reset_index(drop=True)
+        df["Peringkat"] = (
+            df[nilai_col]
+            .rank(method="dense", ascending=False)
+            .astype(int)
+        )
+    else:
+        df["Peringkat"] = 0
+
+    # Nomor urut
+    if "No" not in df.columns:
+        df.insert(0, "No", range(1, len(df) + 1))
+    else:
+        df["No"] = range(1, len(df) + 1)
+
+    # Urutan kolom output final
+    FINAL_COLS = [
+        "No", "Kode KPPN", "Nama KPPN",
+        "Kualitas Perencanaan Anggaran",
+        "Kualitas Pelaksanaan Anggaran",
+        "Kualitas Hasil Pelaksanaan Anggaran",
+        "Revisi DIPA", "Deviasi Halaman III DIPA",
+        "Penyerapan Anggaran", "Belanja Kontraktual",
+        "Penyelesaian Tagihan", "Pengelolaan UP dan TUP",
+        "Capaian Output",
+        "Nilai Total", "Konversi Bobot",
+        "Dispensasi SPM (Pengurang)",
+        "Nilai Akhir (Nilai Total/Konversi Bobot)",
+        "Bulan", "Tahun", "Source", "Peringkat",
+    ]
+    df = df.reindex(columns=FINAL_COLS, fill_value=0)
+
+    return df
+
+
+# ============================================================
+# MAIN FUNCTION
+# ============================================================
+def process_excel_file_kppn(uploaded_file, year, detected_month=None):
+    """
+    Parser IKPA KPPN universal — mendeteksi otomatis Format A, B, atau C.
+
+    Parameters
+    ----------
+    uploaded_file : file-like object  (Streamlit UploadedFile / BytesIO)
+    year          : int   — tahun yang dipilih user
+    detected_month: str   — nama bulan yang sudah dideteksi dari luar (opsional)
+
+    Returns
+    -------
+    (df_out, bulan_str, year_int)  atau  (None, detected_month, year) jika gagal
+    """
     try:
         uploaded_file.seek(0)
         df_raw = pd.read_excel(uploaded_file, header=None).fillna("")
 
-        # =====================================================================
-        # FORMAT A — FLAT (file hasil proses/GitHub — kolom sudah bersih)
-        # Ciri khas: baris pertama adalah header, ada kolom "Kode KPPN" / "Nama KPPN"
-        # TIDAK boleh terdeteksi jika kolom berisi "Kode Satker" (itu file satker bukan KPPN)
-        # =====================================================================
+        # ─── Deteksi bulan ───────────────────────────────────────────────
+        month = detected_month
+        if not month:
+            month = _detect_month_from_raw(df_raw)
+        if not month:
+            try:
+                month = _detect_month_from_filename(uploaded_file.name)
+            except Exception:
+                pass
+        if not month:
+            month = "UNKNOWN"
+        month = VALID_MONTHS.get(str(month).upper().strip(), month)
+
+        # ─── Cek apakah file sudah berformat FLAT (Format A) ────────────
         first_row_str = " ".join(df_raw.iloc[0].astype(str).str.upper())
-        is_kppn_flat = (
+        is_flat = (
             ("KODE KPPN" in first_row_str or "NAMA KPPN" in first_row_str)
             and "KODE SATKER" not in first_row_str
             and "SATKER" not in first_row_str
         )
-        if is_kppn_flat:
-            uploaded_file.seek(0)
-            df_flat = pd.read_excel(uploaded_file)
-            df_flat.columns = df_flat.columns.astype(str).str.strip()
-            df_flat = df_flat.applymap(
-                lambda x: str(x).replace(",", ".") if isinstance(x, str) else x
-            )
-            nilai_col = _find_col(df_flat.columns, "AKHIR")
-            if nilai_col:
-                df_flat[nilai_col] = pd.to_numeric(df_flat[nilai_col], errors="coerce").fillna(0)
-                df_out = df_flat
-                source_fmt = "FLAT"
-            else:
-                df_out = pd.DataFrame()
-                source_fmt = "FLAT_GAGAL"
+
+        if is_flat:
+            return _parse_format_a(uploaded_file, year, month)
+
+        # ─── Deteksi Format B vs C berdasarkan jumlah kolom ─────────────
+        # Cari baris data pertama (bukan header)
+        n_cols = df_raw.shape[1]
+
+        # Format B = 19 kolom, Format C = 15 kolom
+        # Gunakan baris header (row 2/3) untuk konfirmasi
+        if n_cols >= 18:
+            return _parse_format_b(df_raw, year, month)
         else:
-            df_out = pd.DataFrame()
-            source_fmt = None
-
-        # =====================================================================
-        # FORMAT B — MyIntress / OM-SPAN MODERN
-        # Header: baris ke-N berisi "NO", "PERIODE", "KODE", "NAMA" dll.
-        # Data    : baris "NILAI AKHIR" (Keterangan) yang punya kode KPPN valid
-        # =====================================================================
-        if df_out.empty:
-            header_row_idx = None
-            for i in range(min(12, len(df_raw))):
-                row_up = df_raw.iloc[i].astype(str).str.upper().str.strip()
-                row_str = " ".join(row_up)
-                # Header baris tunggal (OM-SPAN baru): ada KODE & NAMA & NILAI
-                if ("KODE" in row_str and "NAMA" in row_str and
-                        ("NILAI" in row_str or "AKHIR" in row_str)):
-                    header_row_idx = i
-                    break
-                # Header multi-level (MyIntress): ada NO, PERIODE, KODE, NAMA
-                if ("NO" in row_up.values and "KODE" in row_up.values
-                        and "NAMA" in row_up.values):
-                    header_row_idx = i
-                    break
-
-            if header_row_idx is not None:
-                uploaded_file.seek(0)
-                df_h = pd.read_excel(uploaded_file, header=header_row_idx)
-                df_h.columns = (
-                    df_h.columns.astype(str)
-                    .str.strip()
-                    .str.replace(r"\s+", " ", regex=True)
-                )
-                # Hapus baris yang isinya hanya header sub (NILAI, BOBOT, dst.)
-                # Ambil hanya baris yang Keterangan-nya mengandung "NILAI AKHIR"
-                ket_col = _find_col(df_h.columns, "KETERANGAN", "KET")
-                if ket_col:
-                    df_h[ket_col] = df_h[ket_col].astype(str).str.upper().str.strip()
-                    df_data = df_h[df_h[ket_col].str.contains("NILAI AKH", na=False)].copy()
-                else:
-                    # Tidak ada kolom Keterangan → ambil semua baris yang ada kode numerik
-                    kode_col_h = _find_col(df_h.columns, "KODE")
-                    if kode_col_h:
-                        df_data = df_h[
-                            df_h[kode_col_h].astype(str).str.strip().str.match(r"^\d+$")
-                        ].copy()
-                    else:
-                        df_data = df_h.copy()
-
-                if not df_data.empty:
-                    rows = []
-                    for _, row_data in df_data.iterrows():
-                        kode_col_h = _find_col(df_data.columns, "KODE")
-                        nama_col_h = _find_col(df_data.columns, "NAMA")
-
-                        kode_val = str(row_data[kode_col_h]).strip() if kode_col_h else ""
-                        nama_val = str(row_data[nama_col_h]).strip() if nama_col_h else "BATURAJA"
-
-                        # Nilai komponen
-                        rev_dipa     = _to_float(row_data.get(_find_col(df_data.columns, "REVISI") or "", 0))
-                        dev_hal3     = _to_float(row_data.get(_find_col(df_data.columns, "DEVIASI") or "", 0))
-                        penyerapan   = _to_float(row_data.get(_find_col(df_data.columns, "PENYERAP") or "", 0))
-                        bel_kontrak  = _to_float(row_data.get(_find_col(df_data.columns, "KONTRAK", "BELANJA KO") or "", 0))
-                        penyelesaian = _to_float(row_data.get(_find_col(df_data.columns, "PENYELESA", "TAGIHAN") or "", 0))
-                        pengelolaan  = _to_float(row_data.get(_find_col(df_data.columns, "PENGELOLA", "UP") or "", 0))
-                        capaian_out  = _to_float(row_data.get(_find_col(df_data.columns, "CAPAIAN", "OUTPUT") or "", 0))
-
-                        # Nilai aspek (ambil dari kolom "Nilai Aspe…" yang tepat)
-                        nilai_aspek_cols = [c for c in df_data.columns
-                                            if "NILAI ASPE" in str(c).upper() or
-                                            ("NILAI" in str(c).upper() and "ASPE" in str(c).upper())]
-                        aspek_perencanaan = _to_float(row_data[nilai_aspek_cols[0]]) if len(nilai_aspek_cols) > 0 else 0.0
-                        aspek_pelaksanaan = _to_float(row_data[nilai_aspek_cols[1]]) if len(nilai_aspek_cols) > 1 else 0.0
-                        aspek_hasil       = _to_float(row_data[nilai_aspek_cols[2]]) if len(nilai_aspek_cols) > 2 else 0.0
-
-                        # Fallback hitung aspek manual jika kolom aspek tidak ada
-                        if aspek_perencanaan == 0:
-                            aspek_perencanaan = round(rev_dipa * 0.10 + dev_hal3 * 0.15, 4) * (100 / 25)
-                        if aspek_pelaksanaan == 0:
-                            aspek_pelaksanaan = round(
-                                penyerapan * 0.20 + bel_kontrak * 0.10 +
-                                penyelesaian * 0.10 + pengelolaan * 0.10, 4
-                            ) * (100 / 50)
-                        if aspek_hasil == 0:
-                            aspek_hasil = capaian_out
-
-                        nilai_total_col = _find_col(df_data.columns, "NILAI TOTAL", "TOTAL")
-                        disp_col        = _find_col(df_data.columns, "DISPENSA")
-                        akhir_col       = _find_col(df_data.columns, "NILAI AKHIR", "AKHIR")
-                        konversi_col    = _find_col(df_data.columns, "KONVERSI")
-
-                        nilai_total   = _to_float(row_data[nilai_total_col]) if nilai_total_col else 0.0
-                        dispensasi    = _to_float(row_data[disp_col]) if disp_col else 0.0
-                        nilai_akhir   = _to_float(row_data[akhir_col]) if akhir_col else 0.0
-                        konversi_bobot= _to_float(row_data[konversi_col]) if konversi_col else 100.0
-
-                        rows.append({
-                            "Kode KPPN": kode_val,
-                            "Nama KPPN": nama_val,
-                            "Kualitas Perencanaan Anggaran": aspek_perencanaan,
-                            "Kualitas Pelaksanaan Anggaran": aspek_pelaksanaan,
-                            "Kualitas Hasil Pelaksanaan Anggaran": aspek_hasil,
-                            "Revisi DIPA": rev_dipa,
-                            "Deviasi Halaman III DIPA": dev_hal3,
-                            "Penyerapan Anggaran": penyerapan,
-                            "Belanja Kontraktual": bel_kontrak,
-                            "Penyelesaian Tagihan": penyelesaian,
-                            "Pengelolaan UP dan TUP": pengelolaan,
-                            "Capaian Output": capaian_out,
-                            "Nilai Total": nilai_total,
-                            "Konversi Bobot": konversi_bobot,
-                            "Dispensasi SPM (Pengurang)": dispensasi,
-                            "Nilai Akhir (Nilai Total/Konversi Bobot)": nilai_akhir,
-                        })
-
-                    df_out = pd.DataFrame(rows)
-                    source_fmt = "MYINTRESS/OMSPAN_MODERN"
-
-        # =====================================================================
-        # FORMAT C — OM-SPAN LAMA: blok 4 baris per KPPN
-        # Baris 1: NILAI, Baris 2: BOBOT, Baris 3: NILAI AKHIR, Baris 4: NILAI ASPEK
-        # Kolom (0-based): 0=No, 1=Kode, 2=Nama, 3=Ket,
-        #   4=RevisiDIPA, 5=DeviHal3, 6=NilaiAspekPerenc,
-        #   7=Penyerapan, 8=BelKontrak, 9=Penyelesaian, 10=PengelolaanUP, 11=NilaiAspekPelaks,
-        #   12=CapaianOutput, 13=NilaiAspekHasil,
-        #   14=NilaiTotal, 15=KonversiBob, 16=Dispensasi, 17=NilaiAkhir
-        # =====================================================================
-        if df_out.empty:
-            # Cari baris awal data (ada angka di kolom 1 = Kode KPPN)
-            data_start = None
-            for i in range(len(df_raw)):
-                cell = str(df_raw.iloc[i, 1]).strip()
-                if cell.isdigit() and len(cell) <= 4:
-                    data_start = i
-                    break
-
-            if data_start is not None:
-                df_data = df_raw.iloc[data_start:].reset_index(drop=True)
-                rows = []
-                i = 0
-                while i < len(df_data):
-                    try:
-                        baris_nilai = df_data.iloc[i]
-                        kode = str(baris_nilai.iloc[1]).strip()
-                        nama = str(baris_nilai.iloc[2]).strip()
-                        ket  = str(baris_nilai.iloc[3]).upper().strip() if df_data.shape[1] > 3 else "NILAI"
-
-                        # Hanya proses blok yang dimulai dengan baris NILAI
-                        if not kode.isdigit():
-                            i += 1
-                            continue
-
-                        # Baris NILAI AKHIR = baris ke-3 dalam blok (i+2)
-                        if i + 2 < len(df_data):
-                            baris_akhir = df_data.iloc[i + 2]
-                        else:
-                            baris_akhir = baris_nilai
-
-                        ncol = len(baris_nilai)
-
-                        def _get(baris, idx, fallback=0):
-                            try:
-                                return _to_float(baris.iloc[idx]) if idx < ncol else fallback
-                            except Exception:
-                                return fallback
-
-                        # -----------------------------------------------
-                        # Peta kolom berdasarkan jumlah kolom (ncol)
-                        # >= 18: OM-SPAN standar (ada kolom Aspek)
-                        # >= 15: Format kompak Image 1 (tanpa kolom Aspek)
-                        # -----------------------------------------------
-                        if ncol >= 18:
-                            rev_dipa     = _get(baris_akhir, 4)
-                            dev_hal3     = _get(baris_akhir, 5)
-                            asp_perenc   = _get(baris_akhir, 6)
-                            penyerapan   = _get(baris_akhir, 7)
-                            bel_kontrak  = _get(baris_akhir, 8)
-                            penyelesaian = _get(baris_akhir, 9)
-                            pengelolaan  = _get(baris_akhir, 10)
-                            asp_pelaks   = _get(baris_akhir, 11)
-                            capaian_out  = _get(baris_akhir, 12)
-                            asp_hasil    = _get(baris_akhir, 13)
-                            nilai_total  = _get(baris_akhir, 14)
-                            konversi     = _get(baris_akhir, 15) or 100
-                            dispensasi   = _get(baris_akhir, 16)
-                            nilai_akhir  = _get(baris_akhir, 17)
-                        elif ncol >= 15:
-                            # Format kompak (Image 1): tanpa kolom Aspek di tengah
-                            # Ambil nilai mentah (0-100) dari baris_nilai (baris NILAI)
-                            # Ambil hasil akhir dari baris_akhir (baris NILAI AKHIR)
-                            # idx: 4=RevDIPA 5=Hal3 6=Serap 7=Kontrak
-                            #      8=Selesai 9=UP 10=Output 11=NilTotal
-                            #      12=Konversi 13=Dispens 14=NilAkhir
-                            rev_dipa_raw  = _get(baris_nilai, 4)
-                            dev_hal3_raw  = _get(baris_nilai, 5)
-                            penyerapan_raw= _get(baris_nilai, 6)
-                            kontrak_raw   = _get(baris_nilai, 7)
-                            selesai_raw   = _get(baris_nilai, 8)
-                            up_raw        = _get(baris_nilai, 9)
-                            output_raw    = _get(baris_nilai, 10)
-                            # Nilai akhir & summary dari baris NILAI AKHIR
-                            rev_dipa     = _get(baris_akhir, 4)
-                            dev_hal3     = _get(baris_akhir, 5)
-                            penyerapan   = _get(baris_akhir, 6)
-                            bel_kontrak  = _get(baris_akhir, 7)
-                            penyelesaian = _get(baris_akhir, 8)
-                            pengelolaan  = _get(baris_akhir, 9)
-                            capaian_out  = _get(baris_akhir, 10)
-                            nilai_total  = _get(baris_akhir, 11)
-                            konversi     = _to_float(str(baris_akhir.iloc[12]).replace('%','')) or 100
-                            dispensasi   = _get(baris_akhir, 13)
-                            nilai_akhir  = _get(baris_akhir, 14)
-                            # Hitung aspek dari nilai mentah baris NILAI
-                            _p = rev_dipa_raw * 0.10 + dev_hal3_raw * 0.15
-                            _l = (penyerapan_raw * 0.20 + kontrak_raw * 0.10
-                                  + selesai_raw * 0.10 + up_raw * 0.10)
-                            asp_perenc = round(_p / 0.25 * 100, 2) if _p > 0 else 0
-                            asp_pelaks = round(_l / 0.50 * 100, 2) if _l > 0 else 0
-                            asp_hasil  = output_raw
-                        else:
-                            # Kolom tidak cukup, skip blok ini
-                            i += 4
-                            continue
-
-                        rows.append({
-                            "Kode KPPN": kode,
-                            "Nama KPPN": nama,
-                            "Kualitas Perencanaan Anggaran": asp_perenc,
-                            "Kualitas Pelaksanaan Anggaran": asp_pelaks,
-                            "Kualitas Hasil Pelaksanaan Anggaran": asp_hasil,
-                            "Revisi DIPA": rev_dipa,
-                            "Deviasi Halaman III DIPA": dev_hal3,
-                            "Penyerapan Anggaran": penyerapan,
-                            "Belanja Kontraktual": bel_kontrak,
-                            "Penyelesaian Tagihan": penyelesaian,
-                            "Pengelolaan UP dan TUP": pengelolaan,
-                            "Capaian Output": capaian_out,
-                            "Nilai Total": nilai_total,
-                            "Konversi Bobot": konversi,
-                            "Dispensasi SPM (Pengurang)": dispensasi,
-                            "Nilai Akhir (Nilai Total/Konversi Bobot)": nilai_akhir,
-                        })
-                        i += 4  # lompat ke blok berikutnya
-
-                    except Exception:
-                        i += 1
-
-                df_out = pd.DataFrame(rows)
-                source_fmt = "OMSPAN_LAMA"
-
-        # =====================================================================
-        # FINAL — validasi, normalisasi, ranking
-        # =====================================================================
-        if df_out is None or df_out.empty:
-            st.error(
-                "❌ Gagal memproses file IKPA KPPN.\n\n"
-                "Pastikan file bersumber dari OM-SPAN atau MyIntress dengan format yang benar."
-            )
-            return None, detected_month, year
-
-        # ------------------------------------------------------------------
-        # VALIDASI: Pastikan ini benar data KPPN, bukan data Satker
-        # Ciri data satker: ada kolom "Kode Satker" atau "Kode BA"
-        # atau baris sangat banyak (KPPN harusnya hanya 1 baris per KPPN)
-        # ------------------------------------------------------------------
-        col_names_upper = [str(c).upper() for c in df_out.columns]
-        ada_satker_col = any(
-            "SATKER" in c or "KODE BA" in c or "URAIAN" in c
-            for c in col_names_upper
-        )
-        if ada_satker_col or len(df_out) > 10:
-            st.error(
-                "❌ **File yang diupload adalah Data IKPA Satker, bukan IKPA KPPN.**\n\n"
-                "File IKPA KPPN hanya berisi **1 baris** (nilai agregat KPPN 109 Baturaja).\n"
-                "Pastikan Anda mengunduh file dari menu **IKPA KPPN** di OM-SPAN/MyIntress, "
-                "bukan dari menu IKPA Satker."
-            )
-            return None, detected_month, year
-
-        # Normalisasi angka semua kolom numerik
-        skip_cols = {"Kode KPPN", "Nama KPPN", "Bulan", "Tahun", "Source"}
-        for col in df_out.columns:
-            if col not in skip_cols:
-                df_out[col] = df_out[col].apply(_to_float)
-
-        df_out["Bulan"]  = (detected_month or "UNKNOWN").upper()
-        df_out["Tahun"]  = str(year)
-        df_out["Source"] = "Upload"
-
-        nilai_col = "Nilai Akhir (Nilai Total/Konversi Bobot)"
-        if nilai_col not in df_out.columns:
-            # Coba rename kolom akhir yang ada
-            col_akhir = _find_col(df_out.columns, "AKHIR")
-            if col_akhir:
-                df_out.rename(columns={col_akhir: nilai_col}, inplace=True)
-
-        df_out[nilai_col] = pd.to_numeric(df_out[nilai_col], errors="coerce").fillna(0)
-        df_out = df_out.sort_values(nilai_col, ascending=False)
-        df_out["Peringkat"] = (
-            df_out[nilai_col]
-            .rank(method="dense", ascending=False)
-            .astype(int)
-        )
-
-        if "No" not in df_out.columns:
-            df_out.insert(0, "No", range(1, len(df_out) + 1))
-
-        return df_out, detected_month, year
+            return _parse_format_c(df_raw, year, month)
 
     except Exception as e:
         import traceback
         traceback.print_exc()
-        st.error(f"❌ ERROR IKPA KPPN: {e}")
+        # st.error(f"❌ ERROR IKPA KPPN: {e}")   # uncomment jika dalam Streamlit
+        print(f"ERROR: {e}")
         return None, detected_month, year
-    
-    
+
+
+# ============================================================
+# FORMAT A — FLAT (sudah diproses)
+# ============================================================
+def _parse_format_a(uploaded_file, year, month):
+    uploaded_file.seek(0)
+    df = pd.read_excel(uploaded_file)
+    df.columns = df.columns.astype(str).str.strip()
+
+    # Normalisasi koma → titik
+    df = df.applymap(
+        lambda x: str(x).replace(',', '.') if isinstance(x, str) else x
+    )
+
+    nilai_col = "Nilai Akhir (Nilai Total/Konversi Bobot)"
+    if nilai_col not in df.columns:
+        # coba alias
+        for alias in ["Nilai Akhir", "Nilai Akhir (Nilai Total / Konversi Bobot)"]:
+            if alias in df.columns:
+                df = df.rename(columns={alias: nilai_col})
+                break
+
+    # Normalisasi kolom Dispensasi
+    for old in ["Dispensasi SPM (Pengurangan)", "Dispensasi SPM Pengurangan"]:
+        if old in df.columns:
+            df = df.rename(columns={old: "Dispensasi SPM (Pengurang)"})
+
+    # Normalisasi numerik
+    skip = {"Kode KPPN", "Nama KPPN", "Bulan", "Tahun", "Source"}
+    for col in df.columns:
+        if col not in skip:
+            df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
+
+    df["Bulan"] = month
+    df["Tahun"] = int(year)
+    df["Source"] = "Upload"
+
+    if nilai_col in df.columns:
+        df = df.sort_values(nilai_col, ascending=False).reset_index(drop=True)
+        df["Peringkat"] = (
+            df[nilai_col].rank(method="dense", ascending=False).astype(int)
+        )
+
+    return df, month, year
+
+
+# ============================================================
+# FORMAT B — OM-SPAN Modern / MyIntress (≥ 19 kolom, 3 baris/KPPN)
+# ============================================================
+def _parse_format_b(df_raw, year, month):
+    """
+    Header ada di baris 2 (row index 2) dan baris 3 (row index 3).
+    Data NILAI mulai dari baris 4 (row index 4).
+    Struktur per KPPN: NILAI / BOBOT / NILAI AKHIR  (3 baris)
+
+    Pemetaan kolom baris NILAI (index 0-based):
+      0  = NO
+      1  = Periode (angka bulan)
+      2  = Kode KPPN
+      3  = Nama KPPN
+      4  = Keterangan ('NILAI')
+      5  = Revisi DIPA
+      6  = Deviasi Halaman III DIPA
+      7  = Nilai Aspek Perencanaan
+      8  = Penyerapan Anggaran
+      9  = Belanja Kontraktual
+      10 = Penyelesaian Tagihan
+      11 = Pengelolaan UP dan TUP
+      12 = Nilai Aspek Pelaksanaan
+      13 = Capaian Output
+      14 = Nilai Aspek Hasil
+      15 = Nilai Total
+      16 = Konversi Bobot (misal '100,00%')
+      17 = Dispensasi SPM
+      18 = Nilai Akhir
+    """
+    # Cari baris data (pertama yang punya kode numerik di col 2)
+    data_start = None
+    for i in range(len(df_raw)):
+        cell = str(df_raw.iloc[i, 4]).strip().upper()
+        if cell in ("NILAI", "NILAI AKHIR"):
+            data_start = i
+            break
+
+    if data_start is None:
+        return None, month, year
+
+    rows_out = []
+    i = data_start
+
+    while i < len(df_raw):
+        row_nilai = df_raw.iloc[i]
+        ket = str(row_nilai.iloc[4]).strip().upper()
+
+        if ket not in ("NILAI", "NILAI AKHIR"):
+            i += 1
+            continue
+
+        # Ambil nama bulan dari baris BOBOT (row i+1, col 1)
+        if i + 1 < len(df_raw):
+            bulan_cell = str(df_raw.iloc[i + 1].iloc[1]).strip().upper()
+            month_detected = VALID_MONTHS.get(bulan_cell, month)
+        else:
+            month_detected = month
+
+        kode_kppn = str(row_nilai.iloc[2]).strip()
+        nama_kppn = str(row_nilai.iloc[3]).strip()
+
+        rows_out.append({
+            "Kode KPPN":                            kode_kppn,
+            "Nama KPPN":                            nama_kppn,
+            "Revisi DIPA":                          _to_float(row_nilai.iloc[5]),
+            "Deviasi Halaman III DIPA":             _to_float(row_nilai.iloc[6]),
+            "Kualitas Perencanaan Anggaran":        _to_float(row_nilai.iloc[7]),
+            "Penyerapan Anggaran":                  _to_float(row_nilai.iloc[8]),
+            "Belanja Kontraktual":                  _to_float(row_nilai.iloc[9]),
+            "Penyelesaian Tagihan":                 _to_float(row_nilai.iloc[10]),
+            "Pengelolaan UP dan TUP":               _to_float(row_nilai.iloc[11]),
+            "Kualitas Pelaksanaan Anggaran":        _to_float(row_nilai.iloc[12]),
+            "Capaian Output":                       _to_float(row_nilai.iloc[13]),
+            "Kualitas Hasil Pelaksanaan Anggaran":  _to_float(row_nilai.iloc[14]),
+            "Nilai Total":                          _to_float(row_nilai.iloc[15]),
+            "Konversi Bobot":                       _to_float(row_nilai.iloc[16]),
+            "Dispensasi SPM (Pengurang)":           _to_float(row_nilai.iloc[17]),
+            "Nilai Akhir (Nilai Total/Konversi Bobot)": _to_float(row_nilai.iloc[18]),
+        })
+
+        # Perbarui bulan yang terdeteksi (dari baris terkini)
+        month = month_detected
+
+        i += 3  # loncat ke blok berikutnya
+
+    return _finalize(rows_out, month, year), month, year
+
+
+# ============================================================
+# FORMAT C — OM-SPAN Lama (15 kolom, 4 baris/KPPN)
+# ============================================================
+def _parse_format_c(df_raw, year, month):
+    """
+    Header ada di baris 2 (row index 2) dan baris 3 (row index 3).
+    Data mulai baris 4 (row index 4).
+    Struktur per KPPN: NILAI / BOBOT / NILAI AKHIR / NILAI ASPEK  (4 baris)
+
+    Pemetaan kolom baris NILAI (index 0-based):
+      0  = No
+      1  = Kode KPPN
+      2  = Nama KPPN
+      3  = Keterangan ('Nilai')
+      4  = Revisi DIPA
+      5  = Deviasi Halaman III DIPA
+      6  = Penyerapan Anggaran
+      7  = Belanja Kontraktual
+      8  = Penyelesaian Tagihan
+      9  = Pengelolaan UP dan TUP
+      10 = Capaian Output
+      11 = Nilai Total
+      12 = Konversi Bobot (misal '100%')
+      13 = Dispensasi SPM (Pengurang)
+      14 = Nilai Akhir
+
+    Pemetaan kolom baris NILAI ASPEK (index 0-based):
+      4  = Kualitas Perencanaan Anggaran
+      6  = Kualitas Pelaksanaan Anggaran
+      10 = Kualitas Hasil Pelaksanaan Anggaran
+    """
+    # Cari baris data pertama
+    data_start = None
+    for i in range(len(df_raw)):
+        cell = str(df_raw.iloc[i, 3]).strip().upper()
+        if cell in ("NILAI", "NILAI AKHIR"):
+            data_start = i
+            break
+
+    if data_start is None:
+        return None, month, year
+
+    rows_out = []
+    i = data_start
+
+    while i + 3 < len(df_raw):
+        row_nilai  = df_raw.iloc[i]
+        row_aspek  = df_raw.iloc[i + 3]
+
+        ket = str(row_nilai.iloc[3]).strip().upper()
+        if ket not in ("NILAI",):
+            # Mungkin baris BOBOT/NILAI AKHIR/NILAI ASPEK → skip 1
+            i += 1
+            continue
+
+        kode_kppn = str(row_nilai.iloc[1]).strip()
+        nama_kppn = str(row_nilai.iloc[2]).strip()
+
+        # Skip baris invalid (kode bukan numerik)
+        if not re.search(r'\d', kode_kppn):
+            i += 4
+            continue
+
+        rows_out.append({
+            "Kode KPPN":                            kode_kppn,
+            "Nama KPPN":                            nama_kppn,
+            "Revisi DIPA":                          _to_float(row_nilai.iloc[4]),
+            "Deviasi Halaman III DIPA":             _to_float(row_nilai.iloc[5]),
+            "Penyerapan Anggaran":                  _to_float(row_nilai.iloc[6]),
+            "Belanja Kontraktual":                  _to_float(row_nilai.iloc[7]),
+            "Penyelesaian Tagihan":                 _to_float(row_nilai.iloc[8]),
+            "Pengelolaan UP dan TUP":               _to_float(row_nilai.iloc[9]),
+            "Capaian Output":                       _to_float(row_nilai.iloc[10]),
+            "Nilai Total":                          _to_float(row_nilai.iloc[11]),
+            "Konversi Bobot":                       _to_float(row_nilai.iloc[12]),
+            "Dispensasi SPM (Pengurang)":           _to_float(row_nilai.iloc[13]),
+            "Nilai Akhir (Nilai Total/Konversi Bobot)": _to_float(row_nilai.iloc[14]),
+            # Aspek dari baris NILAI ASPEK (baris ke-4)
+            "Kualitas Perencanaan Anggaran":        _to_float(row_aspek.iloc[4]),
+            "Kualitas Pelaksanaan Anggaran":        _to_float(row_aspek.iloc[6]),
+            "Kualitas Hasil Pelaksanaan Anggaran":  _to_float(row_aspek.iloc[10]),
+        })
+
+        i += 4  # loncat ke blok berikutnya
+
+    return _finalize(rows_out, month, year), month, year
+
 
 def process_kppn_flat(df):
     # ===============================
