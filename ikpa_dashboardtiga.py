@@ -6884,22 +6884,21 @@ def page_dashboard():
             # TRIWULAN TERBARU
             # ===============================
             elif periode_chart == "Triwulan":
-
+    
                 tw_list = sorted(df_digipay["TRIWULAN"].dropna().astype(int).unique())
 
-                if len(tw_list) == 0:
+                if not tw_list:
                     st.warning("Data triwulan tidak tersedia untuk tahun ini")
                     st.stop()
 
-                tw_terbaru = max(tw_list)
-
-                tw_options = ["TW1","TW2","TW3","TW4"]
+                # hanya tampilkan yang ADA di data
+                tw_options = [f"TW{i}" for i in tw_list]
 
                 with col3:
                     triwulan_selected = st.selectbox(
                         "Triwulan",
                         tw_options,
-                        index=tw_terbaru - 1
+                        index=len(tw_options) - 1
                     )
 
             # ===============================
