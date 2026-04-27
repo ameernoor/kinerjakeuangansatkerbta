@@ -2627,22 +2627,121 @@ def reprocess_all_ikpa_satker():
 
 def process_excel_file_kppn(uploaded_file, year, detected_month=None):
     import pandas as pd
-    import re as _re
+    import re
 
-    KODE_KPPN_BATURAJA = "109"
+    KPPN_TARGET = "109"
 
-    VALID_MONTHS_KPPN = {
-        "JANUARI": "JANUARI", "FEBRUARI": "FEBRUARI", "MARET": "MARET",
-        "APRIL": "APRIL", "MEI": "MEI", "JUNI": "JUNI",
-        "JULI": "JULI", "AGUSTUS": "AGUSTUS", "SEPTEMBER": "SEPTEMBER",
-        "OKTOBER": "OKTOBER", "NOVEMBER": "NOVEMBER", "DESEMBER": "DESEMBER",
-        "PEBRUARI": "FEBRUARI", "NOPEMBER": "NOVEMBER",
-        "01": "JANUARI", "02": "FEBRUARI", "03": "MARET",
-        "04": "APRIL", "05": "MEI", "06": "JUNI",
-        "07": "JULI", "08": "AGUSTUS", "09": "SEPTEMBER",
-        "10": "OKTOBER", "11": "NOVEMBER", "12": "DESEMBER"
-    }
+    try:
+        uploaded_file.seek(0)
+    except:
+        pass
 
+    df_raw = pd.read_excel(uploaded_file, header=None)
+
+    # ===============================
+    # DETEKSI FORMAT
+    # ===============================
+    first_row = " ".join(df_raw.iloc[0].astype(str).str.upper())
+
+    is_flat = "KODE KPPN" in first_row and "NILAI AKHIR" in first_row
+
+    # ===============================
+    # ===============================
+    # FORMAT 1: FLAT (AMAN)
+    # ===============================
+    # ===============================
+    if is_flat:
+        uploaded_file.seek(0)
+        df = pd.read_excel(uploaded_file)
+
+        df.columns = df.columns.astype(str).str.strip()
+
+        # normalisasi angka
+        df = df.applymap(lambda x: str(x).replace(",", ".") if isinstance(x, str) else x)
+
+        for col in df.columns:
+            if col not in ["Nama KPPN", "Bulan", "Tahun"]:
+                df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0)
+
+        if "Kode KPPN" in df.columns:
+            df["Kode KPPN"] = df["Kode KPPN"].astype(str).str.zfill(3)
+            df = df[df["Kode KPPN"] == KPPN_TARGET]
+
+    # ===============================
+    # ===============================
+    # FORMAT 2: BLOK (ANTI ERROR)
+    # ===============================
+    # ===============================
+    else:
+        df_data = df_raw.iloc[4:].reset_index(drop=True)
+
+        rows = []
+        i = 0
+
+        while i < len(df_data):
+
+            try:
+                nilai = df_data.iloc[i]
+
+                # ambil aspek jika ada
+                nilai_aspek = df_data.iloc[i + 3] if i + 3 < len(df_data) else None
+
+                kode = str(nilai[1]).strip()
+                nama = str(nilai[2]).strip()
+
+                if not kode.isdigit():
+                    i += 1
+                    continue
+
+                if kode != KPPN_TARGET:
+                    i += 4
+                    continue
+
+                def ambil(idx, src):
+                    try:
+                        return src[idx]
+                    except:
+                        return 0
+
+                row = {
+                    "Kode KPPN": kode,
+                    "Nama KPPN": nama,
+
+                    # ✅ aspek (kalau ada)
+                    "Kualitas Perencanaan Anggaran": ambil(6, nilai_aspek) if nilai_aspek is not None else 0,
+                    "Kualitas Pelaksanaan Anggaran": ambil(8, nilai_aspek) if nilai_aspek is not None else 0,
+                    "Kualitas Hasil Pelaksanaan Anggaran": ambil(12, nilai_aspek) if nilai_aspek is not None else 0,
+
+                    # indikator
+                    "Revisi DIPA": ambil(6, nilai),
+                    "Deviasi Halaman III DIPA": ambil(7, nilai),
+                    "Penyerapan Anggaran": ambil(8, nilai),
+                    "Belanja Kontraktual": ambil(9, nilai),
+                    "Penyelesaian Tagihan": ambil(10, nilai),
+                    "Pengelolaan UP dan TUP": ambil(11, nilai),
+                    "Capaian Output": ambil(12, nilai),
+
+                    "Nilai Total": ambil(13, nilai),
+                    "Konversi Bobot": ambil(14, nilai),
+                    "Dispensasi SPM (Pengurang)": ambil(15, nilai),
+                    "Nilai Akhir (Nilai Total/Konversi Bobot)": ambil(16, nilai),
+                }
+
+                rows.append(row)
+                i += 4
+
+            except:
+                i += 1
+
+        df = pd.DataFrame(rows)
+
+    # ===============================
+    # FINAL NORMALISASI
+    # ===============================
+    if df.empty:
+        return None, detected_month or "UNKNOWN", year
+
+    # pastikan semua kolom ada
     OUTPUT_COLS = [
         "Kode KPPN", "Nama KPPN",
         "Kualitas Perencanaan Anggaran",
@@ -2656,108 +2755,34 @@ def process_excel_file_kppn(uploaded_file, year, detected_month=None):
         "Nilai Akhir (Nilai Total/Konversi Bobot)"
     ]
 
-    try:
-        uploaded_file.seek(0)
-    except:
-        pass
-
-    df_raw = pd.read_excel(uploaded_file, header=None)
-
-    first_row_text = " ".join(df_raw.iloc[0].astype(str).str.upper())
-
-    is_flat = "KODE KPPN" in first_row_text and "NILAI AKHIR" in first_row_text
-
-    # ===============================
-    # A) FORMAT FLAT (AMAN)
-    # ===============================
-    if is_flat:
-        uploaded_file.seek(0)
-        df = pd.read_excel(uploaded_file)
-
-        df.columns = df.columns.astype(str).str.strip()
-
-        df = df.applymap(lambda x: str(x).replace(",", ".") if isinstance(x, str) else x)
-
-        for col in df.columns:
-            if col not in ["Nama KPPN", "Bulan", "Tahun"]:
-                df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0)
-
-        df["Kode KPPN"] = df["Kode KPPN"].astype(str).str.zfill(3)
-        df = df[df["Kode KPPN"] == "109"]
-
-    # ===============================
-    # B) FORMAT BLOK (FIX UTAMA 🔥)
-    # ===============================
-    else:
-        df_data = df_raw.iloc[4:].reset_index(drop=True)
-
-        rows = []
-        i = 0
-
-        while i + 3 < len(df_data):
-
-            nilai = df_data.iloc[i]
-            nilai_aspek = df_data.iloc[i + 3]  # 🔥 INI KUNCI
-
-            kode = str(nilai[1]).strip().zfill(3)
-            nama = str(nilai[2]).strip()
-
-            if not kode.isdigit():
-                i += 1
-                continue
-
-            if kode != KODE_KPPN_BATURAJA:
-                i += 4
-                continue
-
-            row = {
-                "Kode KPPN": kode,
-                "Nama KPPN": nama,
-
-                # 🔥 NILAI ASPEK (FIX TOTAL)
-                "Kualitas Perencanaan Anggaran": nilai_aspek[6],
-                "Kualitas Pelaksanaan Anggaran": nilai_aspek[8],
-                "Kualitas Hasil Pelaksanaan Anggaran": nilai_aspek[12],
-
-                "Revisi DIPA": nilai[6],
-                "Deviasi Halaman III DIPA": nilai[7],
-                "Penyerapan Anggaran": nilai[8],
-                "Belanja Kontraktual": nilai[9],
-                "Penyelesaian Tagihan": nilai[10],
-                "Pengelolaan UP dan TUP": nilai[11],
-                "Capaian Output": nilai[12],
-
-                "Nilai Total": nilai[13],
-                "Konversi Bobot": nilai[14],
-                "Dispensasi SPM (Pengurang)": nilai[15],
-                "Nilai Akhir (Nilai Total/Konversi Bobot)": nilai[16],
-            }
-
-            rows.append(row)
-            i += 4  # 🔥 WAJIB 4
-
-        df = pd.DataFrame(rows)
-
-    # ===============================
-    # FINAL PROCESS
-    # ===============================
     for col in OUTPUT_COLS:
         if col not in df.columns:
             df[col] = 0 if col not in ["Kode KPPN", "Nama KPPN"] else ""
 
-    if df.empty:
-        return None, detected_month or "UNKNOWN", year
+    # konversi numerik aman
+    for col in df.columns:
+        if col not in ["Kode KPPN", "Nama KPPN"]:
+            df[col] = (
+                df[col]
+                .astype(str)
+                .str.replace(",", ".", regex=False)
+            )
+            df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0)
 
+    # metadata
     df["Bulan"] = (detected_month or "UNKNOWN").upper()
     df["Tahun"] = str(year)
     df["Source"] = "Upload"
 
+    # ranking
     nilai_col = "Nilai Akhir (Nilai Total/Konversi Bobot)"
-    df[nilai_col] = pd.to_numeric(df[nilai_col], errors="coerce").fillna(0)
-
     df = df.sort_values(nilai_col, ascending=False)
 
-    df["Peringkat"] = df[nilai_col].rank(method="dense", ascending=False).astype(int)
+    df["Peringkat"] = (
+        df[nilai_col]
+        .rank(method="dense", ascending=False)
+        .astype(int)
+    )
 
     df.insert(0, "No", range(1, len(df) + 1))
 
