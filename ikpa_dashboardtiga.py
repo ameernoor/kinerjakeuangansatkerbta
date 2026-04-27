@@ -2627,160 +2627,152 @@ def reprocess_all_ikpa_satker():
 
 def process_excel_file_kppn(uploaded_file, year, detected_month=None):
     import pandas as pd
-    import re
 
-    KPPN_TARGET = "109"
+    try:
+        uploaded_file.seek(0)
+        df_raw = pd.read_excel(uploaded_file, header=None).fillna("")
 
-    uploaded_file.seek(0)
-    df_raw = pd.read_excel(uploaded_file, header=None)
-
-    # ===============================
-    # DETEKSI HEADER
-    # ===============================
-    header_row = None
-
-    for i in range(min(10, len(df_raw))):
-        try:
+        # =========================
+        # 1. COBA FORMAT HEADER (MODERN)
+        # =========================
+        for i in range(min(10, len(df_raw))):
             row = " ".join(df_raw.iloc[i].astype(str).str.upper())
 
             if "KPPN" in row and "NILAI" in row:
-                header_row = i
-                break
+                df = pd.read_excel(uploaded_file, header=i)
+                df.columns = df.columns.astype(str).str.strip()
 
-        except:
-            continue
+                # normalisasi angka
+                df = df.applymap(lambda x: str(x).replace(",", ".") if isinstance(x, str) else x)
 
-    # ===============================
-    # FORMAT MODERN (PAKAI HEADER)
-    # ===============================
-    if header_row is not None:
-        df = pd.read_excel(uploaded_file, header=header_row)
-        df.columns = df.columns.astype(str).str.strip()
+                # cari kolom fleksibel
+                def find_col(keyword):
+                    for c in df.columns:
+                        if keyword in c.upper():
+                            return c
+                    return None
 
-        # normalisasi angka
-        df = df.applymap(lambda x: str(x).replace(",", ".") if isinstance(x, str) else x)
+                kode_col = find_col("KODE")
+                nama_col = find_col("NAMA")
 
-        # filter KPPN 109
-        if "Kode" in df.columns:
-            df["Kode"] = df["Kode"].astype(str).str.zfill(3)
-            df = df[df["Kode"] == KPPN_TARGET]
+                if kode_col:
+                    df[kode_col] = df[kode_col].astype(str).str.zfill(3)
+                    df = df[df[kode_col] == "109"]
 
-        if df.empty:
-            return None, detected_month, year
-
-        def get_col(keyword):
-            for c in df.columns:
-                if keyword in c.upper():
-                    return c
-            return None
-
-        row = df.iloc[0]
-
-        result = {
-            "Kode KPPN": "109",
-            "Nama KPPN": "BATURAJA",
-
-            # 🔥 AMBIL DARI KOLOM NILAI ASPEK
-            "Kualitas Perencanaan Anggaran": row[get_col("PERENCANAAN")],
-            "Kualitas Pelaksanaan Anggaran": row[get_col("PELAKSANAAN")],
-            "Kualitas Hasil Pelaksanaan Anggaran": row[get_col("HASIL")],
-
-            "Revisi DIPA": row[get_col("REVISI")],
-            "Deviasi Halaman III DIPA": row[get_col("DEVIASI")],
-            "Penyerapan Anggaran": row[get_col("PENYERAPAN")],
-            "Belanja Kontraktual": row[get_col("KONTRAK")],
-            "Penyelesaian Tagihan": row[get_col("TAGIHAN")],
-            "Pengelolaan UP dan TUP": row[get_col("UP")],
-            "Capaian Output": row[get_col("OUTPUT")],
-
-            "Nilai Total": row[get_col("TOTAL")],
-            "Konversi Bobot": 100,
-            "Dispensasi SPM (Pengurang)": row[get_col("DISPENSA")],
-            "Nilai Akhir (Nilai Total/Konversi Bobot)": row[get_col("AKHIR")],
-        }
-
-        df_out = pd.DataFrame([result])
-
-    # ===============================
-    # FORMAT LAMA (BLOK)
-    # ===============================
-    else:
-        df_data = df_raw.iloc[4:].reset_index(drop=True)
-
-        rows = []
-        i = 0
-
-        while i < len(df_data):
-            try:
-                nilai = df_data.iloc[i]
-
-                kode = str(nilai[1]).strip()
-                nama = str(nilai[2]).strip()
-
-                if not kode.isdigit():
-                    i += 1
+                if df.empty:
                     continue
 
-                if kode != "109":
-                    i += 4
-                    continue
+                row = df.iloc[0]
 
-                # fallback hitung manual
-                perencanaan = (nilai[6] * 0.10 + nilai[7] * 0.15) * 4
-                pelaksanaan = (
-                    nilai[8] * 0.20 +
-                    nilai[9] * 0.10 +
-                    nilai[10] * 0.10 +
-                    nilai[11] * 0.10
-                ) * 2
-                hasil = nilai[12]
+                result = {
+                    "Kode KPPN": "109",
+                    "Nama KPPN": "BATURAJA",
 
-                row = {
-                    "Kode KPPN": kode,
-                    "Nama KPPN": nama,
-                    "Kualitas Perencanaan Anggaran": perencanaan,
-                    "Kualitas Pelaksanaan Anggaran": pelaksanaan,
-                    "Kualitas Hasil Pelaksanaan Anggaran": hasil,
-                    "Revisi DIPA": nilai[6],
-                    "Deviasi Halaman III DIPA": nilai[7],
-                    "Penyerapan Anggaran": nilai[8],
-                    "Belanja Kontraktual": nilai[9],
-                    "Penyelesaian Tagihan": nilai[10],
-                    "Pengelolaan UP dan TUP": nilai[11],
-                    "Capaian Output": nilai[12],
-                    "Nilai Total": nilai[13],
+                    "Kualitas Perencanaan Anggaran": row[find_col("PERENCANAAN")],
+                    "Kualitas Pelaksanaan Anggaran": row[find_col("PELAKSANAAN")],
+                    "Kualitas Hasil Pelaksanaan Anggaran": row[find_col("HASIL")],
+
+                    "Revisi DIPA": row[find_col("REVISI")],
+                    "Deviasi Halaman III DIPA": row[find_col("DEVIASI")],
+                    "Penyerapan Anggaran": row[find_col("PENYERAPAN")],
+                    "Belanja Kontraktual": row[find_col("KONTRAK")],
+                    "Penyelesaian Tagihan": row[find_col("TAGIHAN")],
+                    "Pengelolaan UP dan TUP": row[find_col("UP")],
+                    "Capaian Output": row[find_col("OUTPUT")],
+
+                    "Nilai Total": row[find_col("TOTAL")],
                     "Konversi Bobot": 100,
-                    "Dispensasi SPM (Pengurang)": nilai[15],
-                    "Nilai Akhir (Nilai Total/Konversi Bobot)": nilai[16],
+                    "Dispensasi SPM (Pengurang)": row[find_col("DISPENSA")],
+                    "Nilai Akhir (Nilai Total/Konversi Bobot)": row[find_col("AKHIR")],
                 }
 
-                rows.append(row)
-                i += 4
+                df_out = pd.DataFrame([result])
+                break
 
-            except:
-                i += 1
+        else:
+            # =========================
+            # 2. FORMAT BLOK (OLD)
+            # =========================
+            df_data = df_raw.iloc[4:].reset_index(drop=True)
 
-        df_out = pd.DataFrame(rows)
+            rows = []
+            i = 0
 
-    # ===============================
-    # FINAL
-    # ===============================
-    if df_out.empty:
+            while i < len(df_data):
+                try:
+                    nilai = df_data.iloc[i]
+
+                    kode = str(nilai[1]).strip()
+                    nama = str(nilai[2]).strip()
+
+                    if not kode.isdigit():
+                        i += 1
+                        continue
+
+                    if kode != "109":
+                        i += 4
+                        continue
+
+                    # 🔥 HITUNG MANUAL (AMAN SEMUA FORMAT)
+                    perencanaan = (float(nilai[6]) * 0.10 + float(nilai[7]) * 0.15) * 4
+                    pelaksanaan = (
+                        float(nilai[8]) * 0.20 +
+                        float(nilai[9]) * 0.10 +
+                        float(nilai[10]) * 0.10 +
+                        float(nilai[11]) * 0.10
+                    ) * 2
+                    hasil = float(nilai[12])
+
+                    row = {
+                        "Kode KPPN": kode,
+                        "Nama KPPN": nama,
+                        "Kualitas Perencanaan Anggaran": perencanaan,
+                        "Kualitas Pelaksanaan Anggaran": pelaksanaan,
+                        "Kualitas Hasil Pelaksanaan Anggaran": hasil,
+                        "Revisi DIPA": nilai[6],
+                        "Deviasi Halaman III DIPA": nilai[7],
+                        "Penyerapan Anggaran": nilai[8],
+                        "Belanja Kontraktual": nilai[9],
+                        "Penyelesaian Tagihan": nilai[10],
+                        "Pengelolaan UP dan TUP": nilai[11],
+                        "Capaian Output": nilai[12],
+                        "Nilai Total": nilai[13],
+                        "Konversi Bobot": 100,
+                        "Dispensasi SPM (Pengurang)": nilai[15],
+                        "Nilai Akhir (Nilai Total/Konversi Bobot)": nilai[16],
+                    }
+
+                    rows.append(row)
+                    i += 4
+
+                except:
+                    i += 1
+
+            df_out = pd.DataFrame(rows)
+
+        # =========================
+        # FINAL
+        # =========================
+        if df_out.empty:
+            return None, detected_month, year
+
+        df_out["Bulan"] = (detected_month or "UNKNOWN").upper()
+        df_out["Tahun"] = str(year)
+        df_out["Source"] = "Upload"
+
+        nilai_col = "Nilai Akhir (Nilai Total/Konversi Bobot)"
+        df_out[nilai_col] = pd.to_numeric(df_out[nilai_col], errors="coerce").fillna(0)
+
+        df_out = df_out.sort_values(nilai_col, ascending=False)
+        df_out["Peringkat"] = df_out[nilai_col].rank(method="dense", ascending=False).astype(int)
+
+        df_out.insert(0, "No", range(1, len(df_out) + 1))
+
+        return df_out, detected_month, year
+
+    except Exception as e:
+        print("ERROR IKPA KPPN:", e)
         return None, detected_month, year
-
-    df_out["Bulan"] = (detected_month or "UNKNOWN").upper()
-    df_out["Tahun"] = str(year)
-    df_out["Source"] = "Upload"
-
-    nilai_col = "Nilai Akhir (Nilai Total/Konversi Bobot)"
-    df_out[nilai_col] = pd.to_numeric(df_out[nilai_col], errors="coerce").fillna(0)
-
-    df_out = df_out.sort_values(nilai_col, ascending=False)
-    df_out["Peringkat"] = df_out[nilai_col].rank(method="dense", ascending=False).astype(int)
-
-    df_out.insert(0, "No", range(1, len(df_out) + 1))
-
-    return df_out, detected_month, year
     
     
 
@@ -2805,7 +2797,7 @@ def process_kppn_flat(df):
     df = df.iloc[1:].reset_index(drop=True)
 
     # ===============================
-    # 🔥 3. FILTER HANYA "NILAI" (SAFE)
+    # 3. FILTER HANYA "NILAI" (SAFE)
     # ===============================
     if "Keterangan" in df.columns:
         df["Keterangan"] = df["Keterangan"].astype(str)
@@ -2829,7 +2821,7 @@ def process_kppn_flat(df):
     )
 
     # ===============================
-    # 🔥 6. HAPUS BARIS KOSONG / ZERO
+    # 6. HAPUS BARIS KOSONG / ZERO
     # ===============================
     df = df.dropna(how="all")
 
