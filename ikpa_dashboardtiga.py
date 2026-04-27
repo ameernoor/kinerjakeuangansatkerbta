@@ -6886,6 +6886,11 @@ def page_dashboard():
             elif periode_chart == "Triwulan":
 
                 tw_list = sorted(df_digipay["TRIWULAN"].dropna().astype(int).unique())
+
+                if len(tw_list) == 0:
+                    st.warning("Data triwulan tidak tersedia untuk tahun ini")
+                    st.stop()
+
                 tw_terbaru = max(tw_list)
 
                 tw_options = ["TW1","TW2","TW3","TW4"]
