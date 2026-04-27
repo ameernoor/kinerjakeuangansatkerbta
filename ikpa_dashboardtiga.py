@@ -656,7 +656,7 @@ def render_table_pin_satker(df):
         resizable=True,
         sortable=True,
         filter=True,
-        minWidth=130   
+        minWidth=160   
     )
 
     # =====================================================
@@ -759,7 +759,8 @@ def render_table_pin_satker(df):
         gridOptions=gb.build(),
         height=max(450, calc_grid_height(df)),
         width="100%",
-        theme="alpine",
+        fit_columns_on_grid_load=False,
+        theme="streamlit",
         allow_unsafe_jscode=True,
         data_return_mode="FILTERED_AND_SORTED",
         update_mode="MODEL_CHANGED",
