@@ -2633,6 +2633,7 @@ def process_excel_file_kppn(uploaded_file, year, detected_month=None):
          header multi-level: baris 0 = judul, baris 1 = sub-header, baris 3 = data NILAI AKHIR
       C. Format OM-SPAN lama — blok 4 baris per KPPN (NILAI / BOBOT / NILAI AKHIR / NILAI ASPEK)
     """
+    import streamlit as st
     import pandas as pd
 
     def _to_float(v):
