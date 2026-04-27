@@ -804,9 +804,9 @@ def render_table_pin_satker(df):
         df,
         gridOptions=gb.build(),
         height=450,
-        width=1200,  # 🔥 penting (jangan 100%)
+        width=1200,  
         fit_columns_on_grid_load=False,
-        theme="alpine-dark",
+        theme="streamlit",
         allow_unsafe_jscode=True,
         data_return_mode="FILTERED_AND_SORTED",
         update_mode="MODEL_CHANGED",
