@@ -2638,11 +2638,17 @@ def process_excel_file_kppn(uploaded_file, year, detected_month=None):
     # DETEKSI HEADER
     # ===============================
     header_row = None
-    for i in range(10):
-        row = " ".join(df_raw.iloc[i].astype(str).str.upper())
-        if "KPPN" in row and "NILAI" in row:
-            header_row = i
-            break
+
+    for i in range(min(10, len(df_raw))):
+        try:
+            row = " ".join(df_raw.iloc[i].astype(str).str.upper())
+
+            if "KPPN" in row and "NILAI" in row:
+                header_row = i
+                break
+
+        except:
+            continue
 
     # ===============================
     # FORMAT MODERN (PAKAI HEADER)
