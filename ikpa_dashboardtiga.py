@@ -60,6 +60,8 @@ st.markdown("""
 .ag-body-horizontal-scroll {
     height: 12px !important;
     display: block !important;
+    visibility: visible !important;
+    opacity: 1 !important;
 }
 
 .ag-body-horizontal-scroll-viewport {
@@ -89,45 +91,10 @@ st.markdown("""
 
 st.markdown("""
 <style>
-
-/* ========================= */
-/* FORCE HORIZONTAL SCROLL */
-/* ========================= */
-
-/* Container utama Streamlit */
-[data-testid="stHorizontalBlock"] {
-    overflow-x: auto !important;
-}
-
-/* AgGrid wrapper */
+/* AgGrid wrapper full width */
 .ag-root-wrapper {
     overflow-x: auto !important;
 }
-
-/* Viewport horizontal */
-.ag-body-horizontal-scroll {
-    display: block !important;
-    height: 14px !important;
-}
-
-.ag-body-horizontal-scroll-viewport {
-    overflow-x: auto !important;
-}
-
-/* Scrollbar styling biar kelihatan */
-.ag-body-horizontal-scroll::-webkit-scrollbar {
-    height: 12px;
-}
-
-.ag-body-horizontal-scroll::-webkit-scrollbar-thumb {
-    background: #6b7280;
-    border-radius: 10px;
-}
-
-.ag-body-horizontal-scroll::-webkit-scrollbar-track {
-    background: #1f2937;
-}
-
 </style>
 """, unsafe_allow_html=True)
 
@@ -790,7 +757,7 @@ def render_table_pin_satker(df):
         domLayout="normal",
         alwaysShowHorizontalScroll=True,
         suppressHorizontalScroll=False,
-        suppressColumnVirtualisation=True, 
+        suppressColumnVirtualisation=False,   # 🔥 FIX: jangan suppress, biarkan AgGrid atur sendiri
         getRowStyle=zebra_dark,
         headerHeight=40
     )
@@ -798,26 +765,16 @@ def render_table_pin_satker(df):
     # =====================================================
     # GRID
     # =====================================================
-    st.markdown("""
-    <div style="
-        overflow-x: auto;
-        width: 100%;
-    ">
-    """, unsafe_allow_html=True)
-
     grid_response = AgGrid(
         df,
         gridOptions=gb.build(),
         height=450,
-        width=2000,   # 🔥 kunci utama (harus BESAR)
         fit_columns_on_grid_load=False,
         theme="streamlit",
         allow_unsafe_jscode=True,
         data_return_mode="FILTERED_AND_SORTED",
         update_mode="MODEL_CHANGED",
     )
-
-    st.markdown("</div>", unsafe_allow_html=True)
 
     # ===== AMBIL DATA HASIL FILTER =====
     filtered_df = pd.DataFrame(grid_response["data"])
@@ -8711,6 +8668,13 @@ def menu_ews_satker():
         .tolist()
     )
 
+    # ======================================================
+    # 🔥 FIX: Pastikan kolom metrik sudah numeric (anti nilai ribuan)
+    # Terapkan clean_numeric ke seluruh df_trend SEBELUM plot
+    # ======================================================
+    if selected_metric in df_trend.columns:
+        df_trend[selected_metric] = df_trend[selected_metric].apply(clean_numeric)
+
     fig = go.Figure()
 
     for kode in selected_kode_satker:
@@ -8735,7 +8699,12 @@ def menu_ews_satker():
             categoryorder="array",
             categoryarray=ordered_periods
         ),
-        yaxis_title="Nilai",
+        yaxis=dict(
+            title="Nilai",
+            # 🔥 FIX: batasi sumbu Y supaya tidak menampilkan nilai ribuan
+            range=[0, 115],
+            dtick=10,
+        ),
         height=750,
         hovermode="x unified",
         legend=dict(
