@@ -10422,18 +10422,43 @@ def page_admin():
                 df_info = pd.read_excel(uploaded_file_kppn, header=None)
 
                 MONTH_MAP = {
-                    "JANUARI": "JANUARI", "JAN": "JANUARI",
-                    "FEBRUARI": "FEBRUARI", "FEB": "FEBRUARI", "PEBRUARI": "FEBRUARI",
-                    "MARET": "MARET", "MAR": "MARET",
-                    "APRIL": "APRIL", "APR": "APRIL",
+                    # JANUARI
+                    "JANUARI": "JANUARI", "JAN": "JANUARI", "1": "JANUARI", "01": "JANUARI",
+
+                    # FEBRUARI
+                    "FEBRUARI": "FEBRUARI", "FEB": "FEBRUARI", "PEBRUARI": "FEBRUARI", "2": "FEBRUARI", "02": "FEBRUARI",
+
+                    # MARET
+                    "MARET": "MARET", "MAR": "MARET", "3": "MARET", "03": "MARET",
+
+                    # APRIL
+                    "APRIL": "APRIL", "APR": "APRIL", "4": "APRIL", "04": "APRIL",
+
+                    # 🔥 MEI (INI YANG PALING PENTING)
                     "MEI": "MEI",
-                    "JUNI": "JUNI", "JUN": "JUNI",
-                    "JULI": "JULI", "JUL": "JULI",
-                    "AGUSTUS": "AGUSTUS", "AGT": "AGUSTUS", "AGS": "AGUSTUS",
-                    "SEPTEMBER": "SEPTEMBER", "SEP": "SEPTEMBER",
-                    "OKTOBER": "OKTOBER", "OKT": "OKTOBER",
-                    "NOVEMBER": "NOVEMBER", "NOV": "NOVEMBER", "NOPEMBER": "NOVEMBER",
-                    "DESEMBER": "DESEMBER", "DES": "DESEMBER"
+                    "MAY": "MEI",
+                    "5": "MEI", "05": "MEI",
+
+                    # JUNI
+                    "JUNI": "JUNI", "JUN": "JUNI", "6": "JUNI", "06": "JUNI",
+
+                    # JULI
+                    "JULI": "JULI", "JUL": "JULI", "7": "JULI", "07": "JULI",
+
+                    # AGUSTUS
+                    "AGUSTUS": "AGUSTUS", "AGT": "AGUSTUS", "AGS": "AGUSTUS", "8": "AGUSTUS", "08": "AGUSTUS",
+
+                    # SEPTEMBER
+                    "SEPTEMBER": "SEPTEMBER", "SEP": "SEPTEMBER", "9": "SEPTEMBER", "09": "SEPTEMBER",
+
+                    # OKTOBER
+                    "OKTOBER": "OKTOBER", "OKT": "OKTOBER", "10": "OKTOBER",
+
+                    # NOVEMBER
+                    "NOVEMBER": "NOVEMBER", "NOV": "NOVEMBER", "NOPEMBER": "NOVEMBER", "11": "NOVEMBER",
+
+                    # DESEMBER
+                    "DESEMBER": "DESEMBER", "DES": "DESEMBER", "12": "DESEMBER"
                 }
 
                 month_preview = None
@@ -10442,6 +10467,7 @@ def page_admin():
                 for r in range(min(6, df_info.shape[0])):
                     for c in range(min(5, df_info.shape[1])):
                         cell = str(df_info.iloc[r, c]).upper().strip()
+                        cell = re.sub(r'\d{4}', '', cell).strip()
                         # exact match dulu (lebih aman dari substring)
                         if cell in MONTH_MAP:
                             month_preview = MONTH_MAP[cell]
