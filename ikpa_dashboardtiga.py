@@ -757,10 +757,26 @@ def render_table_pin_satker(df):
         domLayout="normal",
         alwaysShowHorizontalScroll=True,
         suppressHorizontalScroll=False,
-        suppressColumnVirtualisation=False,   # 🔥 FIX: jangan suppress, biarkan AgGrid atur sendiri
+        suppressColumnVirtualisation=False,
         getRowStyle=zebra_dark,
         headerHeight=40
     )
+
+    # =====================================================
+    # 🔥 CUSTOM CSS: paksa scrollbar horizontal selalu muncul
+    # =====================================================
+    custom_css = {
+        ".ag-body-horizontal-scroll": {
+            "display": "block !important",
+            "height": "14px !important",
+            "min-height": "14px !important",
+            "visibility": "visible !important",
+            "opacity": "1 !important",
+        },
+        ".ag-body-horizontal-scroll-viewport": {
+            "overflow-x": "scroll !important",
+        },
+    }
 
     # =====================================================
     # GRID
@@ -774,6 +790,7 @@ def render_table_pin_satker(df):
         allow_unsafe_jscode=True,
         data_return_mode="FILTERED_AND_SORTED",
         update_mode="MODEL_CHANGED",
+        custom_css=custom_css,
     )
 
     # ===== AMBIL DATA HASIL FILTER =====
@@ -978,9 +995,14 @@ def clean_numeric(val):
     if pd.isna(val):
         return 0
 
-    # kalau sudah numeric → jangan disentuh lagi
+    # kalau sudah numeric → cek apakah perlu normalisasi
     if isinstance(val, (int, float)):
-        return float(val)
+        v = float(val)
+        # 🔥 FIX: Nilai IKPA max ~120. Kalau > 200 berarti belum dibagi 100
+        # (Excel menyimpan 9657 padahal seharusnya 96.57)
+        if v > 200:
+            v = v / 100.0
+        return v
 
     val = str(val).strip().replace("%", "")
 
@@ -996,7 +1018,11 @@ def clean_numeric(val):
     val = re.sub(r"[^\d\.\-]", "", val)
 
     try:
-        return float(val)
+        v = float(val)
+        # 🔥 FIX: sama seperti di atas, normalisasi kalau > 200
+        if v > 200:
+            v = v / 100.0
+        return v
     except:
         return 0
     
@@ -8701,8 +8727,7 @@ def menu_ews_satker():
         ),
         yaxis=dict(
             title="Nilai",
-            # 🔥 FIX: batasi sumbu Y supaya tidak menampilkan nilai ribuan
-            range=[0, 115],
+            rangemode="tozero",   # selalu mulai dari 0
             dtick=10,
         ),
         height=750,
