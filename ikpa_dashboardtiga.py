@@ -10461,27 +10461,39 @@ def page_admin():
                     "DESEMBER": "DESEMBER", "DES": "DESEMBER", "12": "DESEMBER"
                 }
 
-                month_preview = None
+                import re  # pastikan ada ini di atas kalau belum
 
-                import re
-                # 1️⃣ Cari bulan di header (baris & kolom awal) — untuk raw OM-SPAN
+                month_candidates = []
+
+                # 1️⃣ Scan semua kemungkinan bulan (jangan langsung break)
                 for r in range(min(6, df_info.shape[0])):
                     for c in range(min(5, df_info.shape[1])):
                         cell = str(df_info.iloc[r, c]).upper().strip()
+
+                        # bersihin tahun (contoh: MEI 2023)
                         cell = re.sub(r'\d{4}', '', cell).strip()
-                        # exact match dulu (lebih aman dari substring)
+
+                        # exact match
                         if cell in MONTH_MAP:
-                            month_preview = MONTH_MAP[cell]
-                            break
-                        # substring fallback
+                            month_candidates.append(MONTH_MAP[cell])
+
+                        # substring match
                         for k, v in MONTH_MAP.items():
                             if len(k) >= 4 and k in cell:
-                                month_preview = v
-                                break
-                        if month_preview:
-                            break
-                    if month_preview:
-                        break
+                                month_candidates.append(v)
+
+                # 2️⃣ Tentukan bulan paling benar
+                if month_candidates:
+                    MONTH_ORDER = {
+                        "JANUARI": 1, "FEBRUARI": 2, "MARET": 3, "APRIL": 4,
+                        "MEI": 5, "JUNI": 6, "JULI": 7, "AGUSTUS": 8,
+                        "SEPTEMBER": 9, "OKTOBER": 10, "NOVEMBER": 11, "DESEMBER": 12
+                    }
+
+                    # ambil bulan terbesar (biasanya bulan laporan terbaru)
+                    month_preview = max(month_candidates, key=lambda x: MONTH_ORDER.get(x, 0))
+                else:
+                    month_preview = None
 
                 # 2️⃣ Cari dari kolom "Bulan" jika format FLAT
                 # (file sudah diproses sebelumnya, punya kolom Bulan)
