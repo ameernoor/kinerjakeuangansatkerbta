@@ -1015,24 +1015,35 @@ if "_reference_loaded" not in st.session_state:
     st.session_state["_reference_loaded"] = True
 
 # ===============================
-# 🔥 CLEAN NUMERIC (ANTI NAN)
+# CLEAN NUMERIC (ANTI NAN)
 # ===============================
 def clean_numeric(val):
     if pd.isna(val):
         return 0
-    # Jika sudah numerik (int/float), langsung return — jangan diproses lagi
+
     if isinstance(val, (int, float)):
         return float(val)
+
     val = str(val).strip().replace("%", "")
-    # Format Indonesia: koma = desimal, titik = ribuan -> '88,98' atau '1.234,56'
-    if "," in val:
+
+    # Deteksi format Indonesia (ada koma sebagai desimal)
+    if "," in val and "." in val:
+        # asumsi: titik = ribuan, koma = desimal
         val = val.replace(".", "").replace(",", ".")
-    # Format sudah Python float: '88.98' — jangan hapus titik
+    elif "," in val:
+        # asumsi: koma = desimal
+        val = val.replace(",", ".")
+    else:
+        # asumsi: format sudah benar (88.98)
+        pass
+
     val = re.sub(r"[^\d\.\-]", "", val)
+
     try:
         return float(val)
     except:
         return 0
+    
     
 def safe_float(val, default=0):
     try:
