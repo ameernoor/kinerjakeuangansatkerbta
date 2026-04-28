@@ -51,128 +51,6 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-st.markdown("""
-<style>
-
-/* ========================= */
-/* SCROLLBAR HORIZONTAL GRID */
-/* ========================= */
-
-.ag-body-horizontal-scroll {
-    height: 16px !important;
-    min-height: 16px !important;
-    display: block !important;
-    visibility: visible !important;
-    opacity: 1 !important;
-    overflow-x: scroll !important;
-}
-
-.ag-body-horizontal-scroll-viewport {
-    overflow-x: scroll !important;
-    height: 16px !important;
-    min-height: 16px !important;
-}
-
-/* biar kelihatan */
-.ag-body-horizontal-scroll::-webkit-scrollbar {
-    height: 12px !important;
-    display: block !important;
-}
-
-.ag-body-horizontal-scroll::-webkit-scrollbar-track {
-    background: #1f2937;
-}
-
-.ag-body-horizontal-scroll::-webkit-scrollbar-thumb {
-    background: #6b7280;
-    border-radius: 10px;
-}
-
-.ag-body-horizontal-scroll::-webkit-scrollbar-thumb:hover {
-    background: #9ca3af;
-}
-
-/* Wrapper Streamlit AgGrid — paksa overflow */
-div[data-testid="stAgGrid"] > div,
-.stAgGrid > div {
-    overflow-x: auto !important;
-}
-
-</style>
-""", unsafe_allow_html=True)
-
-st.markdown("""
-<style>
-/* AgGrid wrapper full width */
-.ag-root-wrapper {
-    overflow-x: auto !important;
-}
-</style>
-""", unsafe_allow_html=True)
-
-
-st.markdown("""
-<style>
-
-/* ========================= */
-/* SCROLLBAR GLOBAL (HIJAU) */
-/* ========================= */
-
-/* Horizontal scrollbar (bawah) */
-.ag-body-horizontal-scroll::-webkit-scrollbar {
-    height: 12px;
-}
-
-.ag-body-horizontal-scroll::-webkit-scrollbar-track {
-    background: #111827;
-}
-
-.ag-body-horizontal-scroll::-webkit-scrollbar-thumb {
-    background: #22c55e;  /* HIJAU */
-    border-radius: 10px;
-}
-
-.ag-body-horizontal-scroll::-webkit-scrollbar-thumb:hover {
-    background: #16a34a;
-}
-
-/* Vertical scrollbar (kanan) */
-.ag-body-vertical-scroll::-webkit-scrollbar {
-    width: 12px;
-}
-
-.ag-body-vertical-scroll::-webkit-scrollbar-track {
-    background: #111827;
-}
-
-.ag-body-vertical-scroll::-webkit-scrollbar-thumb {
-    background: #22c55e;  /* HIJAU */
-    border-radius: 10px;
-}
-
-.ag-body-vertical-scroll::-webkit-scrollbar-thumb:hover {
-    background: #16a34a;
-}
-
-/* Paksa scroll horizontal selalu muncul */
-.ag-body-horizontal-scroll {
-    display: block !important;
-    visibility: visible !important;
-    opacity: 1 !important;
-}
-
-/* Paksa scroll vertical aktif */
-.ag-body-vertical-scroll {
-    display: block !important;
-}
-
-/* Wrapper supaya bisa scroll */
-.ag-root-wrapper {
-    overflow: auto !important;
-}
-
-</style>
-""", unsafe_allow_html=True)
 
 
 # ===============================
@@ -234,7 +112,7 @@ def render_table_pin_satker(df):
 
         return min(height, max_height)
 
-    gb = build_base_grid_options(tuple(df.columns))
+    gb = GridOptionsBuilder.from_dataframe(df)
     
     # =====================================================
     # ALIGNMENT OTOMATIS (CACHED)
@@ -737,13 +615,13 @@ def render_table_pin_satker(df):
     )
 
     # =====================================================
-    # DEFAULT COLUMN (🔥 FIX UTAMA)
+    # DEFAULT COLUMN (FIX UTAMA)
     # =====================================================
     gb.configure_default_column(
         resizable=True,
         sortable=True,
         filter=True,
-        minWidth=180   
+        minWidth=150   
     )
 
     # =====================================================
@@ -834,6 +712,7 @@ def render_table_pin_satker(df):
         alwaysShowHorizontalScroll=True,
         suppressHorizontalScroll=False,
         suppressColumnVirtualisation=False,
+        enableBrowserTooltips=True,
         getRowStyle=zebra_dark,
         headerHeight=40
     )
@@ -843,67 +722,25 @@ def render_table_pin_satker(df):
     # (custom_css masuk langsung ke iframe AgGrid, 100% andal)
     # =====================================================
     aggrid_custom_css = {
-        # Paksa scrollbar horizontal selalu tampil & terlihat
-        ".ag-body-horizontal-scroll": {
-            "display": "block !important",
-            "height": "16px !important",
-            "min-height": "16px !important",
-            "max-height": "16px !important",
-            "visibility": "visible !important",
-            "opacity": "1 !important",
-            "overflow-x": "scroll !important",
-            "overflow-y": "hidden !important",
-        },
-        ".ag-body-horizontal-scroll-viewport": {
-            "overflow-x": "scroll !important",
-            "height": "16px !important",
-            "min-height": "16px !important",
-        },
-        ".ag-body-horizontal-scroll-container": {
-            "height": "16px !important",
-            "min-height": "16px !important",
-        },
-        # Styling scrollbar horizontal (webkit) — HIJAU
+
         ".ag-body-horizontal-scroll::-webkit-scrollbar": {
-            "height": "12px !important",
-            "display": "block !important",
+            "height": "10px",
         },
-        ".ag-body-horizontal-scroll::-webkit-scrollbar-track": {
-            "background": "#111827",
-        },
+
         ".ag-body-horizontal-scroll::-webkit-scrollbar-thumb": {
             "background": "#22c55e",
             "border-radius": "10px",
         },
-        ".ag-body-horizontal-scroll::-webkit-scrollbar-thumb:hover": {
-            "background": "#16a34a",
-        },
-        # Styling scrollbar vertical (webkit) — HIJAU
+
         ".ag-body-vertical-scroll::-webkit-scrollbar": {
-            "width": "12px !important",
-            "display": "block !important",
+            "width": "10px",
         },
-        ".ag-body-vertical-scroll::-webkit-scrollbar-track": {
-            "background": "#111827",
-        },
+
         ".ag-body-vertical-scroll::-webkit-scrollbar-thumb": {
             "background": "#22c55e",
             "border-radius": "10px",
-        },
-        ".ag-body-vertical-scroll::-webkit-scrollbar-thumb:hover": {
-            "background": "#16a34a",
-        },
-        # Pastikan container utama bisa scroll horizontal
-        ".ag-root-wrapper": {
-            "overflow": "auto !important",
-        },
-        ".ag-center-cols-container": {
-            "min-width": "100%",
-        },
-        # Pastikan body grid tidak memotong scrollbar
-        ".ag-body-viewport": {
-            "overflow-x": "auto !important",
-        },
+        }
+
     }
 
     # =====================================================
@@ -921,98 +758,6 @@ def render_table_pin_satker(df):
         custom_css=aggrid_custom_css,
     )
 
-    # =====================================================
-    # JS INJECTION — paksa scrollbar horizontal tampil
-    # di dalam iframe AgGrid (cara paling andal)
-    # =====================================================
-    st.components.v1.html("""
-    <script>
-    (function forceHorizontalScroll() {
-        function applyScroll() {
-            // Cari semua iframe di halaman (AgGrid render dalam iframe)
-            const iframes = window.parent.document.querySelectorAll('iframe');
-            iframes.forEach(function(iframe) {
-                try {
-                    const doc = iframe.contentDocument || iframe.contentWindow.document;
-                    if (!doc) return;
-
-                    // Cek apakah ini iframe AgGrid
-                    const agRoot = doc.querySelector('.ag-root-wrapper');
-                    if (!agRoot) return;
-
-                    // Inject style ke dalam iframe
-                    let style = doc.getElementById('__force_hscroll_style__');
-                    if (!style) {
-                        style = doc.createElement('style');
-                        style.id = '__force_hscroll_style__';
-                        doc.head.appendChild(style);
-                    }
-                    style.textContent = `
-                        .ag-body-horizontal-scroll {
-                            display: block !important;
-                            height: 14px !important;
-                            min-height: 14px !important;
-                            visibility: visible !important;
-                            opacity: 1 !important;
-                            overflow-x: scroll !important;
-                        }
-                        .ag-body-horizontal-scroll-viewport {
-                            overflow-x: scroll !important;
-                            height: 14px !important;
-                            min-height: 14px !important;
-                        }
-                        .ag-body-horizontal-scroll::-webkit-scrollbar {
-                            height: 12px !important;
-                            display: block !important;
-                        }
-                        .ag-body-horizontal-scroll::-webkit-scrollbar-track {
-                            background: #111827 !important;
-                        }
-                        .ag-body-horizontal-scroll::-webkit-scrollbar-thumb {
-                            background: #22c55e !important;
-                            border-radius: 10px !important;
-                        }
-                        .ag-body-horizontal-scroll::-webkit-scrollbar-thumb:hover {
-                            background: #16a34a !important;
-                        }
-                        .ag-body-vertical-scroll::-webkit-scrollbar {
-                            width: 12px !important;
-                        }
-                        .ag-body-vertical-scroll::-webkit-scrollbar-track {
-                            background: #111827 !important;
-                        }
-                        .ag-body-vertical-scroll::-webkit-scrollbar-thumb {
-                            background: #22c55e !important;
-                            border-radius: 10px !important;
-                        }
-                        .ag-root-wrapper {
-                            overflow: auto !important;
-                        }
-                    `;
-
-                    // Paksa elemen scroll muncul lewat DOM langsung
-                    const hScroll = doc.querySelector('.ag-body-horizontal-scroll');
-                    if (hScroll) {
-                        hScroll.style.setProperty('display', 'block', 'important');
-                        hScroll.style.setProperty('height', '14px', 'important');
-                        hScroll.style.setProperty('min-height', '14px', 'important');
-                        hScroll.style.setProperty('visibility', 'visible', 'important');
-                        hScroll.style.setProperty('opacity', '1', 'important');
-                        hScroll.style.setProperty('overflow-x', 'scroll', 'important');
-                    }
-                } catch(e) {}
-            });
-        }
-
-        // Jalankan setelah DOM ready, lalu ulangi beberapa kali
-        // karena AgGrid render async
-        setTimeout(applyScroll, 500);
-        setTimeout(applyScroll, 1000);
-        setTimeout(applyScroll, 2000);
-        setTimeout(applyScroll, 4000);
-    })();
-    </script>
-    """, height=0)
 
     # ===== AMBIL DATA HASIL FILTER =====
     filtered_df = pd.DataFrame(grid_response["data"])
