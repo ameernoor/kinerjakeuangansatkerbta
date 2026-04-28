@@ -58,19 +58,24 @@ st.markdown("""
 /* ========================= */
 
 .ag-body-horizontal-scroll {
-    height: 12px !important;
+    height: 16px !important;
+    min-height: 16px !important;
     display: block !important;
     visibility: visible !important;
     opacity: 1 !important;
+    overflow-x: scroll !important;
 }
 
 .ag-body-horizontal-scroll-viewport {
     overflow-x: scroll !important;
+    height: 16px !important;
+    min-height: 16px !important;
 }
 
 /* biar kelihatan */
 .ag-body-horizontal-scroll::-webkit-scrollbar {
-    height: 10px;
+    height: 12px !important;
+    display: block !important;
 }
 
 .ag-body-horizontal-scroll::-webkit-scrollbar-track {
@@ -84,6 +89,12 @@ st.markdown("""
 
 .ag-body-horizontal-scroll::-webkit-scrollbar-thumb:hover {
     background: #9ca3af;
+}
+
+/* Wrapper Streamlit AgGrid — paksa overflow */
+div[data-testid="stAgGrid"] > div,
+.stAgGrid > div {
+    overflow-x: auto !important;
 }
 
 </style>
@@ -834,35 +845,63 @@ def render_table_pin_satker(df):
         # Paksa scrollbar horizontal selalu tampil & terlihat
         ".ag-body-horizontal-scroll": {
             "display": "block !important",
-            "height": "14px !important",
-            "min-height": "14px !important",
+            "height": "16px !important",
+            "min-height": "16px !important",
+            "max-height": "16px !important",
             "visibility": "visible !important",
             "opacity": "1 !important",
-            "overflow": "visible !important",
+            "overflow-x": "scroll !important",
+            "overflow-y": "hidden !important",
         },
         ".ag-body-horizontal-scroll-viewport": {
             "overflow-x": "scroll !important",
+            "height": "16px !important",
+            "min-height": "16px !important",
         },
-        # Styling scrollbar (webkit)
+        ".ag-body-horizontal-scroll-container": {
+            "height": "16px !important",
+            "min-height": "16px !important",
+        },
+        # Styling scrollbar horizontal (webkit) — HIJAU
         ".ag-body-horizontal-scroll::-webkit-scrollbar": {
-            "height": "12px",
+            "height": "12px !important",
+            "display": "block !important",
         },
         ".ag-body-horizontal-scroll::-webkit-scrollbar-track": {
-            "background": "#1f2937",
+            "background": "#111827",
         },
         ".ag-body-horizontal-scroll::-webkit-scrollbar-thumb": {
-            "background": "#6b7280",
+            "background": "#22c55e",
             "border-radius": "10px",
         },
         ".ag-body-horizontal-scroll::-webkit-scrollbar-thumb:hover": {
-            "background": "#9ca3af",
+            "background": "#16a34a",
+        },
+        # Styling scrollbar vertical (webkit) — HIJAU
+        ".ag-body-vertical-scroll::-webkit-scrollbar": {
+            "width": "12px !important",
+            "display": "block !important",
+        },
+        ".ag-body-vertical-scroll::-webkit-scrollbar-track": {
+            "background": "#111827",
+        },
+        ".ag-body-vertical-scroll::-webkit-scrollbar-thumb": {
+            "background": "#22c55e",
+            "border-radius": "10px",
+        },
+        ".ag-body-vertical-scroll::-webkit-scrollbar-thumb:hover": {
+            "background": "#16a34a",
         },
         # Pastikan container utama bisa scroll horizontal
         ".ag-root-wrapper": {
-            "overflow-x": "auto !important",
+            "overflow": "auto !important",
         },
         ".ag-center-cols-container": {
             "min-width": "100%",
+        },
+        # Pastikan body grid tidak memotong scrollbar
+        ".ag-body-viewport": {
+            "overflow-x": "auto !important",
         },
     }
 
@@ -872,7 +911,7 @@ def render_table_pin_satker(df):
     grid_response = AgGrid(
         df,
         gridOptions=gb.build(),
-        height=450,
+        height=calc_grid_height(df) + 20,  # +20 untuk ruang scrollbar horizontal
         fit_columns_on_grid_load=False,
         theme="streamlit",
         allow_unsafe_jscode=True,
@@ -882,10 +921,9 @@ def render_table_pin_satker(df):
     )
 
     # =====================================================
-    # CATATAN: Scroll horizontal kini ditangani lewat
-    # parameter custom_css di AgGrid() di atas.
-    # Metode ini lebih andal karena CSS masuk langsung
-    # ke dalam iframe AgGrid tanpa perlu JS injection.
+    # CATATAN: Scroll horizontal ditangani lewat custom_css
+    # di AgGrid() di atas + height dinamis agar scrollbar
+    # horizontal punya ruang tampil di bagian bawah tabel.
     # =====================================================
 
     # ===== AMBIL DATA HASIL FILTER =====
