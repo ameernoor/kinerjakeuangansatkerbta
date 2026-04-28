@@ -19,6 +19,7 @@ from st_aggrid import JsCode
 import time
 from st_aggrid import GridUpdateMode
 import uuid
+import streamlit.components.v1 as components
 
 
 st.markdown("""
@@ -911,7 +912,7 @@ def render_table_pin_satker(df):
     grid_response = AgGrid(
         df,
         gridOptions=gb.build(),
-        height=calc_grid_height(df) + 20,  # +20 untuk ruang scrollbar horizontal
+        height=calc_grid_height(df) + 20,
         fit_columns_on_grid_load=False,
         theme="streamlit",
         allow_unsafe_jscode=True,
@@ -921,10 +922,97 @@ def render_table_pin_satker(df):
     )
 
     # =====================================================
-    # CATATAN: Scroll horizontal ditangani lewat custom_css
-    # di AgGrid() di atas + height dinamis agar scrollbar
-    # horizontal punya ruang tampil di bagian bawah tabel.
+    # JS INJECTION — paksa scrollbar horizontal tampil
+    # di dalam iframe AgGrid (cara paling andal)
     # =====================================================
+    st.components.v1.html("""
+    <script>
+    (function forceHorizontalScroll() {
+        function applyScroll() {
+            // Cari semua iframe di halaman (AgGrid render dalam iframe)
+            const iframes = window.parent.document.querySelectorAll('iframe');
+            iframes.forEach(function(iframe) {
+                try {
+                    const doc = iframe.contentDocument || iframe.contentWindow.document;
+                    if (!doc) return;
+
+                    // Cek apakah ini iframe AgGrid
+                    const agRoot = doc.querySelector('.ag-root-wrapper');
+                    if (!agRoot) return;
+
+                    // Inject style ke dalam iframe
+                    let style = doc.getElementById('__force_hscroll_style__');
+                    if (!style) {
+                        style = doc.createElement('style');
+                        style.id = '__force_hscroll_style__';
+                        doc.head.appendChild(style);
+                    }
+                    style.textContent = `
+                        .ag-body-horizontal-scroll {
+                            display: block !important;
+                            height: 14px !important;
+                            min-height: 14px !important;
+                            visibility: visible !important;
+                            opacity: 1 !important;
+                            overflow-x: scroll !important;
+                        }
+                        .ag-body-horizontal-scroll-viewport {
+                            overflow-x: scroll !important;
+                            height: 14px !important;
+                            min-height: 14px !important;
+                        }
+                        .ag-body-horizontal-scroll::-webkit-scrollbar {
+                            height: 12px !important;
+                            display: block !important;
+                        }
+                        .ag-body-horizontal-scroll::-webkit-scrollbar-track {
+                            background: #111827 !important;
+                        }
+                        .ag-body-horizontal-scroll::-webkit-scrollbar-thumb {
+                            background: #22c55e !important;
+                            border-radius: 10px !important;
+                        }
+                        .ag-body-horizontal-scroll::-webkit-scrollbar-thumb:hover {
+                            background: #16a34a !important;
+                        }
+                        .ag-body-vertical-scroll::-webkit-scrollbar {
+                            width: 12px !important;
+                        }
+                        .ag-body-vertical-scroll::-webkit-scrollbar-track {
+                            background: #111827 !important;
+                        }
+                        .ag-body-vertical-scroll::-webkit-scrollbar-thumb {
+                            background: #22c55e !important;
+                            border-radius: 10px !important;
+                        }
+                        .ag-root-wrapper {
+                            overflow: auto !important;
+                        }
+                    `;
+
+                    // Paksa elemen scroll muncul lewat DOM langsung
+                    const hScroll = doc.querySelector('.ag-body-horizontal-scroll');
+                    if (hScroll) {
+                        hScroll.style.setProperty('display', 'block', 'important');
+                        hScroll.style.setProperty('height', '14px', 'important');
+                        hScroll.style.setProperty('min-height', '14px', 'important');
+                        hScroll.style.setProperty('visibility', 'visible', 'important');
+                        hScroll.style.setProperty('opacity', '1', 'important');
+                        hScroll.style.setProperty('overflow-x', 'scroll', 'important');
+                    }
+                } catch(e) {}
+            });
+        }
+
+        // Jalankan setelah DOM ready, lalu ulangi beberapa kali
+        // karena AgGrid render async
+        setTimeout(applyScroll, 500);
+        setTimeout(applyScroll, 1000);
+        setTimeout(applyScroll, 2000);
+        setTimeout(applyScroll, 4000);
+    })();
+    </script>
+    """, height=0)
 
     # ===== AMBIL DATA HASIL FILTER =====
     filtered_df = pd.DataFrame(grid_response["data"])
