@@ -763,22 +763,6 @@ def render_table_pin_satker(df):
     )
 
     # =====================================================
-    # 🔥 CUSTOM CSS: paksa scrollbar horizontal selalu muncul
-    # =====================================================
-    custom_css = {
-        ".ag-body-horizontal-scroll": {
-            "display": "block !important",
-            "height": "14px !important",
-            "min-height": "14px !important",
-            "visibility": "visible !important",
-            "opacity": "1 !important",
-        },
-        ".ag-body-horizontal-scroll-viewport": {
-            "overflow-x": "scroll !important",
-        },
-    }
-
-    # =====================================================
     # GRID
     # =====================================================
     grid_response = AgGrid(
@@ -790,8 +774,63 @@ def render_table_pin_satker(df):
         allow_unsafe_jscode=True,
         data_return_mode="FILTERED_AND_SORTED",
         update_mode="MODEL_CHANGED",
-        custom_css=custom_css,
     )
+
+    # =====================================================
+    # 🔥 INJECT CSS KE IFRAME AGGRID (SATU-SATUNYA CARA ANDAL)
+    # st.markdown tidak masuk iframe, pakai JS untuk menyuntikkan style
+    # =====================================================
+    import streamlit.components.v1 as components
+    components.html("""
+    <script>
+    (function injectAgGridScrollStyle() {
+        function tryInject() {
+            // Cari semua iframe di halaman
+            const iframes = window.parent.document.querySelectorAll('iframe');
+            let injected = false;
+            iframes.forEach(function(iframe) {
+                try {
+                    const doc = iframe.contentDocument || iframe.contentWindow.document;
+                    if (!doc) return;
+                    // Cek apakah ini iframe AgGrid (ada elemen ag-root-wrapper)
+                    if (!doc.querySelector('.ag-root-wrapper')) return;
+                    // Sudah pernah inject? Skip
+                    if (doc.getElementById('aggrid-hscroll-fix')) return;
+                    const style = doc.createElement('style');
+                    style.id = 'aggrid-hscroll-fix';
+                    style.textContent = `
+                        .ag-body-horizontal-scroll {
+                            display: block !important;
+                            height: 14px !important;
+                            min-height: 14px !important;
+                            visibility: visible !important;
+                            opacity: 1 !important;
+                            overflow: visible !important;
+                        }
+                        .ag-body-horizontal-scroll-viewport {
+                            overflow-x: scroll !important;
+                        }
+                        .ag-body-horizontal-scroll::-webkit-scrollbar { height: 12px; }
+                        .ag-body-horizontal-scroll::-webkit-scrollbar-track { background: #1f2937; }
+                        .ag-body-horizontal-scroll::-webkit-scrollbar-thumb {
+                            background: #6b7280; border-radius: 10px;
+                        }
+                        .ag-body-horizontal-scroll::-webkit-scrollbar-thumb:hover {
+                            background: #9ca3af;
+                        }
+                    `;
+                    doc.head.appendChild(style);
+                    injected = true;
+                } catch(e) {}
+            });
+            if (!injected) {
+                setTimeout(tryInject, 300);
+            }
+        }
+        setTimeout(tryInject, 500);
+    })();
+    </script>
+    """, height=0)
 
     # ===== AMBIL DATA HASIL FILTER =====
     filtered_df = pd.DataFrame(grid_response["data"])
@@ -992,36 +1031,40 @@ if "_reference_loaded" not in st.session_state:
 # CLEAN NUMERIC (ANTI NAN)
 # ===============================
 def clean_numeric(val):
+    """
+    Konversi nilai ke float.
+    Mendukung format Indonesia (koma desimal, titik ribuan).
+    Nilai IKPA valid: 0 – 120. Kalau hasil parsing > 120, anggap
+    belum dibagi 100 (Excel menyimpan mis. 9657 → 96.57).
+    """
     if pd.isna(val):
         return 0
 
-    # kalau sudah numeric → cek apakah perlu normalisasi
+    # Kalau sudah numerik, langsung normalisasi
     if isinstance(val, (int, float)):
         v = float(val)
-        # 🔥 FIX: Nilai IKPA max ~120. Kalau > 200 berarti belum dibagi 100
-        # (Excel menyimpan 9657 padahal seharusnya 96.57)
-        if v > 200:
-            v = v / 100.0
+        # Nilai IKPA tidak pernah > 120, jadi kalau > 120 pasti salah format
+        while v > 120:
+            v = v / 10.0
         return v
 
     val = str(val).strip().replace("%", "")
 
-    # 🔥 deteksi format
+    # Deteksi format desimal Indonesia
     if "," in val and "." in val:
-        # format Indonesia: 1.234,56
+        # 1.234,56 → 1234.56
         val = val.replace(".", "").replace(",", ".")
     elif "," in val:
-        # format: 88,98
+        # 88,98 → 88.98
         val = val.replace(",", ".")
-    # kalau cuma titik → biarkan (88.98)
+    # Kalau cuma titik → biarkan (88.98)
 
     val = re.sub(r"[^\d\.\-]", "", val)
 
     try:
         v = float(val)
-        # 🔥 FIX: sama seperti di atas, normalisasi kalau > 200
-        if v > 200:
-            v = v / 100.0
+        while v > 120:
+            v = v / 10.0
         return v
     except:
         return 0
