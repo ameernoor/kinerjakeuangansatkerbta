@@ -10463,6 +10463,7 @@ def page_admin():
 
                 month_preview = None
 
+                import re
                 # 1️⃣ Cari bulan di header (baris & kolom awal) — untuk raw OM-SPAN
                 for r in range(min(6, df_info.shape[0])):
                     for c in range(min(5, df_info.shape[1])):
