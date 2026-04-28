@@ -99,6 +99,70 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 
+st.markdown("""
+<style>
+
+/* ========================= */
+/* SCROLLBAR GLOBAL (HIJAU) */
+/* ========================= */
+
+/* Horizontal scrollbar (bawah) */
+.ag-body-horizontal-scroll::-webkit-scrollbar {
+    height: 12px;
+}
+
+.ag-body-horizontal-scroll::-webkit-scrollbar-track {
+    background: #111827;
+}
+
+.ag-body-horizontal-scroll::-webkit-scrollbar-thumb {
+    background: #22c55e;  /* HIJAU */
+    border-radius: 10px;
+}
+
+.ag-body-horizontal-scroll::-webkit-scrollbar-thumb:hover {
+    background: #16a34a;
+}
+
+/* Vertical scrollbar (kanan) */
+.ag-body-vertical-scroll::-webkit-scrollbar {
+    width: 12px;
+}
+
+.ag-body-vertical-scroll::-webkit-scrollbar-track {
+    background: #111827;
+}
+
+.ag-body-vertical-scroll::-webkit-scrollbar-thumb {
+    background: #22c55e;  /* HIJAU */
+    border-radius: 10px;
+}
+
+.ag-body-vertical-scroll::-webkit-scrollbar-thumb:hover {
+    background: #16a34a;
+}
+
+/* Paksa scroll horizontal selalu muncul */
+.ag-body-horizontal-scroll {
+    display: block !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+}
+
+/* Paksa scroll vertical aktif */
+.ag-body-vertical-scroll {
+    display: block !important;
+}
+
+/* Wrapper supaya bisa scroll */
+.ag-root-wrapper {
+    overflow: auto !important;
+}
+
+</style>
+""", unsafe_allow_html=True)
+
+
 # ===============================
 # SISTEM NOTIFIKASI LOADING
 # ===============================
