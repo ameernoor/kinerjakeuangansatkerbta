@@ -763,6 +763,46 @@ def render_table_pin_satker(df):
     )
 
     # =====================================================
+    # CUSTOM CSS — PAKSA SCROLL HORIZONTAL TAMPIL
+    # (custom_css masuk langsung ke iframe AgGrid, 100% andal)
+    # =====================================================
+    aggrid_custom_css = {
+        # Paksa scrollbar horizontal selalu tampil & terlihat
+        ".ag-body-horizontal-scroll": {
+            "display": "block !important",
+            "height": "14px !important",
+            "min-height": "14px !important",
+            "visibility": "visible !important",
+            "opacity": "1 !important",
+            "overflow": "visible !important",
+        },
+        ".ag-body-horizontal-scroll-viewport": {
+            "overflow-x": "scroll !important",
+        },
+        # Styling scrollbar (webkit)
+        ".ag-body-horizontal-scroll::-webkit-scrollbar": {
+            "height": "12px",
+        },
+        ".ag-body-horizontal-scroll::-webkit-scrollbar-track": {
+            "background": "#1f2937",
+        },
+        ".ag-body-horizontal-scroll::-webkit-scrollbar-thumb": {
+            "background": "#6b7280",
+            "border-radius": "10px",
+        },
+        ".ag-body-horizontal-scroll::-webkit-scrollbar-thumb:hover": {
+            "background": "#9ca3af",
+        },
+        # Pastikan container utama bisa scroll horizontal
+        ".ag-root-wrapper": {
+            "overflow-x": "auto !important",
+        },
+        ".ag-center-cols-container": {
+            "min-width": "100%",
+        },
+    }
+
+    # =====================================================
     # GRID
     # =====================================================
     grid_response = AgGrid(
@@ -774,63 +814,15 @@ def render_table_pin_satker(df):
         allow_unsafe_jscode=True,
         data_return_mode="FILTERED_AND_SORTED",
         update_mode="MODEL_CHANGED",
+        custom_css=aggrid_custom_css,
     )
 
     # =====================================================
-    # 🔥 INJECT CSS KE IFRAME AGGRID (SATU-SATUNYA CARA ANDAL)
-    # st.markdown tidak masuk iframe, pakai JS untuk menyuntikkan style
+    # CATATAN: Scroll horizontal kini ditangani lewat
+    # parameter custom_css di AgGrid() di atas.
+    # Metode ini lebih andal karena CSS masuk langsung
+    # ke dalam iframe AgGrid tanpa perlu JS injection.
     # =====================================================
-    import streamlit.components.v1 as components
-    components.html("""
-    <script>
-    (function injectAgGridScrollStyle() {
-        function tryInject() {
-            // Cari semua iframe di halaman
-            const iframes = window.parent.document.querySelectorAll('iframe');
-            let injected = false;
-            iframes.forEach(function(iframe) {
-                try {
-                    const doc = iframe.contentDocument || iframe.contentWindow.document;
-                    if (!doc) return;
-                    // Cek apakah ini iframe AgGrid (ada elemen ag-root-wrapper)
-                    if (!doc.querySelector('.ag-root-wrapper')) return;
-                    // Sudah pernah inject? Skip
-                    if (doc.getElementById('aggrid-hscroll-fix')) return;
-                    const style = doc.createElement('style');
-                    style.id = 'aggrid-hscroll-fix';
-                    style.textContent = `
-                        .ag-body-horizontal-scroll {
-                            display: block !important;
-                            height: 14px !important;
-                            min-height: 14px !important;
-                            visibility: visible !important;
-                            opacity: 1 !important;
-                            overflow: visible !important;
-                        }
-                        .ag-body-horizontal-scroll-viewport {
-                            overflow-x: scroll !important;
-                        }
-                        .ag-body-horizontal-scroll::-webkit-scrollbar { height: 12px; }
-                        .ag-body-horizontal-scroll::-webkit-scrollbar-track { background: #1f2937; }
-                        .ag-body-horizontal-scroll::-webkit-scrollbar-thumb {
-                            background: #6b7280; border-radius: 10px;
-                        }
-                        .ag-body-horizontal-scroll::-webkit-scrollbar-thumb:hover {
-                            background: #9ca3af;
-                        }
-                    `;
-                    doc.head.appendChild(style);
-                    injected = true;
-                } catch(e) {}
-            });
-            if (!injected) {
-                setTimeout(tryInject, 300);
-            }
-        }
-        setTimeout(tryInject, 500);
-    })();
-    </script>
-    """, height=0)
 
     # ===== AMBIL DATA HASIL FILTER =====
     filtered_df = pd.DataFrame(grid_response["data"])
