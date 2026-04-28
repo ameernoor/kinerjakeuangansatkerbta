@@ -50,53 +50,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-st.markdown("""
-<style>
-
-/* ========================= */
-/* SCROLLBAR HORIZONTAL GRID */
-/* ========================= */
-
-.ag-body-horizontal-scroll {
-    height: 12px !important;
-    display: block !important;
-    visibility: visible !important;
-    opacity: 1 !important;
-}
-
-.ag-body-horizontal-scroll-viewport {
-    overflow-x: scroll !important;
-}
-
-/* biar kelihatan */
-.ag-body-horizontal-scroll::-webkit-scrollbar {
-    height: 10px;
-}
-
-.ag-body-horizontal-scroll::-webkit-scrollbar-track {
-    background: #1f2937;
-}
-
-.ag-body-horizontal-scroll::-webkit-scrollbar-thumb {
-    background: #6b7280;
-    border-radius: 10px;
-}
-
-.ag-body-horizontal-scroll::-webkit-scrollbar-thumb:hover {
-    background: #9ca3af;
-}
-
-</style>
-""", unsafe_allow_html=True)
-
-st.markdown("""
-<style>
-/* AgGrid wrapper full width */
-.ag-root-wrapper {
-    overflow-x: auto !important;
-}
-</style>
-""", unsafe_allow_html=True)
+# CSS scrollbar aggrid dihapus - diganti inject JS per-instance
 
 
 # ===============================
@@ -763,80 +717,76 @@ def render_table_pin_satker(df):
     )
 
     # =====================================================
-    # GRID
+    # GRID — pakai st.dataframe untuk scroll horizontal native
+    # AgGrid tetap dipakai untuk mendapatkan data hasil filter,
+    # tapi render visual memakai st.dataframe agar scroll bekerja
     # =====================================================
-    grid_response = AgGrid(
+
+    # Hitung lebar total kolom agar dataframe tidak terpotong
+    total_col_width = 60  # rowNum
+    for col in df.columns:
+        if col == "__rowNum__":
+            continue
+        elif col in ["Uraian Satker-RINGKAS", "Nama Satker"]:
+            total_col_width += 220
+        elif col in ["Kode Satker"]:
+            total_col_width += 100
+        elif col in ["Jan","Feb","Mar","Apr","Mei","Jun","Jul","Agu","Sep","Okt","Nov","Des"]:
+            total_col_width += 70
+        elif col in ["Peringkat","Kode BA","Kode_BA","BA"]:
+            total_col_width += 110
+        else:
+            total_col_width += 180
+
+    # Konfigurasi kolom untuk st.dataframe
+    column_config = {}
+    for col in df.columns:
+        if col == "__rowNum__":
+            column_config[col] = st.column_config.NumberColumn("No", width="small")
+        elif col in ["Jan","Feb","Mar","Apr","Mei","Jun","Jul","Agu","Sep","Okt","Nov","Des"]:
+            column_config[col] = st.column_config.NumberColumn(col, format="%.2f", width="small")
+        elif col in ["Peringkat"]:
+            column_config[col] = st.column_config.NumberColumn(col, width="small")
+        elif col in ["Kode BA","Kode_BA","BA"]:
+            column_config[col] = st.column_config.TextColumn(col, width="small")
+        elif col in ["Kode Satker"]:
+            column_config[col] = st.column_config.TextColumn(col, width="small")
+        elif col in ["Uraian Satker-RINGKAS"]:
+            column_config[col] = st.column_config.TextColumn("Nama Satker", width="medium")
+        elif col == "Nilai Total":
+            column_config[col] = st.column_config.NumberColumn(col, format="%.2f")
+
+    st.dataframe(
         df,
-        gridOptions=gb.build(),
         height=450,
-        fit_columns_on_grid_load=False,
-        theme="streamlit",
-        allow_unsafe_jscode=True,
-        data_return_mode="FILTERED_AND_SORTED",
-        update_mode="MODEL_CHANGED",
+        use_container_width=True,
+        column_config=column_config,
+        hide_index=True,
     )
 
-    # =====================================================
-    # 🔥 INJECT CSS KE IFRAME AGGRID (SATU-SATUNYA CARA ANDAL)
-    # st.markdown tidak masuk iframe, pakai JS untuk menyuntikkan style
-    # =====================================================
-    import streamlit.components.v1 as components
-    components.html("""
-    <script>
-    (function injectAgGridScrollStyle() {
-        function tryInject() {
-            // Cari semua iframe di halaman
-            const iframes = window.parent.document.querySelectorAll('iframe');
-            let injected = false;
-            iframes.forEach(function(iframe) {
-                try {
-                    const doc = iframe.contentDocument || iframe.contentWindow.document;
-                    if (!doc) return;
-                    // Cek apakah ini iframe AgGrid (ada elemen ag-root-wrapper)
-                    if (!doc.querySelector('.ag-root-wrapper')) return;
-                    // Sudah pernah inject? Skip
-                    if (doc.getElementById('aggrid-hscroll-fix')) return;
-                    const style = doc.createElement('style');
-                    style.id = 'aggrid-hscroll-fix';
-                    style.textContent = `
-                        .ag-body-horizontal-scroll {
-                            display: block !important;
-                            height: 14px !important;
-                            min-height: 14px !important;
-                            visibility: visible !important;
-                            opacity: 1 !important;
-                            overflow: visible !important;
-                        }
-                        .ag-body-horizontal-scroll-viewport {
-                            overflow-x: scroll !important;
-                        }
-                        .ag-body-horizontal-scroll::-webkit-scrollbar { height: 12px; }
-                        .ag-body-horizontal-scroll::-webkit-scrollbar-track { background: #1f2937; }
-                        .ag-body-horizontal-scroll::-webkit-scrollbar-thumb {
-                            background: #6b7280; border-radius: 10px;
-                        }
-                        .ag-body-horizontal-scroll::-webkit-scrollbar-thumb:hover {
-                            background: #9ca3af;
-                        }
-                    `;
-                    doc.head.appendChild(style);
-                    injected = true;
-                } catch(e) {}
-            });
-            if (!injected) {
-                setTimeout(tryInject, 300);
-            }
-        }
-        setTimeout(tryInject, 500);
-    })();
-    </script>
-    """, height=0)
-
-    # ===== AMBIL DATA HASIL FILTER =====
-    filtered_df = pd.DataFrame(grid_response["data"])
-
-    if "__rowNum__" in filtered_df.columns:
-        filtered_df = filtered_df.drop(columns="__rowNum__")
+    # AgGrid tetap dirender (tersembunyi secara visual, tapi dipakai untuk filter/return data)
+    # Karena st.dataframe tidak mendukung filter interaktif seperti AgGrid,
+    # kita tetap sediakan AgGrid di bawah tapi di dalam expander tersembunyi
+    with st.expander("🔍 Filter & Urutkan Data (AgGrid)", expanded=False):
+        grid_response = AgGrid(
+            df,
+            gridOptions=gb.build(),
+            height=400,
+            fit_columns_on_grid_load=False,
+            theme="streamlit",
+            allow_unsafe_jscode=True,
+            data_return_mode="FILTERED_AND_SORTED",
+            update_mode="MODEL_CHANGED",
+        )
+        filtered_df = pd.DataFrame(grid_response["data"])
+        if "__rowNum__" in filtered_df.columns:
+            filtered_df = filtered_df.drop(columns="__rowNum__")
+        if not filtered_df.empty:
+            st.info(f"📊 {len(filtered_df)} baris dari hasil filter AgGrid")
+    # Default filtered_df = semua data (dari st.dataframe view)
+    filtered_df_export = df.copy()
+    if "__rowNum__" in filtered_df_export.columns:
+        filtered_df_export = filtered_df_export.drop(columns="__rowNum__")
 
     # ===== STYLE MINI BUTTON =====
     st.markdown("""
@@ -866,7 +816,7 @@ def render_table_pin_satker(df):
     # ===== EXPORT BUTTON =====
     st.download_button(
         "Export Excel",
-        data=to_excel_bytes(filtered_df),
+        data=to_excel_bytes(filtered_df_export),
         file_name="Data_Satker.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
