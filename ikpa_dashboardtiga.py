@@ -1021,21 +1021,20 @@ def clean_numeric(val):
     if pd.isna(val):
         return 0
 
+    # kalau sudah numeric → jangan disentuh lagi
     if isinstance(val, (int, float)):
         return float(val)
 
     val = str(val).strip().replace("%", "")
 
-    # Deteksi format Indonesia (ada koma sebagai desimal)
+    # 🔥 deteksi format
     if "," in val and "." in val:
-        # asumsi: titik = ribuan, koma = desimal
+        # format Indonesia: 1.234,56
         val = val.replace(".", "").replace(",", ".")
     elif "," in val:
-        # asumsi: koma = desimal
+        # format: 88,98
         val = val.replace(",", ".")
-    else:
-        # asumsi: format sudah benar (88.98)
-        pass
+    # kalau cuma titik → biarkan (88.98)
 
     val = re.sub(r"[^\d\.\-]", "", val)
 
@@ -8357,7 +8356,7 @@ def menu_ews_satker():
 
 
     # ======================================================
-    # 🔥 SHARED HEIGHT
+    # SHARED HEIGHT
     # ======================================================
     BAR_HEIGHT = 38
     BASE_HEIGHT = 260
@@ -8375,7 +8374,7 @@ def menu_ews_satker():
         df[col_up] = df[col_up].apply(clean_numeric).fillna(0)
 
     # ======================================================
-    # 🔥 KOLOM KIRI — UP TUP
+    # KOLOM KIRI — UP TUP
     # ======================================================
     with col1:
 
@@ -8392,7 +8391,7 @@ def menu_ews_satker():
 
         df_problem_up = get_problem(df_latest, "Pengelolaan UP dan TUP")
 
-        # 🔥 JIKA SUDAH OPTIMAL → TAMPILKAN NOTIF
+        # JIKA SUDAH OPTIMAL → TAMPILKAN NOTIF
         if df_problem_up.empty:
 
             st.markdown("""
@@ -8408,7 +8407,7 @@ def menu_ews_satker():
 
         else:
 
-            # 🔥 FIX NUMERIC
+            # FIX NUMERIC
             df_problem_up["Pengelolaan UP dan TUP"] = (
                 df_problem_up["Pengelolaan UP dan TUP"]
                 .apply(clean_numeric)
@@ -8444,7 +8443,7 @@ def menu_ews_satker():
 
 
     # ======================================================
-    # 🔥 KOLOM KANAN — CAPAIAN OUTPUT
+    # KOLOM KANAN — CAPAIAN OUTPUT
     # ======================================================
     with col2:
 
@@ -8476,7 +8475,7 @@ def menu_ews_satker():
 
         else:
 
-            # 🔥 FIX NUMERIC
+            # FIX NUMERIC
             df_problem_out["Capaian Output"] = (
                 df_problem_out["Capaian Output"]
                 .apply(clean_numeric)
@@ -8513,6 +8512,23 @@ def menu_ews_satker():
 
     warnings = []
 
+    NUMERIC_COLS = [
+        "Nilai Akhir (Nilai Total/Konversi Bobot)",
+        "Kualitas Perencanaan Anggaran",
+        "Kualitas Pelaksanaan Anggaran",
+        "Kualitas Hasil Pelaksanaan Anggaran",
+        "Revisi DIPA",
+        "Deviasi Halaman III DIPA",
+        "Penyerapan Anggaran",
+        "Belanja Kontraktual",
+        "Penyelesaian Tagihan",
+        "Pengelolaan UP dan TUP",
+        "Capaian Output",
+    ]
+
+    for col in NUMERIC_COLS:
+        if col in df_all.columns:
+            df_all[col] = df_all[col].apply(clean_numeric)
     
     # ===============================
     # 📈 ANALISIS TREN
