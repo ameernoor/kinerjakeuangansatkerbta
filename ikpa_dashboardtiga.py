@@ -107,10 +107,13 @@ def render_table_pin_satker(df):
     from st_aggrid import GridOptionsBuilder
     gb = GridOptionsBuilder.from_dataframe(df)
 
-    def calc_grid_height(df, row_height=45, header_height=40):
+    def calc_grid_height(df, row_height=45, header_height=40, max_height=700):
         min_rows = 5
         total_rows = max(len(df), min_rows)
-        return header_height + total_rows * row_height
+
+        height = header_height + total_rows * row_height
+
+        return min(height, max_height)  
     
     # =====================================================
     # ALIGNMENT OTOMATIS (CACHED)
@@ -813,7 +816,7 @@ def render_table_pin_satker(df):
     grid_response = AgGrid(
         df,
         gridOptions=_go,
-        height=calc_grid_height(df) + 50, 
+        height=calc_grid_height(df) + 20, 
         fit_columns_on_grid_load=False,
         theme="streamlit",
         allow_unsafe_jscode=True,
