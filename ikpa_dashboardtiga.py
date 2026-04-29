@@ -713,102 +713,29 @@ def render_table_pin_satker(df):
         domLayout="normal",
         alwaysShowHorizontalScroll=True,
         suppressHorizontalScroll=False,
-        suppressColumnVirtualisation=False,
         suppressSizeToFit=True,
         ensureDomOrder=True,
-        enableBrowserTooltips=True,
         getRowStyle=zebra_dark,
         headerHeight=40
     )
 
     # =====================================================
-    # CUSTOM CSS
+    # CUSTOM CSS (MINIMAL & AMAN)
     # =====================================================
     aggrid_custom_css = {
-
-        # Scrollbar vertikal
         ".ag-body-vertical-scroll::-webkit-scrollbar": {
             "width": "10px",
         },
         ".ag-body-vertical-scroll::-webkit-scrollbar-thumb": {
             "background": "#22c55e",
             "border-radius": "10px",
-        },
-
-        # Scrollbar horizontal
-        ".ag-body-horizontal-scroll": {
-            "display":     "block !important",
-            "overflow-x":  "scroll !important",
-            "height":      "14px !important",
-            "min-height":  "14px !important",
-            "visibility":  "visible !important",
-            "position":    "sticky !important",   # 🔥 FIX
-            "bottom":      "0 !important",        # 🔥 FIX
-            "z-index":     "10 !important",
-            "background":  "#1f2937",
-        },
-        ".ag-body-horizontal-scroll-viewport": {
-            "overflow-x":  "scroll !important",
-            "height":      "14px !important",
-            "min-height":  "14px !important",
-        },
-        ".ag-body-horizontal-scroll::-webkit-scrollbar": {
-            "height":   "14px",
-            "display":  "block",
-        },
-        ".ag-body-horizontal-scroll::-webkit-scrollbar-track": {
-            "background":    "#2a2a2a",
-            "border-radius": "7px",
-        },
-        ".ag-body-horizontal-scroll::-webkit-scrollbar-thumb": {
-            "background":    "#22c55e",
-            "border-radius": "7px",
-            "border":        "3px solid #2a2a2a",
-        },
-        ".ag-body-horizontal-scroll::-webkit-scrollbar-thumb:hover": {
-            "background": "#16a34a",
-        },
+        }
     }
 
     # =====================================================
     # GRID BUILD
     # =====================================================
     _go = gb.build()
-    _go["ensureDomOrder"] = True
-    _go["alwaysShowHorizontalScroll"] = True
-    _go["suppressHorizontalScroll"] = False
-    _go["suppressSizeToFit"] = True
-
-    # =====================================================
-    # 🔥 GLOBAL CSS FIX (WAJIB)
-    # =====================================================
-    st.markdown("""
-    <style>
-
-    /* paksa scroll horizontal */
-    .ag-root-wrapper {
-        overflow-x: auto !important;
-        padding-bottom: 40px !important;
-    }
-
-    /* viewport jangan motong */
-    .ag-body-viewport {
-        overflow-x: auto !important;
-        padding-bottom: 20px !important;
-    }
-
-    /* tambahan biar aman */
-    .ag-root {
-        padding-bottom: 30px !important;
-    }
-
-    /* STREAMLIT FIX (penting) */
-    .block-container {
-        padding-bottom: 80px !important;
-    }
-
-    </style>
-    """, unsafe_allow_html=True)
 
     # =====================================================
     # GRID RENDER
@@ -816,7 +743,7 @@ def render_table_pin_satker(df):
     grid_response = AgGrid(
         df,
         gridOptions=_go,
-        height=calc_grid_height(df) + 20, 
+        height=600,   # 🔥 FIX STABIL (jangan diubah dulu)
         fit_columns_on_grid_load=False,
         theme="streamlit",
         allow_unsafe_jscode=True,
@@ -825,10 +752,6 @@ def render_table_pin_satker(df):
         custom_css=aggrid_custom_css,
     )
 
-    # =====================================================
-    # SPACER (WAJIB BIAR GA KEPOTONG)
-    # =====================================================
-    st.markdown("<div style='height:60px'></div>", unsafe_allow_html=True)
 
 
     # ===== AMBIL DATA HASIL FILTER =====
