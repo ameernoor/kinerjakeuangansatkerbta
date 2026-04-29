@@ -102,6 +102,10 @@ def render_table_pin_satker(df):
 
     df = df.loc[:, ~df.columns.duplicated()].copy()
     df.insert(0, "__rowNum__", range(1, len(df) + 1))
+    
+     # 🔥 TAMBAHKAN INI
+    from st_aggrid import GridOptionsBuilder
+    gb = GridOptionsBuilder.from_dataframe(df)
 
     def calc_grid_height(df, row_height=45, header_height=40):
         min_rows = 5
