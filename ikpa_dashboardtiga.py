@@ -723,29 +723,6 @@ def render_table_pin_satker(df):
     # =====================================================
     aggrid_custom_css = {
 
-        # Scrollbar horizontal di dalam AgGrid
-        ".ag-body-horizontal-scroll": {
-            "display": "block !important",
-            "overflow-x": "auto !important",
-            "height": "14px !important",
-            "min-height": "14px !important",
-        },
-        ".ag-body-horizontal-scroll::-webkit-scrollbar": {
-            "height": "14px",
-            "display": "block",
-        },
-        ".ag-body-horizontal-scroll::-webkit-scrollbar-track": {
-            "background": "#2d2d2d",
-            "border-radius": "10px",
-        },
-        ".ag-body-horizontal-scroll::-webkit-scrollbar-thumb": {
-            "background": "#22c55e",
-            "border-radius": "10px",
-        },
-        ".ag-body-horizontal-scroll::-webkit-scrollbar-thumb:hover": {
-            "background": "#16a34a",
-        },
-
         # Scrollbar vertikal
         ".ag-body-vertical-scroll::-webkit-scrollbar": {
             "width": "10px",
@@ -755,30 +732,39 @@ def render_table_pin_satker(df):
             "border-radius": "10px",
         },
 
-        # Pastikan area scroll horizontal tidak di-clip
+        # Scrollbar horizontal — paksa tampil dan beri ukuran cukup
+        ".ag-body-horizontal-scroll": {
+            "display":     "block !important",
+            "overflow-x":  "scroll !important",
+            "height":      "16px !important",
+            "min-height":  "16px !important",
+            "max-height":  "16px !important",
+            "visibility":  "visible !important",
+            "opacity":     "1 !important",
+        },
         ".ag-body-horizontal-scroll-viewport": {
-            "overflow-x": "auto !important",
+            "overflow-x":  "scroll !important",
+            "height":      "16px !important",
+            "min-height":  "16px !important",
         },
-        ".ag-center-cols-viewport": {
-            "overflow-x": "hidden !important",
+        ".ag-body-horizontal-scroll::-webkit-scrollbar": {
+            "height":      "16px",
+            "display":     "block",
+        },
+        ".ag-body-horizontal-scroll::-webkit-scrollbar-track": {
+            "background":     "#2a2a2a",
+            "border-radius":  "8px",
+        },
+        ".ag-body-horizontal-scroll::-webkit-scrollbar-thumb": {
+            "background":     "#22c55e",
+            "border-radius":  "8px",
+            "border":         "3px solid #2a2a2a",
+        },
+        ".ag-body-horizontal-scroll::-webkit-scrollbar-thumb:hover": {
+            "background": "#16a34a",
         },
 
     }
-
-    # CSS Streamlit level luar — paksa iframe AgGrid tidak memotong scrollbar bawah
-    st.markdown("""
-    <style>
-    /* Paksa iframe AgGrid tampilkan scrollbar bawah tanpa terpotong */
-    iframe[title="st_aggrid.agGrid"] {
-        display: block !important;
-        overflow: visible !important;
-    }
-    /* Tambah padding bawah agar scrollbar tidak tertutup border container */
-    div[data-testid="stVerticalBlock"] > div:has(iframe[title="st_aggrid.agGrid"]) {
-        padding-bottom: 6px;
-    }
-    </style>
-    """, unsafe_allow_html=True)
 
     # =====================================================
     # GRID
@@ -786,7 +772,7 @@ def render_table_pin_satker(df):
     grid_response = AgGrid(
         df,
         gridOptions=gb.build(),
-        height=calc_grid_height(df) + 34,   # +34 = ruang untuk scrollbar horizontal
+        height=calc_grid_height(df) + 40,   # +40 beri ruang scrollbar horizontal
         fit_columns_on_grid_load=False,
         theme="streamlit",
         allow_unsafe_jscode=True,
@@ -794,6 +780,44 @@ def render_table_pin_satker(df):
         update_mode="MODEL_CHANGED",
         custom_css=aggrid_custom_css,
     )
+
+    # =====================================================
+    # INJECT CSS KE SEMUA IFRAME AGGRID (level Streamlit)
+    # Ini memaksa scrollbar horizontal muncul dari luar iframe
+    # =====================================================
+    st.markdown("""
+    <style>
+    /* Paksa semua iframe AgGrid tidak clip konten bawah */
+    iframe[title="st_aggrid.agGrid"] {
+        overflow: visible !important;
+        min-height: unset !important;
+    }
+    </style>
+    <script>
+    (function patchAgGridScroll() {
+        function patch() {
+            const frames = document.querySelectorAll('iframe[title="st_aggrid.agGrid"]');
+            frames.forEach(function(frame) {
+                try {
+                    const doc = frame.contentDocument || frame.contentWindow.document;
+                    const hScroll = doc.querySelector('.ag-body-horizontal-scroll');
+                    if (hScroll) {
+                        hScroll.style.setProperty('display',    'block',   'important');
+                        hScroll.style.setProperty('height',     '16px',    'important');
+                        hScroll.style.setProperty('min-height', '16px',    'important');
+                        hScroll.style.setProperty('visibility', 'visible', 'important');
+                        hScroll.style.setProperty('overflow-x', 'scroll',  'important');
+                    }
+                } catch(e) {}
+            });
+        }
+        // Jalankan setelah render selesai
+        setTimeout(patch, 500);
+        setTimeout(patch, 1500);
+        setTimeout(patch, 3000);
+    })();
+    </script>
+    """, unsafe_allow_html=True)
 
 
     # ===== AMBIL DATA HASIL FILTER =====
