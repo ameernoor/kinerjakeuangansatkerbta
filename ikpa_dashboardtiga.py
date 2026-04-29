@@ -2729,20 +2729,31 @@ def _detect_month_from_raw(df_raw):
     for r in range(min(6, df_raw.shape[0])):
         for c in range(min(5, df_raw.shape[1])):
             cell = str(df_raw.iloc[r, c]).upper().strip()
+            # Cek exact match dulu
             if cell in VALID_MONTHS:
                 return VALID_MONTHS[cell]
+            # Cari semua kandidat bulan dalam cell, ambil yang paling panjang (paling spesifik)
+            found = []
             for k, v in VALID_MONTHS.items():
-                if len(k) >= 4 and k in cell:
-                    return v
+                if len(k) >= 3 and k in cell:  # FIX: >= 3 agar MEI (3 huruf) terdeteksi
+                    found.append((len(k), v))
+            if found:
+                found.sort(reverse=True)  # ambil yang terpanjang = paling spesifik
+                return found[0][1]
     return None
 
 
 def _detect_month_from_filename(filename):
     """Cari nama bulan di nama file."""
     fname = str(filename).upper()
+    # Cari semua kandidat bulan dalam nama file, ambil yang paling panjang (paling spesifik)
+    found = []
     for k, v in VALID_MONTHS.items():
-        if len(k) >= 4 and k in fname:
-            return v
+        if len(k) >= 3 and k in fname:  # FIX: >= 3 agar MEI (3 huruf) terdeteksi
+            found.append((len(k), v))
+    if found:
+        found.sort(reverse=True)  # ambil yang terpanjang = paling spesifik
+        return found[0][1]
     return None
 
 
