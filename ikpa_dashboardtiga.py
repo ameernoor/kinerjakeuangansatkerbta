@@ -714,7 +714,7 @@ def render_table_pin_satker(df):
         suppressHorizontalScroll=False,
         suppressColumnVirtualisation=False,
         suppressSizeToFit=True,
-        ensureDomOrder=True,   
+        ensureDomOrder=True,
         enableBrowserTooltips=True,
         getRowStyle=zebra_dark,
         headerHeight=40
@@ -734,13 +734,17 @@ def render_table_pin_satker(df):
             "border-radius": "10px",
         },
 
-        # Scrollbar horizontal — paksa selalu tampil
+        # Scrollbar horizontal
         ".ag-body-horizontal-scroll": {
             "display":     "block !important",
             "overflow-x":  "scroll !important",
             "height":      "14px !important",
             "min-height":  "14px !important",
             "visibility":  "visible !important",
+            "position":    "sticky !important",   # 🔥 FIX
+            "bottom":      "0 !important",        # 🔥 FIX
+            "z-index":     "10 !important",
+            "background":  "#1f2937",
         },
         ".ag-body-horizontal-scroll-viewport": {
             "overflow-x":  "scroll !important",
@@ -766,7 +770,7 @@ def render_table_pin_satker(df):
     }
 
     # =====================================================
-    # GRID
+    # GRID BUILD
     # =====================================================
     _go = gb.build()
     _go["domLayout"] = "normal"
@@ -774,39 +778,45 @@ def render_table_pin_satker(df):
     _go["alwaysShowHorizontalScroll"] = True
     _go["suppressHorizontalScroll"] = False
     _go["suppressSizeToFit"] = True
-    
+
+    # =====================================================
+    # 🔥 GLOBAL CSS FIX (WAJIB)
+    # =====================================================
     st.markdown("""
     <style>
 
-    /* paksa grid bisa scroll horizontal */
+    /* paksa scroll horizontal */
     .ag-root-wrapper {
         overflow-x: auto !important;
+        padding-bottom: 40px !important;
     }
 
+    /* viewport jangan motong */
     .ag-body-viewport {
         overflow-x: auto !important;
-    }
-
-    /* scrollbar bawah selalu kelihatan & nempel */
-    .ag-body-horizontal-scroll {
-        position: sticky !important;
-        bottom: 0 !important;
-        z-index: 10 !important;
-        background: #1f2937 !important;
-    }
-
-    /* biar tidak ketutup */
-    .ag-root {
         padding-bottom: 20px !important;
+    }
+
+    /* tambahan biar aman */
+    .ag-root {
+        padding-bottom: 30px !important;
+    }
+
+    /* STREAMLIT FIX (penting) */
+    .block-container {
+        padding-bottom: 80px !important;
     }
 
     </style>
     """, unsafe_allow_html=True)
 
+    # =====================================================
+    # GRID RENDER
+    # =====================================================
     grid_response = AgGrid(
         df,
         gridOptions=_go,
-        height=calc_grid_height(df) + 140,
+        height=calc_grid_height(df) + 180,   # 🔥 FIX HEIGHT
         fit_columns_on_grid_load=False,
         theme="streamlit",
         allow_unsafe_jscode=True,
@@ -814,6 +824,11 @@ def render_table_pin_satker(df):
         update_mode="MODEL_CHANGED",
         custom_css=aggrid_custom_css,
     )
+
+    # =====================================================
+    # 🔥 SPACER (WAJIB BIAR GA KEPOTONG)
+    # =====================================================
+    st.markdown("<div style='height:60px'></div>", unsafe_allow_html=True)
 
 
     # ===== AMBIL DATA HASIL FILTER =====
