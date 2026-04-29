@@ -713,7 +713,8 @@ def render_table_pin_satker(df):
         alwaysShowHorizontalScroll=True,
         suppressHorizontalScroll=False,
         suppressColumnVirtualisation=False,
-        suppressSizeToFit=True,          # ← KUNCI: jangan auto-fit kolom ke lebar layar
+        suppressSizeToFit=True,
+        ensureDomOrder=True,   
         enableBrowserTooltips=True,
         getRowStyle=zebra_dark,
         headerHeight=40
@@ -768,14 +769,44 @@ def render_table_pin_satker(df):
     # GRID
     # =====================================================
     _go = gb.build()
+    _go["domLayout"] = "normal"
+    _go["ensureDomOrder"] = True
     _go["alwaysShowHorizontalScroll"] = True
     _go["suppressHorizontalScroll"] = False
     _go["suppressSizeToFit"] = True
+    
+    st.markdown("""
+    <style>
+
+    /* paksa grid bisa scroll horizontal */
+    .ag-root-wrapper {
+        overflow-x: auto !important;
+    }
+
+    .ag-body-viewport {
+        overflow-x: auto !important;
+    }
+
+    /* scrollbar bawah selalu kelihatan & nempel */
+    .ag-body-horizontal-scroll {
+        position: sticky !important;
+        bottom: 0 !important;
+        z-index: 10 !important;
+        background: #1f2937 !important;
+    }
+
+    /* biar tidak ketutup */
+    .ag-root {
+        padding-bottom: 20px !important;
+    }
+
+    </style>
+    """, unsafe_allow_html=True)
 
     grid_response = AgGrid(
         df,
         gridOptions=_go,
-        height=calc_grid_height(df) + 36,
+        height=calc_grid_height(df) + 140,
         fit_columns_on_grid_load=False,
         theme="streamlit",
         allow_unsafe_jscode=True,
