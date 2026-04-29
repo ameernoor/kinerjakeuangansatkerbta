@@ -2729,31 +2729,20 @@ def _detect_month_from_raw(df_raw):
     for r in range(min(6, df_raw.shape[0])):
         for c in range(min(5, df_raw.shape[1])):
             cell = str(df_raw.iloc[r, c]).upper().strip()
-            # Cek exact match dulu
             if cell in VALID_MONTHS:
                 return VALID_MONTHS[cell]
-            # Cari semua kandidat bulan dalam cell, ambil yang paling panjang (paling spesifik)
-            found = []
             for k, v in VALID_MONTHS.items():
-                if len(k) >= 3 and k in cell:  # FIX: >= 3 agar MEI (3 huruf) terdeteksi
-                    found.append((len(k), v))
-            if found:
-                found.sort(reverse=True)  # ambil yang terpanjang = paling spesifik
-                return found[0][1]
+                if len(k) >= 4 and k in cell:
+                    return v
     return None
 
 
 def _detect_month_from_filename(filename):
     """Cari nama bulan di nama file."""
     fname = str(filename).upper()
-    # Cari semua kandidat bulan dalam nama file, ambil yang paling panjang (paling spesifik)
-    found = []
     for k, v in VALID_MONTHS.items():
-        if len(k) >= 3 and k in fname:  # FIX: >= 3 agar MEI (3 huruf) terdeteksi
-            found.append((len(k), v))
-    if found:
-        found.sort(reverse=True)  # ambil yang terpanjang = paling spesifik
-        return found[0][1]
+        if len(k) >= 4 and k in fname:
+            return v
     return None
 
 
@@ -10432,79 +10421,82 @@ def page_admin():
                 uploaded_file_kppn.seek(0)
                 df_info = pd.read_excel(uploaded_file_kppn, header=None)
 
+                # FIX: Hapus key angka (1,2,...,12) dari MONTH_MAP karena angka-angka ini
+                # juga muncul di data (nomor urut, bobot, nilai) dan menyebabkan bulan salah terdeteksi.
+                # Deteksi bulan hanya dari nama bulan (teks), bukan angka.
                 MONTH_MAP = {
                     # JANUARI
-                    "JANUARI": "JANUARI", "JAN": "JANUARI", "1": "JANUARI", "01": "JANUARI",
+                    "JANUARI": "JANUARI", "JAN": "JANUARI",
 
                     # FEBRUARI
-                    "FEBRUARI": "FEBRUARI", "FEB": "FEBRUARI", "PEBRUARI": "FEBRUARI", "2": "FEBRUARI", "02": "FEBRUARI",
+                    "FEBRUARI": "FEBRUARI", "FEB": "FEBRUARI", "PEBRUARI": "FEBRUARI",
 
                     # MARET
-                    "MARET": "MARET", "MAR": "MARET", "3": "MARET", "03": "MARET",
+                    "MARET": "MARET", "MAR": "MARET",
 
                     # APRIL
-                    "APRIL": "APRIL", "APR": "APRIL", "4": "APRIL", "04": "APRIL",
+                    "APRIL": "APRIL", "APR": "APRIL",
 
-                    # 🔥 MEI (INI YANG PALING PENTING)
-                    "MEI": "MEI",
-                    "MAY": "MEI",
-                    "5": "MEI", "05": "MEI",
+                    # MEI
+                    "MEI": "MEI", "MAY": "MEI",
 
                     # JUNI
-                    "JUNI": "JUNI", "JUN": "JUNI", "6": "JUNI", "06": "JUNI",
+                    "JUNI": "JUNI", "JUN": "JUNI",
 
                     # JULI
-                    "JULI": "JULI", "JUL": "JULI", "7": "JULI", "07": "JULI",
+                    "JULI": "JULI", "JUL": "JULI",
 
                     # AGUSTUS
-                    "AGUSTUS": "AGUSTUS", "AGT": "AGUSTUS", "AGS": "AGUSTUS", "8": "AGUSTUS", "08": "AGUSTUS",
+                    "AGUSTUS": "AGUSTUS", "AGT": "AGUSTUS", "AGS": "AGUSTUS",
 
                     # SEPTEMBER
-                    "SEPTEMBER": "SEPTEMBER", "SEP": "SEPTEMBER", "9": "SEPTEMBER", "09": "SEPTEMBER",
+                    "SEPTEMBER": "SEPTEMBER", "SEP": "SEPTEMBER", "SEPT": "SEPTEMBER",
 
                     # OKTOBER
-                    "OKTOBER": "OKTOBER", "OKT": "OKTOBER", "10": "OKTOBER",
+                    "OKTOBER": "OKTOBER", "OKT": "OKTOBER",
 
                     # NOVEMBER
-                    "NOVEMBER": "NOVEMBER", "NOV": "NOVEMBER", "NOPEMBER": "NOVEMBER", "11": "NOVEMBER",
+                    "NOVEMBER": "NOVEMBER", "NOV": "NOVEMBER", "NOPEMBER": "NOVEMBER",
 
                     # DESEMBER
-                    "DESEMBER": "DESEMBER", "DES": "DESEMBER", "12": "DESEMBER"
+                    "DESEMBER": "DESEMBER", "DES": "DESEMBER",
                 }
 
                 import re  # pastikan ada ini di atas kalau belum
 
-                month_candidates = []
+                month_preview = None
 
-                # 1️⃣ Scan semua kemungkinan bulan (jangan langsung break)
+                # 1️⃣ Scan header (6 baris pertama, 5 kolom pertama) — HANYA teks, bukan angka murni
                 for r in range(min(6, df_info.shape[0])):
                     for c in range(min(5, df_info.shape[1])):
-                        cell = str(df_info.iloc[r, c]).upper().strip()
+                        raw = str(df_info.iloc[r, c]).strip()
 
-                        # bersihin tahun (contoh: MEI 2023)
+                        # Lewati cell yang isinya angka murni (nomor urut, bobot, nilai)
+                        if re.fullmatch(r'[\d\.\,\%\s]+', raw):
+                            continue
+
+                        cell = raw.upper()
+                        # Hapus tahun 4 digit supaya tidak mengganggu
                         cell = re.sub(r'\d{4}', '', cell).strip()
 
-                        # exact match
+                        # Exact match (seluruh cell = nama bulan)
                         if cell in MONTH_MAP:
-                            month_candidates.append(MONTH_MAP[cell])
+                            month_preview = MONTH_MAP[cell]
+                            break
 
-                        # substring match
+                        # Substring match: cari nama bulan di dalam cell (min 3 huruf agar MEI terdeteksi)
+                        found = []
                         for k, v in MONTH_MAP.items():
-                            if len(k) >= 4 and k in cell:
-                                month_candidates.append(v)
+                            if len(k) >= 3 and k in cell:
+                                found.append((len(k), v))
+                        if found:
+                            # Ambil yang paling panjang = paling spesifik
+                            found.sort(reverse=True)
+                            month_preview = found[0][1]
+                            break
 
-                # 2️⃣ Tentukan bulan paling benar
-                if month_candidates:
-                    MONTH_ORDER = {
-                        "JANUARI": 1, "FEBRUARI": 2, "MARET": 3, "APRIL": 4,
-                        "MEI": 5, "JUNI": 6, "JULI": 7, "AGUSTUS": 8,
-                        "SEPTEMBER": 9, "OKTOBER": 10, "NOVEMBER": 11, "DESEMBER": 12
-                    }
-
-                    # ambil bulan terbesar (biasanya bulan laporan terbaru)
-                    month_preview = max(month_candidates, key=lambda x: MONTH_ORDER.get(x, 0))
-                else:
-                    month_preview = None
+                    if month_preview:
+                        break
 
                 # 2️⃣ Cari dari kolom "Bulan" jika format FLAT
                 # (file sudah diproses sebelumnya, punya kolom Bulan)
@@ -10523,10 +10515,14 @@ def page_admin():
                 # 3️⃣ Fallback: cari di nama file
                 if not month_preview:
                     fname = uploaded_file_kppn.name.upper()
+                    fname = re.sub(r'\d{4}', '', fname)  # hapus tahun
+                    found = []
                     for k, v in MONTH_MAP.items():
-                        if len(k) >= 4 and k in fname:
-                            month_preview = v
-                            break
+                        if len(k) >= 3 and k in fname:
+                            found.append((len(k), v))
+                    if found:
+                        found.sort(reverse=True)
+                        month_preview = found[0][1]
 
                 # 4️⃣ Final fallback
                 if not month_preview:
