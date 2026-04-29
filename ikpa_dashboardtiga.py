@@ -736,6 +736,14 @@ def render_table_pin_satker(df):
     # GRID BUILD
     # =====================================================
     _go = gb.build()
+    
+    st.markdown("""
+    <style>
+    .ag-center-cols-viewport {
+        overflow-x: auto !important;
+    }
+    </style>
+    """, unsafe_allow_html=True)
 
     # =====================================================
     # GRID RENDER
@@ -743,7 +751,7 @@ def render_table_pin_satker(df):
     grid_response = AgGrid(
         df,
         gridOptions=_go,
-        height=600,   # 🔥 FIX STABIL (jangan diubah dulu)
+        height=650,  
         fit_columns_on_grid_load=False,
         theme="streamlit",
         allow_unsafe_jscode=True,
