@@ -769,14 +769,96 @@ def render_table_pin_satker(df):
     grid_response = AgGrid(
         df,
         gridOptions=gb.build(),
-        height=calc_grid_height(df) + 36,   # +36 ruang scrollbar horizontal
-        fit_columns_on_grid_load=False,      # ← JANGAN fit, biar ada overflow
+        height=calc_grid_height(df) + 36,
+        fit_columns_on_grid_load=False,
         theme="streamlit",
         allow_unsafe_jscode=True,
         data_return_mode="FILTERED_AND_SORTED",
         update_mode="MODEL_CHANGED",
         custom_css=aggrid_custom_css,
     )
+
+    # =====================================================
+    # PAKSA SCROLLBAR HORIZONTAL TAMPIL
+    # Gunakan components.html agar CSS masuk ke parent
+    # document (bukan iframe) — satu-satunya cara yang
+    # bekerja di Streamlit Cloud tanpa JS
+    # =====================================================
+    components.html("""
+    <style>
+        /* Target iframe AgGrid di parent Streamlit */
+        .stApp iframe[title="st_aggrid.agGrid"] {
+            min-height: unset !important;
+        }
+    </style>
+    <script>
+        (function() {
+            function fixScroll() {
+                // Cari semua iframe AgGrid di halaman
+                var frames = window.parent.document.querySelectorAll('iframe[title="st_aggrid.agGrid"]');
+                frames.forEach(function(frame) {
+                    try {
+                        var doc = frame.contentDocument || frame.contentWindow.document;
+                        // Cari elemen scrollbar horizontal
+                        var hScroll = doc.querySelector('.ag-body-horizontal-scroll');
+                        var hViewport = doc.querySelector('.ag-body-horizontal-scroll-viewport');
+                        var hContainer = doc.querySelector('.ag-body-horizontal-scroll-container');
+
+                        if (hScroll) {
+                            hScroll.style.cssText += ';display:block!important;height:16px!important;min-height:16px!important;visibility:visible!important;overflow-x:scroll!important;';
+                        }
+                        if (hViewport) {
+                            hViewport.style.cssText += ';overflow-x:scroll!important;height:16px!important;min-height:16px!important;';
+                        }
+
+                        // Tambah style tag ke dalam iframe
+                        var style = doc.getElementById('hscroll-fix');
+                        if (!style) {
+                            style = doc.createElement('style');
+                            style.id = 'hscroll-fix';
+                            style.textContent = `
+                                .ag-body-horizontal-scroll {
+                                    display: block !important;
+                                    height: 16px !important;
+                                    min-height: 16px !important;
+                                    visibility: visible !important;
+                                    overflow-x: scroll !important;
+                                }
+                                .ag-body-horizontal-scroll-viewport {
+                                    overflow-x: scroll !important;
+                                    height: 16px !important;
+                                    min-height: 16px !important;
+                                }
+                                .ag-body-horizontal-scroll::-webkit-scrollbar {
+                                    height: 16px !important;
+                                    display: block !important;
+                                }
+                                .ag-body-horizontal-scroll::-webkit-scrollbar-track {
+                                    background: #2a2a2a;
+                                    border-radius: 8px;
+                                }
+                                .ag-body-horizontal-scroll::-webkit-scrollbar-thumb {
+                                    background: #22c55e;
+                                    border-radius: 8px;
+                                    border: 3px solid #2a2a2a;
+                                }
+                                .ag-body-horizontal-scroll::-webkit-scrollbar-thumb:hover {
+                                    background: #16a34a;
+                                }
+                            `;
+                            doc.head.appendChild(style);
+                        }
+                    } catch(e) {}
+                });
+            }
+            // Jalankan beberapa kali untuk antisipasi render lambat
+            setTimeout(fixScroll, 300);
+            setTimeout(fixScroll, 800);
+            setTimeout(fixScroll, 1800);
+            setTimeout(fixScroll, 3500);
+        })();
+    </script>
+    """, height=0, scrolling=False)
 
 
     # ===== AMBIL DATA HASIL FILTER =====
