@@ -712,14 +712,14 @@ def render_table_pin_satker(df):
         alwaysShowHorizontalScroll=True,
         suppressHorizontalScroll=False,
         suppressColumnVirtualisation=False,
+        suppressSizeToFit=True,          # ← KUNCI: jangan auto-fit kolom ke lebar layar
         enableBrowserTooltips=True,
         getRowStyle=zebra_dark,
         headerHeight=40
     )
 
     # =====================================================
-    # CUSTOM CSS — PAKSA SCROLL HORIZONTAL TAMPIL
-    # (custom_css masuk langsung ke iframe AgGrid, 100% andal)
+    # CUSTOM CSS
     # =====================================================
     aggrid_custom_css = {
 
@@ -732,38 +732,35 @@ def render_table_pin_satker(df):
             "border-radius": "10px",
         },
 
-        # Scrollbar horizontal — paksa tampil dan beri ukuran cukup
+        # Scrollbar horizontal — paksa selalu tampil
         ".ag-body-horizontal-scroll": {
             "display":     "block !important",
             "overflow-x":  "scroll !important",
-            "height":      "16px !important",
-            "min-height":  "16px !important",
-            "max-height":  "16px !important",
+            "height":      "14px !important",
+            "min-height":  "14px !important",
             "visibility":  "visible !important",
-            "opacity":     "1 !important",
         },
         ".ag-body-horizontal-scroll-viewport": {
             "overflow-x":  "scroll !important",
-            "height":      "16px !important",
-            "min-height":  "16px !important",
+            "height":      "14px !important",
+            "min-height":  "14px !important",
         },
         ".ag-body-horizontal-scroll::-webkit-scrollbar": {
-            "height":      "16px",
-            "display":     "block",
+            "height":   "14px",
+            "display":  "block",
         },
         ".ag-body-horizontal-scroll::-webkit-scrollbar-track": {
-            "background":     "#2a2a2a",
-            "border-radius":  "8px",
+            "background":    "#2a2a2a",
+            "border-radius": "7px",
         },
         ".ag-body-horizontal-scroll::-webkit-scrollbar-thumb": {
-            "background":     "#22c55e",
-            "border-radius":  "8px",
-            "border":         "3px solid #2a2a2a",
+            "background":    "#22c55e",
+            "border-radius": "7px",
+            "border":        "3px solid #2a2a2a",
         },
         ".ag-body-horizontal-scroll::-webkit-scrollbar-thumb:hover": {
             "background": "#16a34a",
         },
-
     }
 
     # =====================================================
@@ -772,52 +769,14 @@ def render_table_pin_satker(df):
     grid_response = AgGrid(
         df,
         gridOptions=gb.build(),
-        height=calc_grid_height(df) + 40,   # +40 beri ruang scrollbar horizontal
-        fit_columns_on_grid_load=False,
+        height=calc_grid_height(df) + 36,   # +36 ruang scrollbar horizontal
+        fit_columns_on_grid_load=False,      # ← JANGAN fit, biar ada overflow
         theme="streamlit",
         allow_unsafe_jscode=True,
         data_return_mode="FILTERED_AND_SORTED",
         update_mode="MODEL_CHANGED",
         custom_css=aggrid_custom_css,
     )
-
-    # =====================================================
-    # INJECT CSS KE SEMUA IFRAME AGGRID (level Streamlit)
-    # Ini memaksa scrollbar horizontal muncul dari luar iframe
-    # =====================================================
-    st.markdown("""
-    <style>
-    /* Paksa semua iframe AgGrid tidak clip konten bawah */
-    iframe[title="st_aggrid.agGrid"] {
-        overflow: visible !important;
-        min-height: unset !important;
-    }
-    </style>
-    <script>
-    (function patchAgGridScroll() {
-        function patch() {
-            const frames = document.querySelectorAll('iframe[title="st_aggrid.agGrid"]');
-            frames.forEach(function(frame) {
-                try {
-                    const doc = frame.contentDocument || frame.contentWindow.document;
-                    const hScroll = doc.querySelector('.ag-body-horizontal-scroll');
-                    if (hScroll) {
-                        hScroll.style.setProperty('display',    'block',   'important');
-                        hScroll.style.setProperty('height',     '16px',    'important');
-                        hScroll.style.setProperty('min-height', '16px',    'important');
-                        hScroll.style.setProperty('visibility', 'visible', 'important');
-                        hScroll.style.setProperty('overflow-x', 'scroll',  'important');
-                    }
-                } catch(e) {}
-            });
-        }
-        // Jalankan setelah render selesai
-        setTimeout(patch, 500);
-        setTimeout(patch, 1500);
-        setTimeout(patch, 3000);
-    })();
-    </script>
-    """, unsafe_allow_html=True)
 
 
     # ===== AMBIL DATA HASIL FILTER =====
