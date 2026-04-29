@@ -103,7 +103,7 @@ def render_table_pin_satker(df):
     df = df.loc[:, ~df.columns.duplicated()].copy()
     df.insert(0, "__rowNum__", range(1, len(df) + 1))
 
-    def calc_grid_height(df, row_height=45, header_height=40, max_height=600):
+    def calc_grid_height(df, row_height=45, header_height=40, max_height=1000):
         min_rows = 5
 
         total_rows = max(len(df), min_rows)
@@ -773,7 +773,6 @@ def render_table_pin_satker(df):
     # GRID BUILD
     # =====================================================
     _go = gb.build()
-    _go["domLayout"] = "normal"
     _go["ensureDomOrder"] = True
     _go["alwaysShowHorizontalScroll"] = True
     _go["suppressHorizontalScroll"] = False
@@ -816,7 +815,7 @@ def render_table_pin_satker(df):
     grid_response = AgGrid(
         df,
         gridOptions=_go,
-        height=calc_grid_height(df) + 180,   # 🔥 FIX HEIGHT
+        height=calc_grid_height(df) + 120, 
         fit_columns_on_grid_load=False,
         theme="streamlit",
         allow_unsafe_jscode=True,
@@ -826,7 +825,7 @@ def render_table_pin_satker(df):
     )
 
     # =====================================================
-    # 🔥 SPACER (WAJIB BIAR GA KEPOTONG)
+    # SPACER (WAJIB BIAR GA KEPOTONG)
     # =====================================================
     st.markdown("<div style='height:60px'></div>", unsafe_allow_html=True)
 
