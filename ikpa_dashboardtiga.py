@@ -711,13 +711,18 @@ def render_table_pin_satker(df):
     # =====================================================
     gb.configure_grid_options(
         domLayout="normal",
+
         alwaysShowHorizontalScroll=True,
         suppressHorizontalScroll=False,
+
         suppressSizeToFit=True,
+        suppressColumnVirtualisation=False,
+
         ensureDomOrder=True,
         getRowStyle=zebra_dark,
         headerHeight=40
     )
+    
 
     # =====================================================
     # CUSTOM CSS (MINIMAL & AMAN)
@@ -739,11 +744,32 @@ def render_table_pin_satker(df):
     
     st.markdown("""
     <style>
+
+    .ag-body-horizontal-scroll {
+        height: 12px !important;
+        display: block !important;
+    }
+
+    .ag-body-horizontal-scroll::-webkit-scrollbar {
+        height: 10px;
+    }
+
+    .ag-body-horizontal-scroll::-webkit-scrollbar-thumb {
+        background: #22c55e;
+        border-radius: 10px;
+    }
+
+    .ag-body-horizontal-scroll::-webkit-scrollbar-track {
+        background: #1f2937;
+    }
+
     .ag-center-cols-viewport {
         overflow-x: auto !important;
     }
+
     </style>
     """, unsafe_allow_html=True)
+    
 
     # =====================================================
     # GRID RENDER
