@@ -1021,8 +1021,38 @@ MONTH_MAP = {
 }
 
 def normalize_month(val):
-    val = str(val).strip()
-    return MONTH_MAP.get(val, safe_upper(val))
+    val = str(val).strip().upper()
+
+    # 🔥 bersihin angka & karakter aneh
+    val = re.sub(r'[^A-Z]', '', val)
+
+    # mapping aman
+    if val.startswith("JAN"):
+        return "JANUARI"
+    elif val.startswith("FEB"):
+        return "FEBRUARI"
+    elif val.startswith("MAR"):
+        return "MARET"
+    elif val.startswith("APR"):
+        return "APRIL"
+    elif val.startswith("MEI"):
+        return "MEI"
+    elif val.startswith("JUN"):
+        return "JUNI"
+    elif val.startswith("JUL"):
+        return "JULI"
+    elif val.startswith("AGU"):
+        return "AGUSTUS"
+    elif val.startswith("SEP"):
+        return "SEPTEMBER"
+    elif val.startswith("OKT"):
+        return "OKTOBER"
+    elif val.startswith("NOV"):
+        return "NOVEMBER"
+    elif val.startswith("DES"):
+        return "DESEMBER"
+
+    return val
 
 
 def fix_ikpa_header(df_raw):
