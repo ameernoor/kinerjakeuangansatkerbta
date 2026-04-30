@@ -102,18 +102,17 @@ def render_table_pin_satker(df):
 
     df = df.loc[:, ~df.columns.duplicated()].copy()
     df.insert(0, "__rowNum__", range(1, len(df) + 1))
-    
-     # 🔥 TAMBAHKAN INI
-    from st_aggrid import GridOptionsBuilder
-    gb = GridOptionsBuilder.from_dataframe(df)
 
-    def calc_grid_height(df, row_height=45, header_height=40, max_height=700):
+    def calc_grid_height(df, row_height=45, header_height=40, max_height=600):
         min_rows = 5
+
         total_rows = max(len(df), min_rows)
 
         height = header_height + total_rows * row_height
 
-        return min(height, max_height)  
+        return min(height, max_height)
+
+    gb = GridOptionsBuilder.from_dataframe(df)
     
     # =====================================================
     # ALIGNMENT OTOMATIS (CACHED)
@@ -622,7 +621,7 @@ def render_table_pin_satker(df):
         resizable=True,
         sortable=True,
         filter=True,
-        minWidth=170
+        minWidth=150   
     )
 
     # =====================================================
@@ -637,8 +636,7 @@ def render_table_pin_satker(df):
         if col in df.columns:
             gb.configure_column(
                 col,
-                width=90,
-                minWidth=90,
+                width=70,   # 🔥 FIX (pakai width, bukan min/max)
                 cellStyle={"textAlign": "right"}
             )
 
@@ -713,45 +711,82 @@ def render_table_pin_satker(df):
         domLayout="normal",
         alwaysShowHorizontalScroll=True,
         suppressHorizontalScroll=False,
-        suppressSizeToFit=True,
-        ensureDomOrder=True,
+        suppressColumnVirtualisation=False,
+        enableBrowserTooltips=True,
         getRowStyle=zebra_dark,
         headerHeight=40
     )
 
     # =====================================================
-    # CUSTOM CSS (MINIMAL & AMAN)
+    # CUSTOM CSS — PAKSA SCROLL HORIZONTAL TAMPIL
+    # (custom_css masuk langsung ke iframe AgGrid, 100% andal)
     # =====================================================
     aggrid_custom_css = {
+
+        # Scrollbar horizontal di dalam AgGrid
+        ".ag-body-horizontal-scroll": {
+            "display": "block !important",
+            "overflow-x": "auto !important",
+            "height": "14px !important",
+            "min-height": "14px !important",
+        },
+        ".ag-body-horizontal-scroll::-webkit-scrollbar": {
+            "height": "14px",
+            "display": "block",
+        },
+        ".ag-body-horizontal-scroll::-webkit-scrollbar-track": {
+            "background": "#2d2d2d",
+            "border-radius": "10px",
+        },
+        ".ag-body-horizontal-scroll::-webkit-scrollbar-thumb": {
+            "background": "#22c55e",
+            "border-radius": "10px",
+        },
+        ".ag-body-horizontal-scroll::-webkit-scrollbar-thumb:hover": {
+            "background": "#16a34a",
+        },
+
+        # Scrollbar vertikal
         ".ag-body-vertical-scroll::-webkit-scrollbar": {
             "width": "10px",
         },
         ".ag-body-vertical-scroll::-webkit-scrollbar-thumb": {
             "background": "#22c55e",
             "border-radius": "10px",
-        }
+        },
+
+        # Pastikan area scroll horizontal tidak di-clip
+        ".ag-body-horizontal-scroll-viewport": {
+            "overflow-x": "auto !important",
+        },
+        ".ag-center-cols-viewport": {
+            "overflow-x": "hidden !important",
+        },
+
     }
 
-    # =====================================================
-    # GRID BUILD
-    # =====================================================
-    _go = gb.build()
-    
+    # CSS Streamlit level luar — paksa iframe AgGrid tidak memotong scrollbar bawah
     st.markdown("""
     <style>
-    .ag-center-cols-viewport {
-        overflow-x: auto !important;
+    /* Paksa iframe AgGrid tampilkan scrollbar bawah tanpa terpotong */
+    iframe[title="st_aggrid.agGrid"] {
+        display: block !important;
+        overflow: visible !important;
+    }
+    /* Tambah padding bawah agar scrollbar tidak tertutup border container */
+    div[data-testid="stVerticalBlock"] > div:has(iframe[title="st_aggrid.agGrid"]) {
+        padding-bottom: 6px;
     }
     </style>
     """, unsafe_allow_html=True)
 
     # =====================================================
-    # GRID RENDER
+    # GRID
     # =====================================================
     grid_response = AgGrid(
         df,
-        gridOptions=_go,
-        height=650,  
+        gridOptions=gb.build(),
+        height=calc_grid_height(df) + 34,   # +34 = ruang untuk scrollbar horizontal
         fit_columns_on_grid_load=False,
         theme="streamlit",
         allow_unsafe_jscode=True,
@@ -759,7 +794,6 @@ def render_table_pin_satker(df):
         update_mode="MODEL_CHANGED",
         custom_css=aggrid_custom_css,
     )
-
 
 
     # ===== AMBIL DATA HASIL FILTER =====
@@ -830,6 +864,7 @@ MONTH_ORDER = {
 TEMPLATE_PATH = r"C:\Users\KEMENKEU\Desktop\INDIKATOR PELAKSANAAN ANGGARAN.xlsx"
 
 def detect_ikpa_type(df_raw):
+    
     text = " ".join(
         df_raw.astype(str)
         .iloc[:5]
@@ -840,7 +875,7 @@ def detect_ikpa_type(df_raw):
     if "KODE SATKER" in text:
         return "SATKER"
 
-    elif "KPPN" in text or "KODE KPPN" in text:
+    elif "KPPN" in text:
         return "KPPN"
 
     else:
@@ -1021,38 +1056,8 @@ MONTH_MAP = {
 }
 
 def normalize_month(val):
-    val = str(val).strip().upper()
-
-    # 🔥 bersihin angka & karakter aneh
-    val = re.sub(r'[^A-Z]', '', val)
-
-    # mapping aman
-    if val.startswith("JAN"):
-        return "JANUARI"
-    elif val.startswith("FEB"):
-        return "FEBRUARI"
-    elif val.startswith("MAR"):
-        return "MARET"
-    elif val.startswith("APR"):
-        return "APRIL"
-    elif val.startswith("MEI"):
-        return "MEI"
-    elif val.startswith("JUN"):
-        return "JUNI"
-    elif val.startswith("JUL"):
-        return "JULI"
-    elif val.startswith("AGU"):
-        return "AGUSTUS"
-    elif val.startswith("SEP"):
-        return "SEPTEMBER"
-    elif val.startswith("OKT"):
-        return "OKTOBER"
-    elif val.startswith("NOV"):
-        return "NOVEMBER"
-    elif val.startswith("DES"):
-        return "DESEMBER"
-
-    return val
+    val = str(val).strip()
+    return MONTH_MAP.get(val, safe_upper(val))
 
 
 def fix_ikpa_header(df_raw):
@@ -1191,68 +1196,6 @@ def fix_ikpa_header(df_raw):
         return None
 
     return None
-
-def fix_ikpa_kppn(df_raw):
-    df = df_raw.copy()
-
-    # ===============================
-    # HEADER LANGSUNG BARIS PERTAMA
-    # ===============================
-    df.columns = df.iloc[0]
-    df = df.iloc[1:].reset_index(drop=True)
-
-    # ===============================
-    # RENAME KOLOM (SESUAI POSISI)
-    # ===============================
-    rename_map = {}
-
-    cols = list(df.columns)
-
-    if len(cols) >= 16:
-        rename_map = {
-            cols[0]: "No",
-            cols[1]: "Kode KPPN",
-            cols[2]: "KPPN",
-            cols[3]: "Revisi DIPA",
-            cols[4]: "Deviasi Halaman III DIPA",
-            cols[5]: "Penyerapan Anggaran",
-            cols[6]: "Belanja Kontraktual",
-            cols[7]: "Penyelesaian Tagihan",
-            cols[8]: "Pengelolaan UP dan TUP",
-            cols[9]: "Capaian Output",
-            cols[10]: "Nilai Total",
-            cols[11]: "Konversi Bobot",
-            cols[12]: "Dispensasi SPM (Pengurangan)",
-            cols[13]: "Nilai Akhir (Nilai Total/Konversi Bobot)",
-            cols[14]: "Bulan",
-            cols[15]: "Tahun"
-        }
-
-    df = df.rename(columns=rename_map)
-
-    # ===============================
-    # CLEAN NUMERIC
-    # ===============================
-    numeric_cols = [
-        "Revisi DIPA",
-        "Deviasi Halaman III DIPA",
-        "Penyerapan Anggaran",
-        "Belanja Kontraktual",
-        "Penyelesaian Tagihan",
-        "Pengelolaan UP dan TUP",
-        "Capaian Output",
-        "Nilai Total",
-        "Konversi Bobot",
-        "Dispensasi SPM (Pengurangan)",
-        "Nilai Akhir (Nilai Total/Konversi Bobot)"
-    ]
-
-    for col in numeric_cols:
-        if col in df.columns:
-            df[col] = df[col].apply(clean_numeric)
-
-    return df
-
 
 def detect_columns(df_raw):
     
@@ -3633,6 +3576,7 @@ def load_data_from_github(_cache_buster: int = 0):
     return data_storage
 
 # load data ikpa kppn
+@st.cache_data(show_spinner=False, ttl=300)
 @st.cache_data(show_spinner=False, ttl=300)
 def load_data_ikpa_kppn_from_github():
     from github import Github, Auth
