@@ -102,17 +102,18 @@ def render_table_pin_satker(df):
 
     df = df.loc[:, ~df.columns.duplicated()].copy()
     df.insert(0, "__rowNum__", range(1, len(df) + 1))
+    
+     # 🔥 TAMBAHKAN INI
+    from st_aggrid import GridOptionsBuilder
+    gb = GridOptionsBuilder.from_dataframe(df)
 
-    def calc_grid_height(df, row_height=45, header_height=40, max_height=600):
+    def calc_grid_height(df, row_height=45, header_height=40, max_height=700):
         min_rows = 5
-
         total_rows = max(len(df), min_rows)
 
         height = header_height + total_rows * row_height
 
-        return min(height, max_height)
-
-    gb = GridOptionsBuilder.from_dataframe(df)
+        return min(height, max_height)  
     
     # =====================================================
     # ALIGNMENT OTOMATIS (CACHED)
@@ -621,7 +622,7 @@ def render_table_pin_satker(df):
         resizable=True,
         sortable=True,
         filter=True,
-        minWidth=150   
+        minWidth=170
     )
 
     # =====================================================
@@ -636,7 +637,8 @@ def render_table_pin_satker(df):
         if col in df.columns:
             gb.configure_column(
                 col,
-                width=70,   # 🔥 FIX (pakai width, bukan min/max)
+                width=90,
+                minWidth=90,
                 cellStyle={"textAlign": "right"}
             )
 
@@ -711,82 +713,45 @@ def render_table_pin_satker(df):
         domLayout="normal",
         alwaysShowHorizontalScroll=True,
         suppressHorizontalScroll=False,
-        suppressColumnVirtualisation=False,
-        enableBrowserTooltips=True,
+        suppressSizeToFit=True,
+        ensureDomOrder=True,
         getRowStyle=zebra_dark,
         headerHeight=40
     )
 
     # =====================================================
-    # CUSTOM CSS — PAKSA SCROLL HORIZONTAL TAMPIL
-    # (custom_css masuk langsung ke iframe AgGrid, 100% andal)
+    # CUSTOM CSS (MINIMAL & AMAN)
     # =====================================================
     aggrid_custom_css = {
-
-        # Scrollbar horizontal di dalam AgGrid
-        ".ag-body-horizontal-scroll": {
-            "display": "block !important",
-            "overflow-x": "auto !important",
-            "height": "14px !important",
-            "min-height": "14px !important",
-        },
-        ".ag-body-horizontal-scroll::-webkit-scrollbar": {
-            "height": "14px",
-            "display": "block",
-        },
-        ".ag-body-horizontal-scroll::-webkit-scrollbar-track": {
-            "background": "#2d2d2d",
-            "border-radius": "10px",
-        },
-        ".ag-body-horizontal-scroll::-webkit-scrollbar-thumb": {
-            "background": "#22c55e",
-            "border-radius": "10px",
-        },
-        ".ag-body-horizontal-scroll::-webkit-scrollbar-thumb:hover": {
-            "background": "#16a34a",
-        },
-
-        # Scrollbar vertikal
         ".ag-body-vertical-scroll::-webkit-scrollbar": {
             "width": "10px",
         },
         ".ag-body-vertical-scroll::-webkit-scrollbar-thumb": {
             "background": "#22c55e",
             "border-radius": "10px",
-        },
-
-        # Pastikan area scroll horizontal tidak di-clip
-        ".ag-body-horizontal-scroll-viewport": {
-            "overflow-x": "auto !important",
-        },
-        ".ag-center-cols-viewport": {
-            "overflow-x": "hidden !important",
-        },
-
+        }
     }
 
-    # CSS Streamlit level luar — paksa iframe AgGrid tidak memotong scrollbar bawah
+    # =====================================================
+    # GRID BUILD
+    # =====================================================
+    _go = gb.build()
+    
     st.markdown("""
     <style>
-    /* Paksa iframe AgGrid tampilkan scrollbar bawah tanpa terpotong */
-    iframe[title="st_aggrid.agGrid"] {
-        display: block !important;
-        overflow: visible !important;
-    }
-    /* Tambah padding bawah agar scrollbar tidak tertutup border container */
-    div[data-testid="stVerticalBlock"] > div:has(iframe[title="st_aggrid.agGrid"]) {
-        padding-bottom: 6px;
+    .ag-center-cols-viewport {
+        overflow-x: auto !important;
     }
     </style>
     """, unsafe_allow_html=True)
 
     # =====================================================
-    # GRID
+    # GRID RENDER
     # =====================================================
     grid_response = AgGrid(
         df,
-        gridOptions=gb.build(),
-        height=calc_grid_height(df) + 34,   # +34 = ruang untuk scrollbar horizontal
+        gridOptions=_go,
+        height=650,  
         fit_columns_on_grid_load=False,
         theme="streamlit",
         allow_unsafe_jscode=True,
@@ -794,6 +759,7 @@ def render_table_pin_satker(df):
         update_mode="MODEL_CHANGED",
         custom_css=aggrid_custom_css,
     )
+
 
 
     # ===== AMBIL DATA HASIL FILTER =====
