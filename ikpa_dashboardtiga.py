@@ -51,6 +51,35 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
+st.markdown("""
+<style>
+
+/* ========================= */
+/* SCROLLBAR AGGRID — HIJAU  */
+/* CSS ini tidak masuk iframe */
+/* tapi tetap dipasang sbg   */
+/* fallback jika versi AgGrid */
+/* tidak pakai iframe        */
+/* ========================= */
+
+.ag-body-horizontal-scroll {
+    display: block !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+}
+
+.ag-body-horizontal-scroll::-webkit-scrollbar { height: 12px; }
+.ag-body-horizontal-scroll::-webkit-scrollbar-track { background: #111827; }
+.ag-body-horizontal-scroll::-webkit-scrollbar-thumb { background: #22c55e; border-radius: 10px; }
+.ag-body-horizontal-scroll::-webkit-scrollbar-thumb:hover { background: #16a34a; }
+
+.ag-body-vertical-scroll::-webkit-scrollbar { width: 12px; }
+.ag-body-vertical-scroll::-webkit-scrollbar-track { background: #111827; }
+.ag-body-vertical-scroll::-webkit-scrollbar-thumb { background: #22c55e; border-radius: 10px; }
+.ag-body-vertical-scroll::-webkit-scrollbar-thumb:hover { background: #16a34a; }
+
+</style>
+""", unsafe_allow_html=True)
 
 
 # ===============================
@@ -102,18 +131,18 @@ def render_table_pin_satker(df):
 
     df = df.loc[:, ~df.columns.duplicated()].copy()
     df.insert(0, "__rowNum__", range(1, len(df) + 1))
-    
-     # 🔥 TAMBAHKAN INI
-    from st_aggrid import GridOptionsBuilder
-    gb = GridOptionsBuilder.from_dataframe(df)
 
-    def calc_grid_height(df, row_height=45, header_height=40, max_height=700):
+    def calc_grid_height(df, row_height=45, header_height=40, max_height=600):
         min_rows = 5
+
         total_rows = max(len(df), min_rows)
 
         height = header_height + total_rows * row_height
 
-        return min(height, max_height)  
+        # +30 ruang untuk scrollbar horizontal di bawah tabel
+        return min(height, max_height) + 30
+
+    gb = build_base_grid_options(tuple(df.columns))
     
     # =====================================================
     # ALIGNMENT OTOMATIS (CACHED)
@@ -616,13 +645,13 @@ def render_table_pin_satker(df):
     )
 
     # =====================================================
-    # DEFAULT COLUMN (FIX UTAMA)
+    # DEFAULT COLUMN (🔥 FIX UTAMA)
     # =====================================================
     gb.configure_default_column(
         resizable=True,
         sortable=True,
         filter=True,
-        minWidth=170
+        minWidth=180   
     )
 
     # =====================================================
@@ -637,8 +666,7 @@ def render_table_pin_satker(df):
         if col in df.columns:
             gb.configure_column(
                 col,
-                width=90,
-                minWidth=90,
+                width=70,   # 🔥 FIX (pakai width, bukan min/max)
                 cellStyle={"textAlign": "right"}
             )
 
@@ -711,82 +739,138 @@ def render_table_pin_satker(df):
     # =====================================================
     gb.configure_grid_options(
         domLayout="normal",
-
         alwaysShowHorizontalScroll=True,
         suppressHorizontalScroll=False,
-
-        suppressSizeToFit=True,
         suppressColumnVirtualisation=False,
-
-        ensureDomOrder=True,
         getRowStyle=zebra_dark,
         headerHeight=40
     )
-    
 
     # =====================================================
-    # CUSTOM CSS (MINIMAL & AMAN)
+    # CUSTOM CSS — hanya properti box model (pseudo-selector
+    # ::-webkit-scrollbar TIDAK didukung di custom_css AgGrid)
+    # Styling scrollbar ditangani lewat st.markdown di luar
     # =====================================================
     aggrid_custom_css = {
-        ".ag-body-vertical-scroll::-webkit-scrollbar": {
-            "width": "10px",
+        ".ag-body-horizontal-scroll": {
+            "display": "block !important",
+            "height": "14px !important",
+            "min-height": "14px !important",
+            "visibility": "visible !important",
+            "opacity": "1 !important",
+            "overflow-x": "scroll !important",
         },
-        ".ag-body-vertical-scroll::-webkit-scrollbar-thumb": {
-            "background": "#22c55e",
-            "border-radius": "10px",
-        }
+        ".ag-body-horizontal-scroll-viewport": {
+            "overflow-x": "scroll !important",
+            "height": "14px !important",
+            "min-height": "14px !important",
+        },
+        ".ag-root-wrapper": {
+            "overflow": "hidden !important",
+        },
+        ".ag-body-viewport": {
+            "overflow-x": "hidden !important",
+        },
     }
 
     # =====================================================
-    # GRID BUILD
+    # GRID
     # =====================================================
-    _go = gb.build()
-    
-    st.markdown("""
-    <style>
+    grid_height = calc_grid_height(df)
 
-    .ag-body-horizontal-scroll {
-        height: 12px !important;
-        display: block !important;
-    }
-
-    .ag-body-horizontal-scroll::-webkit-scrollbar {
-        height: 10px;
-    }
-
-    .ag-body-horizontal-scroll::-webkit-scrollbar-thumb {
-        background: #22c55e;
-        border-radius: 10px;
-    }
-
-    .ag-body-horizontal-scroll::-webkit-scrollbar-track {
-        background: #1f2937;
-    }
-
-    .ag-center-cols-viewport {
-        overflow-x: auto !important;
-    }
-
-    </style>
-    """, unsafe_allow_html=True)
-    
-
-    # =====================================================
-    # GRID RENDER
-    # =====================================================
     grid_response = AgGrid(
         df,
-        gridOptions=_go,
-        height=650,  
+        gridOptions=gb.build(),
+        height=grid_height,
         fit_columns_on_grid_load=False,
-        theme="streamlit",
+        theme="alpine",
         allow_unsafe_jscode=True,
         data_return_mode="FILTERED_AND_SORTED",
         update_mode="MODEL_CHANGED",
         custom_css=aggrid_custom_css,
     )
 
+    # =====================================================
+    # SCROLLBAR HORIZONTAL SEJATI — letakkan di BAWAH tabel
+    # Dibuat manual pakai HTML/JS yang sync dengan scroll
+    # internal AgGrid
+    # =====================================================
+    st.components.v1.html(f"""
+    <style>
+    #fake-hscroll-wrapper {{
+        width: 100%;
+        overflow-x: auto;
+        overflow-y: hidden;
+        height: 18px;
+        margin-top: -4px;
+        background: #111827;
+        border-radius: 0 0 8px 8px;
+    }}
+    #fake-hscroll-inner {{
+        height: 1px;
+    }}
+    #fake-hscroll-wrapper::-webkit-scrollbar {{
+        height: 12px;
+        display: block;
+    }}
+    #fake-hscroll-wrapper::-webkit-scrollbar-track {{
+        background: #1f2937;
+        border-radius: 10px;
+    }}
+    #fake-hscroll-wrapper::-webkit-scrollbar-thumb {{
+        background: #22c55e;
+        border-radius: 10px;
+    }}
+    #fake-hscroll-wrapper::-webkit-scrollbar-thumb:hover {{
+        background: #16a34a;
+    }}
+    </style>
 
+    <div id="fake-hscroll-wrapper">
+        <div id="fake-hscroll-inner"></div>
+    </div>
+
+    <script>
+    (function() {{
+        var wrapper = document.getElementById('fake-hscroll-wrapper');
+        var inner   = document.getElementById('fake-hscroll-inner');
+
+        function findAgViewport() {{
+            // Cari iframe AgGrid di parent
+            var frames = window.parent.document.querySelectorAll('iframe');
+            for (var i = 0; i < frames.length; i++) {{
+                try {{
+                    var doc = frames[i].contentDocument;
+                    if (!doc) continue;
+                    var vp = doc.querySelector('.ag-body-horizontal-scroll-viewport');
+                    if (vp) return vp;
+                }} catch(e) {{}}
+            }}
+            return null;
+        }}
+
+        function sync() {{
+            var vp = findAgViewport();
+            if (!vp) return;
+
+            // Sesuaikan lebar inner agar scrollbar muncul
+            inner.style.width = vp.scrollWidth + 'px';
+
+            // Sync scroll dua arah
+            wrapper.onscroll = function() {{
+                vp.scrollLeft = wrapper.scrollLeft;
+            }};
+            vp.onscroll = function() {{
+                wrapper.scrollLeft = vp.scrollLeft;
+            }};
+        }}
+
+        setTimeout(sync, 800);
+        setTimeout(sync, 1800);
+        setTimeout(sync, 3000);
+    }})();
+    </script>
+    """, height=22)
 
     # ===== AMBIL DATA HASIL FILTER =====
     filtered_df = pd.DataFrame(grid_response["data"])
@@ -10451,78 +10535,39 @@ def page_admin():
                 df_info = pd.read_excel(uploaded_file_kppn, header=None)
 
                 MONTH_MAP = {
-                    # JANUARI
-                    "JANUARI": "JANUARI", "JAN": "JANUARI", "1": "JANUARI", "01": "JANUARI",
-
-                    # FEBRUARI
-                    "FEBRUARI": "FEBRUARI", "FEB": "FEBRUARI", "PEBRUARI": "FEBRUARI", "2": "FEBRUARI", "02": "FEBRUARI",
-
-                    # MARET
-                    "MARET": "MARET", "MAR": "MARET", "3": "MARET", "03": "MARET",
-
-                    # APRIL
-                    "APRIL": "APRIL", "APR": "APRIL", "4": "APRIL", "04": "APRIL",
-
-                    # 🔥 MEI (INI YANG PALING PENTING)
+                    "JANUARI": "JANUARI", "JAN": "JANUARI",
+                    "FEBRUARI": "FEBRUARI", "FEB": "FEBRUARI", "PEBRUARI": "FEBRUARI",
+                    "MARET": "MARET", "MAR": "MARET",
+                    "APRIL": "APRIL", "APR": "APRIL",
                     "MEI": "MEI",
-                    "MAY": "MEI",
-                    "5": "MEI", "05": "MEI",
-
-                    # JUNI
-                    "JUNI": "JUNI", "JUN": "JUNI", "6": "JUNI", "06": "JUNI",
-
-                    # JULI
-                    "JULI": "JULI", "JUL": "JULI", "7": "JULI", "07": "JULI",
-
-                    # AGUSTUS
-                    "AGUSTUS": "AGUSTUS", "AGT": "AGUSTUS", "AGS": "AGUSTUS", "8": "AGUSTUS", "08": "AGUSTUS",
-
-                    # SEPTEMBER
-                    "SEPTEMBER": "SEPTEMBER", "SEP": "SEPTEMBER", "9": "SEPTEMBER", "09": "SEPTEMBER",
-
-                    # OKTOBER
-                    "OKTOBER": "OKTOBER", "OKT": "OKTOBER", "10": "OKTOBER",
-
-                    # NOVEMBER
-                    "NOVEMBER": "NOVEMBER", "NOV": "NOVEMBER", "NOPEMBER": "NOVEMBER", "11": "NOVEMBER",
-
-                    # DESEMBER
-                    "DESEMBER": "DESEMBER", "DES": "DESEMBER", "12": "DESEMBER"
+                    "JUNI": "JUNI", "JUN": "JUNI",
+                    "JULI": "JULI", "JUL": "JULI",
+                    "AGUSTUS": "AGUSTUS", "AGT": "AGUSTUS", "AGS": "AGUSTUS",
+                    "SEPTEMBER": "SEPTEMBER", "SEP": "SEPTEMBER",
+                    "OKTOBER": "OKTOBER", "OKT": "OKTOBER",
+                    "NOVEMBER": "NOVEMBER", "NOV": "NOVEMBER", "NOPEMBER": "NOVEMBER",
+                    "DESEMBER": "DESEMBER", "DES": "DESEMBER"
                 }
 
-                import re  # pastikan ada ini di atas kalau belum
+                month_preview = None
 
-                month_candidates = []
-
-                # 1️⃣ Scan semua kemungkinan bulan (jangan langsung break)
+                # 1️⃣ Cari bulan di header (baris & kolom awal) — untuk raw OM-SPAN
                 for r in range(min(6, df_info.shape[0])):
                     for c in range(min(5, df_info.shape[1])):
                         cell = str(df_info.iloc[r, c]).upper().strip()
-
-                        # bersihin tahun (contoh: MEI 2023)
-                        cell = re.sub(r'\d{4}', '', cell).strip()
-
-                        # exact match
+                        # exact match dulu (lebih aman dari substring)
                         if cell in MONTH_MAP:
-                            month_candidates.append(MONTH_MAP[cell])
-
-                        # substring match
+                            month_preview = MONTH_MAP[cell]
+                            break
+                        # substring fallback
                         for k, v in MONTH_MAP.items():
                             if len(k) >= 4 and k in cell:
-                                month_candidates.append(v)
-
-                # 2️⃣ Tentukan bulan paling benar
-                if month_candidates:
-                    MONTH_ORDER = {
-                        "JANUARI": 1, "FEBRUARI": 2, "MARET": 3, "APRIL": 4,
-                        "MEI": 5, "JUNI": 6, "JULI": 7, "AGUSTUS": 8,
-                        "SEPTEMBER": 9, "OKTOBER": 10, "NOVEMBER": 11, "DESEMBER": 12
-                    }
-
-                    # ambil bulan terbesar (biasanya bulan laporan terbaru)
-                    month_preview = max(month_candidates, key=lambda x: MONTH_ORDER.get(x, 0))
-                else:
-                    month_preview = None
+                                month_preview = v
+                                break
+                        if month_preview:
+                            break
+                    if month_preview:
+                        break
 
                 # 2️⃣ Cari dari kolom "Bulan" jika format FLAT
                 # (file sudah diproses sebelumnya, punya kolom Bulan)
