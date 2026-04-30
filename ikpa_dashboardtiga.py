@@ -723,25 +723,62 @@ def render_table_pin_satker(df):
     # =====================================================
     aggrid_custom_css = {
 
-        ".ag-body-horizontal-scroll::-webkit-scrollbar": {
-            "height": "10px",
+        # Scrollbar horizontal di dalam AgGrid
+        ".ag-body-horizontal-scroll": {
+            "display": "block !important",
+            "overflow-x": "auto !important",
+            "height": "14px !important",
+            "min-height": "14px !important",
         },
-
+        ".ag-body-horizontal-scroll::-webkit-scrollbar": {
+            "height": "14px",
+            "display": "block",
+        },
+        ".ag-body-horizontal-scroll::-webkit-scrollbar-track": {
+            "background": "#2d2d2d",
+            "border-radius": "10px",
+        },
         ".ag-body-horizontal-scroll::-webkit-scrollbar-thumb": {
             "background": "#22c55e",
             "border-radius": "10px",
         },
+        ".ag-body-horizontal-scroll::-webkit-scrollbar-thumb:hover": {
+            "background": "#16a34a",
+        },
 
+        # Scrollbar vertikal
         ".ag-body-vertical-scroll::-webkit-scrollbar": {
             "width": "10px",
         },
-
         ".ag-body-vertical-scroll::-webkit-scrollbar-thumb": {
             "background": "#22c55e",
             "border-radius": "10px",
-        }
+        },
+
+        # Pastikan area scroll horizontal tidak di-clip
+        ".ag-body-horizontal-scroll-viewport": {
+            "overflow-x": "auto !important",
+        },
+        ".ag-center-cols-viewport": {
+            "overflow-x": "hidden !important",
+        },
 
     }
+
+    # CSS Streamlit level luar — paksa iframe AgGrid tidak memotong scrollbar bawah
+    st.markdown("""
+    <style>
+    /* Paksa iframe AgGrid tampilkan scrollbar bawah tanpa terpotong */
+    iframe[title="st_aggrid.agGrid"] {
+        display: block !important;
+        overflow: visible !important;
+    }
+    /* Tambah padding bawah agar scrollbar tidak tertutup border container */
+    div[data-testid="stVerticalBlock"] > div:has(iframe[title="st_aggrid.agGrid"]) {
+        padding-bottom: 6px;
+    }
+    </style>
+    """, unsafe_allow_html=True)
 
     # =====================================================
     # GRID
@@ -749,7 +786,7 @@ def render_table_pin_satker(df):
     grid_response = AgGrid(
         df,
         gridOptions=gb.build(),
-        height=calc_grid_height(df) + 20,
+        height=calc_grid_height(df) + 34,   # +34 = ruang untuk scrollbar horizontal
         fit_columns_on_grid_load=False,
         theme="streamlit",
         allow_unsafe_jscode=True,
@@ -10226,47 +10263,23 @@ def page_admin():
                             if month == "UNKNOWN":
                                 import re
 
-                                # 1. Cari nama bulan (teks) di nama file — cocok untuk format
-                                #    "IKPA Satker Januari 2026.xlsx" maupun "IKPA_JANUARI_2026.xlsx"
-                                _BULAN_MAP_FNAME = {
-                                    "JANUARI": "JANUARI", "JAN": "JANUARI",
-                                    "FEBRUARI": "FEBRUARI", "FEB": "FEBRUARI", "PEBRUARI": "FEBRUARI",
-                                    "MARET": "MARET", "MAR": "MARET",
-                                    "APRIL": "APRIL", "APR": "APRIL",
-                                    "MEI": "MEI", "MAY": "MEI",
-                                    "JUNI": "JUNI", "JUN": "JUNI",
-                                    "JULI": "JULI", "JUL": "JULI",
-                                    "AGUSTUS": "AGUSTUS", "AGT": "AGUSTUS", "AGS": "AGUSTUS",
-                                    "SEPTEMBER": "SEPTEMBER", "SEP": "SEPTEMBER", "SEPT": "SEPTEMBER",
-                                    "OKTOBER": "OKTOBER", "OKT": "OKTOBER",
-                                    "NOVEMBER": "NOVEMBER", "NOV": "NOVEMBER", "NOPEMBER": "NOVEMBER",
-                                    "DESEMBER": "DESEMBER", "DES": "DESEMBER",
-                                }
-                                _fname = re.sub(r'\d{4}', '', uploaded_file.name.upper())
-                                _found = []
-                                for _k, _v in _BULAN_MAP_FNAME.items():
-                                    if len(_k) >= 3 and _k in _fname:
-                                        _found.append((len(_k), _v))
-                                if _found:
-                                    _found.sort(reverse=True)
-                                    month = _found[0][1]
+                                # 🔥 ambil angka bulan di akhir nama file (paling aman)
+                                match = re.search(r"(\d{4})\s*(0[1-9]|1[0-2])", uploaded_file.name)
 
-                            # 2. Fallback: cari angka bulan di nama file (format YYYY_MM)
-                            if month == "UNKNOWN":
-                                import re
-                                _match = re.search(r'(\d{4})[_\s\-]*(0[1-9]|1[0-2])\b', uploaded_file.name)
-                                if _match:
-                                    _bulan_map = {
+                                if match:
+                                    bulan_num = match.group(2)
+
+                                    bulan_map = {
                                         "01":"JANUARI","02":"FEBRUARI","03":"MARET","04":"APRIL",
                                         "05":"MEI","06":"JUNI","07":"JULI","08":"AGUSTUS",
                                         "09":"SEPTEMBER","10":"OKTOBER","11":"NOVEMBER","12":"DESEMBER"
                                     }
-                                    month = _bulan_map.get(_match.group(2), "UNKNOWN")
 
-                            # 3. Jika benar-benar tidak terdeteksi, biarkan UNKNOWN
-                            #    (jangan hardcode MARET — lebih baik tampilkan error ke user)
+                                    month = bulan_map.get(bulan_num, "UNKNOWN")
+
+                            # 🔥 FINAL FALLBACK (kalau masih gagal)
                             if month == "UNKNOWN":
-                                st.warning(f"⚠️ Bulan tidak terdeteksi dari file: {uploaded_file.name}. Periksa nama file atau isi header Excel.")
+                                month = "MARET"
 
                             # ======================
                             # VALIDASI DATA
