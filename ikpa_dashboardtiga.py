@@ -3545,9 +3545,13 @@ def load_data_from_github(_cache_buster: int = 0):
 # load data ikpa kppn
 @st.cache_data(show_spinner=False, ttl=300)
 def load_data_ikpa_kppn_from_github():
+    """
+    Load semua file IKPA KPPN dari GitHub menggunakan parser yang SAMA
+    dengan upload manual (process_excel_file_kppn), sehingga nama kolom
+    selalu konsisten: Deviasi Halaman III DIPA, Revisi DIPA, dst.
+    """
     from github import Github, Auth
-    import base64, io
-    import pandas as pd
+    import io
 
     token = st.secrets.get("GITHUB_TOKEN")
     repo_name = st.secrets.get("GITHUB_REPO")
@@ -3561,77 +3565,73 @@ def load_data_ikpa_kppn_from_github():
     except Exception:
         return {}
 
-    KPPN_PATH = "Data IKPA KPPN"   # ✅ konsisten
+    KPPN_PATH = "Data IKPA KPPN"
 
-    # 🔥 recursive scan semua folder tahun
     def collect_xlsx_files(path):
         all_files = []
         try:
             items = repo.get_contents(path)
         except Exception:
             return all_files
-
         for item in items:
             if item.type == "dir":
                 all_files.extend(collect_xlsx_files(item.path))
-            elif item.name.endswith(".xlsx"):
+            elif item.name.lower().endswith(".xlsx"):
                 all_files.append(item)
-
         return all_files
 
     xlsx_files = collect_xlsx_files(KPPN_PATH)
-
     data = {}
 
     for f in xlsx_files:
         try:
-            import requests
-
-            download_url = f.download_url
-            response = requests.get(download_url, timeout=30)
-
+            # Download file dari GitHub
+            response = requests.get(f.download_url, timeout=30)
             file_bytes = io.BytesIO(response.content)
 
-            header_row = detect_header_row(file_bytes)
-
-            file_bytes.seek(0)
-            df = pd.read_excel(file_bytes, header=header_row)
-            df = process_kppn_flat(df)
-
-            df.columns = (
-                df.columns.astype(str)
-                .str.strip()
-                .str.replace(r"\s+", " ", regex=True)
-            )
-
-            # =========================
-            # 🔥 AMBIL TAHUN DARI PATH
-            # =========================
+            # Ambil tahun dari path folder
             path_parts = f.path.split("/")
             tahun = next((p for p in path_parts if p.isdigit()), str(datetime.now().year))
 
-            # =========================
-            # 🔥 AMBIL BULAN DARI NAMA FILE
-            # =========================
+            # Ambil bulan dari nama file
             name = f.name.upper()
             bulan = "UNKNOWN"
-
             for m in [
-                "JANUARI","FEBRUARI","MARET","APRIL","MEI","JUNI",
-                "JULI","AGUSTUS","SEPTEMBER","OKTOBER","NOVEMBER","DESEMBER"
+                "JANUARI", "FEBRUARI", "MARET", "APRIL", "MEI", "JUNI",
+                "JULI", "AGUSTUS", "SEPTEMBER", "OKTOBER", "NOVEMBER", "DESEMBER"
             ]:
                 if m in name:
                     bulan = m
                     break
 
-            df["Bulan"] = bulan
-            df["Tahun"] = tahun
+            # Gunakan parser SAMA dengan upload manual agar nama kolom konsisten
+            file_bytes.seek(0)
+            file_bytes.name = f.name  # agar _detect_month_from_filename bisa bekerja
 
-            key = (bulan, tahun)
-            data[key] = df
+            result = process_excel_file_kppn(file_bytes, int(tahun), detected_month=bulan)
 
-        except Exception as e:
-            pass  # skip file error
+            if result is None or result[0] is None:
+                continue
+
+            df_out, bulan_out, tahun_out = result
+
+            if df_out is None or df_out.empty:
+                continue
+
+            # Pastikan kolom Bulan & Tahun terisi
+            if "Bulan" not in df_out.columns or df_out["Bulan"].isna().all():
+                df_out["Bulan"] = bulan_out or bulan
+            if "Tahun" not in df_out.columns or df_out["Tahun"].isna().all():
+                df_out["Tahun"] = int(tahun_out or tahun)
+
+            key = (
+                str(df_out["Bulan"].iloc[0]).upper(),
+                str(int(df_out["Tahun"].iloc[0]))
+            )
+            data[key] = df_out
+
+        except Exception:
+            pass  # skip file yang gagal diproses
 
     return data
 
