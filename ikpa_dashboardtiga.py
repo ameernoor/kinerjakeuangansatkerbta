@@ -846,6 +846,7 @@ def detect_ikpa_type(df_raw):
 
     else:
         return "UNKNOWN"
+    
 
 # Normalize kode satker
 def normalize_kode_satker(k, width=6):
