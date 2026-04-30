@@ -3543,7 +3543,7 @@ def load_data_from_github(_cache_buster: int = 0):
     return data_storage
 
 # load data ikpa kppn
-@st.cache_data(show_spinner=False, ttl=10)
+@st.cache_data(show_spinner=False, ttl=300)
 def load_data_ikpa_kppn_from_github():
     from github import Github, Auth
     import base64, io
@@ -3587,8 +3587,8 @@ def load_data_ikpa_kppn_from_github():
         try:
             import requests
 
-            download_url = f.download_url + f"?t={time.time()}"
-            response = requests.get(download_url)
+            download_url = f.download_url
+            response = requests.get(download_url, timeout=30)
 
             file_bytes = io.BytesIO(response.content)
 
@@ -12782,10 +12782,13 @@ def main():
         if "data_storage_kppn" not in st.session_state:
             st.session_state.data_storage_kppn = {}
 
-        if not st.session_state.data_storage_kppn:
-            result_kppn = load_data_ikpa_kppn_from_github()
-            if result_kppn:
-                st.session_state.data_storage_kppn = result_kppn
+        # Gunakan flag per-session agar selalu reload dari GitHub saat session baru (refresh browser)
+        if not st.session_state.get("_kppn_loaded"):
+            with st.spinner("Memuat data IKPA KPPN dari GitHub..."):
+                result_kppn = load_data_ikpa_kppn_from_github()
+                if result_kppn:
+                    st.session_state.data_storage_kppn = result_kppn
+            st.session_state["_kppn_loaded"] = True
 
         if st.session_state.data_storage_kppn and not st.session_state.get("_kppn_loaded_notif"):
             add_notification("Data IKPA KPPN berhasil dimuat dari GitHub")
