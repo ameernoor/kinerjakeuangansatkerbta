@@ -830,7 +830,6 @@ MONTH_ORDER = {
 TEMPLATE_PATH = r"C:\Users\KEMENKEU\Desktop\INDIKATOR PELAKSANAAN ANGGARAN.xlsx"
 
 def detect_ikpa_type(df_raw):
-    
     text = " ".join(
         df_raw.astype(str)
         .iloc[:5]
@@ -841,7 +840,7 @@ def detect_ikpa_type(df_raw):
     if "KODE SATKER" in text:
         return "SATKER"
 
-    elif "KPPN" in text:
+    elif "KPPN" in text or "KODE KPPN" in text:
         return "KPPN"
 
     else:
@@ -1162,6 +1161,68 @@ def fix_ikpa_header(df_raw):
         return None
 
     return None
+
+def fix_ikpa_kppn(df_raw):
+    df = df_raw.copy()
+
+    # ===============================
+    # HEADER LANGSUNG BARIS PERTAMA
+    # ===============================
+    df.columns = df.iloc[0]
+    df = df.iloc[1:].reset_index(drop=True)
+
+    # ===============================
+    # RENAME KOLOM (SESUAI POSISI)
+    # ===============================
+    rename_map = {}
+
+    cols = list(df.columns)
+
+    if len(cols) >= 16:
+        rename_map = {
+            cols[0]: "No",
+            cols[1]: "Kode KPPN",
+            cols[2]: "KPPN",
+            cols[3]: "Revisi DIPA",
+            cols[4]: "Deviasi Halaman III DIPA",
+            cols[5]: "Penyerapan Anggaran",
+            cols[6]: "Belanja Kontraktual",
+            cols[7]: "Penyelesaian Tagihan",
+            cols[8]: "Pengelolaan UP dan TUP",
+            cols[9]: "Capaian Output",
+            cols[10]: "Nilai Total",
+            cols[11]: "Konversi Bobot",
+            cols[12]: "Dispensasi SPM (Pengurangan)",
+            cols[13]: "Nilai Akhir (Nilai Total/Konversi Bobot)",
+            cols[14]: "Bulan",
+            cols[15]: "Tahun"
+        }
+
+    df = df.rename(columns=rename_map)
+
+    # ===============================
+    # CLEAN NUMERIC
+    # ===============================
+    numeric_cols = [
+        "Revisi DIPA",
+        "Deviasi Halaman III DIPA",
+        "Penyerapan Anggaran",
+        "Belanja Kontraktual",
+        "Penyelesaian Tagihan",
+        "Pengelolaan UP dan TUP",
+        "Capaian Output",
+        "Nilai Total",
+        "Konversi Bobot",
+        "Dispensasi SPM (Pengurangan)",
+        "Nilai Akhir (Nilai Total/Konversi Bobot)"
+    ]
+
+    for col in numeric_cols:
+        if col in df.columns:
+            df[col] = df[col].apply(clean_numeric)
+
+    return df
+
 
 def detect_columns(df_raw):
     
@@ -3542,7 +3603,6 @@ def load_data_from_github(_cache_buster: int = 0):
     return data_storage
 
 # load data ikpa kppn
-@st.cache_data(show_spinner=False, ttl=300)
 @st.cache_data(show_spinner=False, ttl=300)
 def load_data_ikpa_kppn_from_github():
     from github import Github, Auth
