@@ -3543,8 +3543,7 @@ def load_data_from_github(_cache_buster: int = 0):
     return data_storage
 
 # load data ikpa kppn
-@st.cache_data(show_spinner=False, ttl=300)
-@st.cache_data(show_spinner=False, ttl=300)
+@st.cache_data(show_spinner=False, ttl=10)
 def load_data_ikpa_kppn_from_github():
     from github import Github, Auth
     import base64, io
@@ -3586,7 +3585,12 @@ def load_data_ikpa_kppn_from_github():
 
     for f in xlsx_files:
         try:
-            file_bytes = io.BytesIO(base64.b64decode(f.content))
+            import requests
+
+            download_url = f.download_url + f"?t={time.time()}"
+            response = requests.get(download_url)
+
+            file_bytes = io.BytesIO(response.content)
 
             header_row = detect_header_row(file_bytes)
 
@@ -10603,6 +10607,8 @@ def page_admin():
                             filename,
                             folder=f"Data IKPA KPPN/{year}"
                         )
+                        st.cache_data.clear()
+                        st.session_state.data_storage_kppn = {}
                         
                         log_activity(
                             menu="Upload Data",
