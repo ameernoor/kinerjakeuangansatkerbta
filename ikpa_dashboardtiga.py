@@ -962,33 +962,21 @@ if "_reference_loaded" not in st.session_state:
 # CLEAN NUMERIC (ANTI NAN)
 # ===============================
 def clean_numeric(val):
-    """
-    Konversi nilai ke float.
-    Mendukung format Indonesia (koma desimal, titik ribuan).
-    Nilai IKPA valid: 0 – 120. Kalau hasil parsing > 120, anggap
-    belum dibagi 100 (Excel menyimpan mis. 9657 → 96.57).
-    """
     if pd.isna(val):
-        return 0
+        return None  # ❗ jangan 0
 
-    # Kalau sudah numerik, langsung normalisasi
     if isinstance(val, (int, float)):
         v = float(val)
-        # Nilai IKPA tidak pernah > 120, jadi kalau > 120 pasti salah format
         while v > 120:
             v = v / 10.0
         return v
 
     val = str(val).strip().replace("%", "")
 
-    # Deteksi format desimal Indonesia
     if "," in val and "." in val:
-        # 1.234,56 → 1234.56
         val = val.replace(".", "").replace(",", ".")
     elif "," in val:
-        # 88,98 → 88.98
         val = val.replace(",", ".")
-    # Kalau cuma titik → biarkan (88.98)
 
     val = re.sub(r"[^\d\.\-]", "", val)
 
@@ -998,7 +986,7 @@ def clean_numeric(val):
             v = v / 10.0
         return v
     except:
-        return 0
+        return None
     
     
 def safe_float(val, default=0):
@@ -8284,6 +8272,9 @@ def menu_ews_satker():
         df = df.copy()
         df[col] = df[col].apply(clean_numeric)
 
+        # 🔥 buang NaN dulu (biar gak jadi 0 palsu)
+        df = df[df[col].notna()]
+
         return df[df[col] < 100]
 
 
@@ -8440,7 +8431,6 @@ def menu_ews_satker():
             df_problem_out["Capaian Output"] = (
                 df_problem_out["Capaian Output"]
                 .apply(clean_numeric)
-                .fillna(0)
             )
 
             y_min = safe_float(y_min_int, 0)
