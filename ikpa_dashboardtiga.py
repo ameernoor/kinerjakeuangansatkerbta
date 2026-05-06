@@ -2195,16 +2195,35 @@ def process_excel_file(uploaded_file, upload_year):
 
     # ===============================
     # DETEKSI FORMAT: 3-baris vs 4-baris
-    # Cek apakah ada baris ke-4 dengan label 'NILAI ASPEK' atau 'ASPEK'
-    # dalam 12 baris pertama data
+    #
+    # Format OM SPAN (lama, 4-baris):
+    #   Keterangan di col 5 (index), contoh: 'Nilai', 'Bobot', 'Nilai Akhir', 'Nilai Aspek'
+    #   Kode Satker di col 3, Uraian di col 4, indikator mulai col 6
+    #
+    # Format MyIntress (baru, 3-baris):
+    #   Keterangan di col 6 (index), contoh: 'NILAI', 'BOBOT', 'NILAI AKHIR'
+    #   Kode Satker di col 4, Uraian di col 5, indikator mulai col 7
+    #
+    # Deteksi: cek col 5 dan col 6 untuk kata 'ASPEK' atau 'NILAI ASPEK'
+    # Jika ditemukan di col 5 → format OM SPAN (4-baris)
     # ===============================
-    is_3row_format = True  # default: format 2026 (3 baris)
-    check_limit = min(12, len(df_data))
+    is_3row_format = True  # default: format MyIntress (3 baris)
+    check_limit = min(16, len(df_data))
+
+    # Cek col 5 dulu (OM SPAN): jika ada 'NILAI ASPEK' → 4-baris
     for ri in range(check_limit):
-        cell = str(df_data.iloc[ri, 6]).upper().strip() if df_data.shape[1] > 6 else ""
-        if "ASPEK" in cell and "NILAI" in cell:
+        cell5 = str(df_data.iloc[ri, 5]).upper().strip() if df_data.shape[1] > 5 else ""
+        if "ASPEK" in cell5 and "NILAI" in cell5:
             is_3row_format = False
             break
+
+    # Fallback: cek seluruh baris untuk 'NILAI ASPEK' di semua kolom
+    if is_3row_format:
+        for ri in range(check_limit):
+            row_text = " ".join(df_data.iloc[ri].astype(str).str.upper())
+            if "NILAI ASPEK" in row_text:
+                is_3row_format = False
+                break
 
     def safe_num(val):
         """Convert Indonesian decimal format (comma) to float."""
@@ -2220,12 +2239,13 @@ def process_excel_file(uploaded_file, upload_year):
     processed_rows = []
 
     # ===============================
-    # FORMAT BARU 2026: 3 baris per satker
-    # Header row 2: NO | Periode | Kode KPPN | Kode BA | Kode Satker | Uraian Satker | Keterangan
+    # FORMAT BARU (MyIntress, 3-baris per satker):
+    # Header baris 2: NO | Periode | Kode KPPN | Kode BA | Kode Satker | Uraian Satker | Keterangan
     #               | RevisiDIPA(7) | Deviasi(8) | NilaiAspekPerencanaan(9)
     #               | Penyerapan(10) | Kontraktual(11) | Tagihan(12) | UP/TUP(13) | NilaiAspekPelaksanaan(14)
     #               | CapaianOutput(15) | NilaiAspekHasil(16)
     #               | NilaiTotal(17) | KonversBobot(18) | Dispensasi(19) | NilaiAkhir(20)
+    # Keterangan ada di col 6 (index 6)
     # ===============================
     if is_3row_format:
         i = 0
@@ -2233,22 +2253,22 @@ def process_excel_file(uploaded_file, upload_year):
             nilai = df_data.iloc[i]
 
             # Pastikan ini baris NILAI (keterangan col 6)
-            keterangan = str(nilai[6]).upper().strip() if df_data.shape[1] > 6 else ""
+            keterangan = str(nilai.iloc[6]).upper().strip() if len(nilai) > 6 else ""
             if keterangan != "NILAI":
                 i += 1
                 continue
 
             # Kode Satker di col 4
-            kode_satker_raw = str(nilai[4]).strip()
+            kode_satker_raw = str(nilai.iloc[4]).strip()
             kode_satker = re.sub(r"\D", "", kode_satker_raw).zfill(6)
 
             if not kode_satker or kode_satker == "000000":
                 i += 3
                 continue
 
-            kode_ba   = re.sub(r"\D", "", str(nilai[3]).strip()).zfill(3)
-            kode_kppn = re.sub(r"\D", "", str(nilai[2]).strip())
-            uraian    = str(nilai[5]).strip()
+            kode_ba   = re.sub(r"\D", "", str(nilai.iloc[3]).strip()).zfill(3)
+            kode_kppn = re.sub(r"\D", "", str(nilai.iloc[2]).strip())
+            uraian    = str(nilai.iloc[5]).strip()
 
             # Bulan dari baris BOBOT (col 1)
             if i + 1 < len(df_data):
@@ -2258,30 +2278,30 @@ def process_excel_file(uploaded_file, upload_year):
                 month_detected = month
 
             row = {
-                "No": nilai[0],
+                "No": nilai.iloc[0],
                 "Kode KPPN": kode_kppn,
                 "Kode BA":   kode_ba,
                 "Kode Satker": kode_satker,
                 "Uraian Satker": uraian,
 
-                # Nilai Aspek (sudah ada di baris NILAI untuk format 2026)
-                "Kualitas Perencanaan Anggaran":        safe_num(nilai[9]),
-                "Kualitas Pelaksanaan Anggaran":         safe_num(nilai[14]),
-                "Kualitas Hasil Pelaksanaan Anggaran":   safe_num(nilai[16]),
+                # Nilai Aspek (sudah ada di baris NILAI untuk format MyIntress)
+                "Kualitas Perencanaan Anggaran":        safe_num(nilai.iloc[9]),
+                "Kualitas Pelaksanaan Anggaran":         safe_num(nilai.iloc[14]),
+                "Kualitas Hasil Pelaksanaan Anggaran":   safe_num(nilai.iloc[16]),
 
                 # Detail indikator komponen
-                "Revisi DIPA":                safe_num(nilai[7]),
-                "Deviasi Halaman III DIPA":   safe_num(nilai[8]),
-                "Penyerapan Anggaran":         safe_num(nilai[10]),
-                "Belanja Kontraktual":         safe_num(nilai[11]),
-                "Penyelesaian Tagihan":        safe_num(nilai[12]),
-                "Pengelolaan UP dan TUP":      safe_num(nilai[13]),
-                "Capaian Output":              safe_num(nilai[15]),
+                "Revisi DIPA":                safe_num(nilai.iloc[7]),
+                "Deviasi Halaman III DIPA":   safe_num(nilai.iloc[8]),
+                "Penyerapan Anggaran":         safe_num(nilai.iloc[10]),
+                "Belanja Kontraktual":         safe_num(nilai.iloc[11]),
+                "Penyelesaian Tagihan":        safe_num(nilai.iloc[12]),
+                "Pengelolaan UP dan TUP":      safe_num(nilai.iloc[13]),
+                "Capaian Output":              safe_num(nilai.iloc[15]),
 
-                "Nilai Total":                            safe_num(nilai[17]),
-                "Konversi Bobot":                         safe_num(nilai[18]),
-                "Dispensasi SPM (Pengurangan)":           safe_num(nilai[19]),
-                "Nilai Akhir (Nilai Total/Konversi Bobot)": safe_num(nilai[20]),
+                "Nilai Total":                            safe_num(nilai.iloc[17]),
+                "Konversi Bobot":                         safe_num(nilai.iloc[18]),
+                "Dispensasi SPM (Pengurangan)":           safe_num(nilai.iloc[19]),
+                "Nilai Akhir (Nilai Total/Konversi Bobot)": safe_num(nilai.iloc[20]),
 
                 "Bulan": month_detected,
                 "Tahun": upload_year,
@@ -2291,8 +2311,9 @@ def process_excel_file(uploaded_file, upload_year):
             i += 3  # lompat ke blok berikutnya
 
     # ===============================
-    # FORMAT LAMA (≤2025): 4 baris per satker
-    # col 1=Kode KPPN, 2=Kode BA, 3=Kode Satker, 4=Uraian Satker
+    # FORMAT LAMA (OM SPAN, 4-baris per satker):
+    # col 0=No, col 1=Kode KPPN, col 2=Kode BA, col 3=Kode Satker, col 4=Uraian Satker
+    # col 5=Keterangan ('Nilai','Bobot','Nilai Akhir','Nilai Aspek')
     # col 6=RevisiDIPA, 7=Deviasi, 8=Penyerapan, 9=Kontraktual,
     #       10=Tagihan, 11=UP/TUP, 12=CapaianOutput
     # col 13=NilaiTotal, 14=KonversBobot, 15=Dispensasi, 16=NilaiAkhir
@@ -2300,44 +2321,52 @@ def process_excel_file(uploaded_file, upload_year):
     # ===============================
     else:
         i = 0
-        while i + 3 < len(df_data):
+        while i < len(df_data):
+            # Cari baris dengan keterangan 'Nilai' atau 'NILAI' di col 5
+            keterangan_cell = str(df_data.iloc[i].iloc[5]).strip().upper() if len(df_data.iloc[i]) > 5 else ""
+            if keterangan_cell != "NILAI":
+                i += 1
+                continue
+
+            # Pastikan masih ada 3 baris berikutnya
+            if i + 3 >= len(df_data):
+                break
+
             nilai       = df_data.iloc[i]
-            bobot       = df_data.iloc[i + 1]
-            nilai_akhir_row = df_data.iloc[i + 2]
             nilai_aspek = df_data.iloc[i + 3]
 
-            kode_satker_raw = str(nilai[3])
+            kode_satker_raw = str(nilai.iloc[3])
             kode_satker = re.sub(r"\D", "", kode_satker_raw).zfill(6)
-            uraian_satker = str(nilai[4]).strip()
+            uraian_satker = str(nilai.iloc[4]).strip()
 
             if not kode_satker or kode_satker == "000000":
                 i += 4
                 continue
 
             row = {
-                "No": nilai[0],
-                "Kode KPPN": str(nilai[1]).strip("'"),
-                "Kode BA":   str(nilai[2]).strip("'"),
+                "No": nilai.iloc[0],
+                "Kode KPPN": str(nilai.iloc[1]).strip("'"),
+                "Kode BA":   str(nilai.iloc[2]).strip("'"),
                 "Kode Satker": kode_satker,
                 "Uraian Satker": uraian_satker,
 
-                # Kualitas dari baris nilai_aspek (format lama)
-                "Kualitas Perencanaan Anggaran":        safe_num(nilai_aspek[6]),
-                "Kualitas Pelaksanaan Anggaran":         safe_num(nilai_aspek[8]),
-                "Kualitas Hasil Pelaksanaan Anggaran":   safe_num(nilai_aspek[12]),
+                # Kualitas dari baris nilai_aspek (format OM SPAN)
+                "Kualitas Perencanaan Anggaran":        safe_num(nilai_aspek.iloc[6]),
+                "Kualitas Pelaksanaan Anggaran":         safe_num(nilai_aspek.iloc[8]),
+                "Kualitas Hasil Pelaksanaan Anggaran":   safe_num(nilai_aspek.iloc[12]),
 
-                "Revisi DIPA":                safe_num(nilai[6]),
-                "Deviasi Halaman III DIPA":   safe_num(nilai[7]),
-                "Penyerapan Anggaran":         safe_num(nilai[8]),
-                "Belanja Kontraktual":         safe_num(nilai[9]),
-                "Penyelesaian Tagihan":        safe_num(nilai[10]),
-                "Pengelolaan UP dan TUP":      safe_num(nilai[11]),
-                "Capaian Output":              safe_num(nilai[12]),
+                "Revisi DIPA":                safe_num(nilai.iloc[6]),
+                "Deviasi Halaman III DIPA":   safe_num(nilai.iloc[7]),
+                "Penyerapan Anggaran":         safe_num(nilai.iloc[8]),
+                "Belanja Kontraktual":         safe_num(nilai.iloc[9]),
+                "Penyelesaian Tagihan":        safe_num(nilai.iloc[10]),
+                "Pengelolaan UP dan TUP":      safe_num(nilai.iloc[11]),
+                "Capaian Output":              safe_num(nilai.iloc[12]),
 
-                "Nilai Total":                            safe_num(nilai[13]),
-                "Konversi Bobot":                         safe_num(nilai[14]),
-                "Dispensasi SPM (Pengurangan)":           safe_num(nilai[15]),
-                "Nilai Akhir (Nilai Total/Konversi Bobot)": safe_num(nilai[16]),
+                "Nilai Total":                            safe_num(nilai.iloc[13]),
+                "Konversi Bobot":                         safe_num(nilai.iloc[14]),
+                "Dispensasi SPM (Pengurangan)":           safe_num(nilai.iloc[15]),
+                "Nilai Akhir (Nilai Total/Konversi Bobot)": safe_num(nilai.iloc[16]),
 
                 "Bulan": month,
                 "Tahun": upload_year,
@@ -2917,12 +2946,16 @@ def process_excel_file_kppn(uploaded_file, year, detected_month=None):
         ).upper()
 
         # =====================================================
-        # FORMAT MYINTRESS
+        # FORMAT MYINTRESS KPPN (≥18 kolom, 3 baris/KPPN)
+        # Ciri: ada "NILAI AKHIR" di header, kolom ≥ 18
+        # Keterangan ada di col 4 (index), Kode KPPN di col 2, Nama di col 3
+        # Tidak ada "KODE SATKER" (ini KPPN bukan Satker)
         # =====================================================
         if (
             n_cols >= 18
             and "NILAI AKHIR" in all_text
-            and "KODE SATKER" in all_text
+            and ("KODE KPPN" in all_text or "NAMA KPPN" in all_text or "KODE" in all_text)
+            and "KODE SATKER" not in all_text
         ):
 
             return _parse_format_b(
@@ -2932,12 +2965,13 @@ def process_excel_file_kppn(uploaded_file, year, detected_month=None):
             )
 
         # =====================================================
-        # FORMAT OMSPAN
+        # FORMAT OMSPAN KPPN (15 kolom, 4 baris/KPPN)
+        # Ciri: ada "KODE KPPN" atau "NAMA KPPN"
+        # Keterangan ada di col 3 (index), Kode KPPN di col 1, Nama di col 2
         # =====================================================
         elif (
             "KODE KPPN" in all_text
             or "NAMA KPPN" in all_text
-            or "KODE SATKER" in all_text
         ):
 
             return _parse_format_c(
@@ -3103,7 +3137,9 @@ def _parse_format_b(df_raw, year, month):
 
 
 # ============================================================
-# FORMAT C — OM-SPAN Lama (15 kolom, 4 baris/KPPN)
+# FORMAT C — OM-SPAN (15 kolom, 4 baris/KPPN)
+# Keterangan di col 3 (index), Kode KPPN di col 1, Nama KPPN di col 2
+# 4 baris: Nilai / Bobot / Nilai Akhir / Nilai Aspek
 # ============================================================
 def _parse_format_c(df_raw, year, month):
     
@@ -3111,84 +3147,93 @@ def _parse_format_c(df_raw, year, month):
     import re
 
     # =====================================================
-    # AUTO HEADER DETECT
+    # DETEKSI FORMAT: 4-baris (OM SPAN) vs 3-baris
+    # OM SPAN: Keterangan di col 3, ada baris "Nilai Aspek"
     # =====================================================
-    header_row = 0
+
+    # Cari titik awal data (baris pertama yang ada "NILAI" di col 3 atau col 1)
+    data_start = None
+    ket_col = None  # indeks kolom keterangan
 
     for i in range(min(15, len(df_raw))):
+        row_text = " ".join(df_raw.iloc[i].astype(str).str.upper())
+        if "NILAI" in row_text and ("KODE KPPN" in row_text or "NAMA KPPN" in row_text):
+            # ini baris header, data mulai setelah ini
+            continue
 
-        row_text = " ".join(
-            df_raw.iloc[i]
-            .astype(str)
-            .str.upper()
-        )
-
-        if (
-            "KODE KPPN" in row_text
-            or "NAMA KPPN" in row_text
-        ):
-            header_row = i + 1
+    # Deteksi: cek di col 3 dan col 4 untuk 'NILAI' / 'Nilai'
+    for i in range(min(20, len(df_raw))):
+        for try_col in [3, 4, 0]:
+            if df_raw.shape[1] > try_col:
+                cell = str(df_raw.iloc[i, try_col]).strip().upper()
+                if cell == "NILAI":
+                    data_start = i
+                    ket_col = try_col
+                    break
+        if data_start is not None:
             break
 
-    df = (
-        df_raw
-        .iloc[header_row:]
-        .reset_index(drop=True)
-    )
+    if data_start is None or ket_col is None:
+        return None, month, year
+
+    df = df_raw.iloc[data_start:].reset_index(drop=True)
 
     # =====================================================
     # SAFE NUMERIC
     # =====================================================
     def safe_num(val):
-
         try:
-
             s = str(val).strip()
-
             if "," in s:
                 s = s.replace(".", "")
                 s = s.replace(",", ".")
-
-            s = re.sub(
-                r"[^\d.\-]",
-                "",
-                s
-            )
-
+            s = re.sub(r"[^\d.\-]", "", s)
             if s in ("", "-"):
                 return 0.0
-
             return float(s)
-
         except:
             return 0.0
 
     processed = []
-
     i = 0
 
-    while i < len(df):
+    # Tentukan posisi kolom berdasarkan ket_col
+    if ket_col == 3:
+        # OM SPAN: No(0), KodeKPPN(1), NamaKPPN(2), Ket(3), indikator mulai col 4
+        col_no, col_kode, col_nama = 0, 1, 2
+        col_revisi, col_deviasi = 4, 5
+        col_penyerapan, col_kontraktual, col_tagihan = 6, 7, 8
+        col_uptup, col_output = 9, 10
+        col_total, col_konversi, col_dispensasi, col_akhir = 11, 12, 13, 14
+        # Kualitas aspek ada di baris Nilai Aspek (baris ke-4)
+        col_kual_perencanaan, col_kual_pelaksanaan, col_kual_hasil = 4, 6, 10
+        n_row_per_blok = 4
+    else:
+        # Format lain (col 4 = keterangan): No(0), Periode(1), Kode(2), Nama(3), Ket(4), indikator mulai 5
+        col_no, col_kode, col_nama = 0, 2, 3
+        col_revisi, col_deviasi = 5, 6
+        col_penyerapan, col_kontraktual, col_tagihan = 8, 9, 10
+        col_uptup, col_output = 11, 13
+        col_total, col_konversi, col_dispensasi, col_akhir = 15, 16, 17, 18
+        col_kual_perencanaan, col_kual_pelaksanaan, col_kual_hasil = 7, 12, 14
+        n_row_per_blok = 3
 
+    while i < len(df):
         row = df.iloc[i]
 
-        row_text = " ".join(
-            row.astype(str).str.upper()
-        )
-
-        # =============================================
-        # BARIS NILAI
-        # =============================================
-        if "NILAI" not in row_text:
+        # Cari baris NILAI
+        ket = str(row.iloc[ket_col]).strip().upper() if len(row) > ket_col else ""
+        if ket != "NILAI":
             i += 1
             continue
 
         try:
-            kode_kppn = str(row.iloc[1]).strip()
+            kode_kppn = str(row.iloc[col_kode]).strip()
         except:
             kode_kppn = ""
 
         try:
-            nama_kppn = str(row.iloc[2]).strip()
+            nama_kppn = str(row.iloc[col_nama]).strip()
         except:
             nama_kppn = ""
 
@@ -3196,71 +3241,55 @@ def _parse_format_c(df_raw, year, month):
             i += 1
             continue
 
+        # Ambil kualitas aspek
+        kual_perencanaan = 0
+        kual_pelaksanaan = 0
+        kual_hasil = 0
+
+        if n_row_per_blok == 4 and i + 3 < len(df):
+            aspek_row = df.iloc[i + 3]
+            aspek_ket = str(aspek_row.iloc[ket_col]).strip().upper()
+            if "ASPEK" in aspek_ket:
+                kual_perencanaan = safe_num(aspek_row.iloc[col_kual_perencanaan])
+                kual_pelaksanaan = safe_num(aspek_row.iloc[col_kual_pelaksanaan])
+                kual_hasil = safe_num(aspek_row.iloc[col_kual_hasil])
+        elif n_row_per_blok == 3:
+            kual_perencanaan = safe_num(row.iloc[col_kual_perencanaan]) if len(row) > col_kual_perencanaan else 0
+            kual_pelaksanaan = safe_num(row.iloc[col_kual_pelaksanaan]) if len(row) > col_kual_pelaksanaan else 0
+            kual_hasil = safe_num(row.iloc[col_kual_hasil]) if len(row) > col_kual_hasil else 0
+
+        def safe_get(r, col):
+            try:
+                return safe_num(r.iloc[col]) if len(r) > col else 0.0
+            except:
+                return 0.0
+
         result = {
-
-            "Kode KPPN":
-                kode_kppn,
-
-            "Nama KPPN":
-                nama_kppn,
-
-            "Revisi DIPA":
-                safe_num(row.iloc[4]),
-
-            "Deviasi Halaman III DIPA":
-                safe_num(row.iloc[5]),
-
-            "Penyerapan Anggaran":
-                safe_num(row.iloc[6]),
-
-            "Belanja Kontraktual":
-                safe_num(row.iloc[7]),
-
-            "Penyelesaian Tagihan":
-                safe_num(row.iloc[8]),
-
-            "Pengelolaan UP dan TUP":
-                safe_num(row.iloc[9]),
-
-            "Capaian Output":
-                safe_num(row.iloc[10]),
-
-            "Nilai Total":
-                safe_num(row.iloc[11]),
-
-            "Konversi Bobot":
-                safe_num(row.iloc[12]),
-
-            "Dispensasi SPM (Pengurang)":
-                safe_num(row.iloc[13]),
-
-            "Nilai Akhir (Nilai Total/Konversi Bobot)":
-                safe_num(row.iloc[14]),
-
-            "Kualitas Perencanaan Anggaran":
-                safe_num(df.iloc[i + 3, 4]) if i + 3 < len(df) else 0,
-
-            "Kualitas Pelaksanaan Anggaran":
-                safe_num(df.iloc[i + 3, 6]) if i + 3 < len(df) else 0,
-
-            "Kualitas Hasil Pelaksanaan Anggaran":
-                safe_num(df.iloc[i + 3, 10]) if i + 3 < len(df) else 0,
+            "Kode KPPN":   kode_kppn,
+            "Nama KPPN":   nama_kppn,
+            "Revisi DIPA":                    safe_get(row, col_revisi),
+            "Deviasi Halaman III DIPA":        safe_get(row, col_deviasi),
+            "Penyerapan Anggaran":             safe_get(row, col_penyerapan),
+            "Belanja Kontraktual":             safe_get(row, col_kontraktual),
+            "Penyelesaian Tagihan":            safe_get(row, col_tagihan),
+            "Pengelolaan UP dan TUP":          safe_get(row, col_uptup),
+            "Capaian Output":                  safe_get(row, col_output),
+            "Nilai Total":                     safe_get(row, col_total),
+            "Konversi Bobot":                  safe_get(row, col_konversi),
+            "Dispensasi SPM (Pengurang)":      safe_get(row, col_dispensasi),
+            "Nilai Akhir (Nilai Total/Konversi Bobot)": safe_get(row, col_akhir),
+            "Kualitas Perencanaan Anggaran":   kual_perencanaan,
+            "Kualitas Pelaksanaan Anggaran":   kual_pelaksanaan,
+            "Kualitas Hasil Pelaksanaan Anggaran": kual_hasil,
         }
 
         processed.append(result)
+        i += n_row_per_blok
 
-        i += 4
+    if not processed:
+        return None, month, year
 
-    df_final = pd.DataFrame(processed)
-
-    if df_final.empty:
-        return None
-
-    return _finalize(
-        processed,
-        month,
-        year
-    )
+    return _finalize(processed, month, year), month, year
     
 
 def process_kppn_flat(df):
