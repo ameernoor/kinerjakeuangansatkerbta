@@ -12052,9 +12052,92 @@ def page_admin():
         
         # HAPUS DATA REFERENSI
         # =====================================================
+        # 🗑️ HAPUS FILE EXCEL REFERENSI
         st.markdown("---")
-        st.markdown("## Hapus Data Referensi")
+        st.subheader("🗑️ Hapus File Excel Data Referensi")
+        try:
 
+            token = st.secrets["GITHUB_TOKEN"]
+            repo_name = st.secrets["GITHUB_REPO"]
+
+            g = Github(auth=Auth.Token(token))
+            repo = g.get_repo(repo_name)
+
+            # ======================================
+            # AMBIL SEMUA FILE DI FOLDER templates
+            # ======================================
+            contents = repo.get_contents("templates")
+
+            # filter file excel
+            excel_files = [
+                f.name
+                for f in contents
+                if f.name.lower().endswith((".xlsx", ".xls"))
+            ]
+
+            # ======================================
+            # OPTIONAL → PROTECT FILE UTAMA
+            # ======================================
+            PROTECTED_FILES = [
+                "Template_Data_Referensi.xlsx"
+            ]
+
+            excel_files = [
+                f for f in excel_files
+                if f not in PROTECTED_FILES
+            ]
+
+            if not excel_files:
+
+                st.info("ℹ️ Tidak ada file excel referensi yang bisa dihapus.")
+
+            else:
+
+                selected_file = st.selectbox(
+                    "Pilih file excel referensi",
+                    sorted(excel_files)
+                )
+
+                confirm_delete_file = st.checkbox(
+                    f"⚠️ Saya yakin ingin menghapus file {selected_file}",
+                    key="confirm_delete_reference_file"
+                )
+
+                if st.button(
+                    "🗑️ Hapus File Excel Referensi",
+                    type="primary",
+                    key="btn_delete_reference_file"
+                ) and confirm_delete_file:
+
+                    try:
+
+                        file_path = f"templates/{selected_file}"
+
+                        existing_file = repo.get_contents(file_path)
+
+                        repo.delete_file(
+                            existing_file.path,
+                            f"Delete {selected_file}",
+                            existing_file.sha
+                        )
+
+                        st.success(
+                            f"✅ File {selected_file} berhasil dihapus dari GitHub."
+                        )
+
+                        st.snow()
+                        st.rerun()
+
+                    except Exception as e:
+                        st.error(f"❌ Gagal menghapus file: {e}")
+
+        except Exception as e:
+            st.error(f"❌ Gagal membaca folder templates: {e}")
+            
+        
+        # Hapus persatker Data Referensi
+        st.markdown("---")
+        st.markdown("## Hapus persatker Data Referensi")
         try:
             # ===============================
             # 1️⃣ LOAD DATA DARI GITHUB
@@ -12504,7 +12587,6 @@ def page_admin():
     # TAB 4: DOWNLOAD TEMPLATE
     # ============================================================
     with tab4:
-        st.subheader("📋 Download Template")
         st.markdown("### 📘 Template IKPA")
         try:
             token = st.secrets["GITHUB_TOKEN"]
