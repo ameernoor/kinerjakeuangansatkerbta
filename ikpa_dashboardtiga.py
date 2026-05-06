@@ -2133,22 +2133,26 @@ def process_excel_digipay(uploaded_file, upload_year):
     return df_final
 
 
+def detect_ikpa_header_row(df_raw):
+    
+    for i in range(min(15, len(df_raw))):
+
+        row = " ".join(
+            df_raw.iloc[i]
+            .astype(str)
+            .str.upper()
+        )
+
+        if (
+            "KODE SATKER" in row
+            and "URAIAN SATKER" in row
+        ):
+            return i + 1
+
+    return 4
+
+
 def process_excel_file(uploaded_file, upload_year):
-    """
-    Parser IKPA Satker universal.
-
-    Support:
-    ✅ MyIntress
-    ✅ OMSPAN
-    ✅ Format 2025
-    ✅ Format 2026
-    ✅ 3-row format
-    ✅ 4-row format
-    """
-
-    import pandas as pd
-    import re
-
     uploaded_file.seek(0)
 
     df_raw = pd.read_excel(
@@ -2304,14 +2308,11 @@ def process_excel_file(uploaded_file, upload_year):
 
             nilai = df_data.iloc[i]
 
-            keterangan = ""
+            row_text = " ".join(
+                nilai.astype(str).str.upper()
+            )
 
-            if df_data.shape[1] > 6:
-                keterangan = str(
-                    nilai[6]
-                ).upper().strip()
-
-            if "NILAI" not in keterangan:
+            if "NILAI" not in row_text:
                 i += 1
                 continue
 
@@ -3077,16 +3078,31 @@ def process_excel_file_kppn(uploaded_file, year, detected_month=None):
         # =====================================================
         month = detected_month
 
+        # PRIORITAS 1 → NAMA FILE
+        if not month:
+
+            try:
+
+                filename_upper = str(
+                    uploaded_file.name
+                ).upper()
+
+                for m in VALID_MONTHS:
+
+                    if m in filename_upper:
+                        month = VALID_MONTHS[m]
+                        break
+
+            except:
+                pass
+
+        # PRIORITAS 2 → HEADER FILE
         if not month:
             month = _detect_month_from_raw(df_raw)
 
+        # FALLBACK
         if not month:
-            try:
-                month = _detect_month_from_filename(
-                    uploaded_file.name
-                )
-            except:
-                pass
+            month = "UNKNOWN"
 
         if not month:
             month = "UNKNOWN"
@@ -3323,89 +3339,162 @@ def _parse_format_b(df_raw, year, month):
 # FORMAT C — OM-SPAN Lama (15 kolom, 4 baris/KPPN)
 # ============================================================
 def _parse_format_c(df_raw, year, month):
-    """
-    Header ada di baris 2 (row index 2) dan baris 3 (row index 3).
-    Data mulai baris 4 (row index 4).
-    Struktur per KPPN: NILAI / BOBOT / NILAI AKHIR / NILAI ASPEK  (4 baris)
+    
+    import pandas as pd
+    import re
 
-    Pemetaan kolom baris NILAI (index 0-based):
-      0  = No
-      1  = Kode KPPN
-      2  = Nama KPPN
-      3  = Keterangan ('Nilai')
-      4  = Revisi DIPA
-      5  = Deviasi Halaman III DIPA
-      6  = Penyerapan Anggaran
-      7  = Belanja Kontraktual
-      8  = Penyelesaian Tagihan
-      9  = Pengelolaan UP dan TUP
-      10 = Capaian Output
-      11 = Nilai Total
-      12 = Konversi Bobot (misal '100%')
-      13 = Dispensasi SPM (Pengurang)
-      14 = Nilai Akhir
+    # =====================================================
+    # AUTO HEADER DETECT
+    # =====================================================
+    header_row = 0
 
-    Pemetaan kolom baris NILAI ASPEK (index 0-based):
-      4  = Kualitas Perencanaan Anggaran
-      6  = Kualitas Pelaksanaan Anggaran
-      10 = Kualitas Hasil Pelaksanaan Anggaran
-    """
-    # Cari baris data pertama
-    data_start = None
-    for i in range(len(df_raw)):
-        cell = str(df_raw.iloc[i, 3]).strip().upper()
-        if cell in ("NILAI", "NILAI AKHIR"):
-            data_start = i
+    for i in range(min(15, len(df_raw))):
+
+        row_text = " ".join(
+            df_raw.iloc[i]
+            .astype(str)
+            .str.upper()
+        )
+
+        if (
+            "KODE KPPN" in row_text
+            or "NAMA KPPN" in row_text
+        ):
+            header_row = i + 1
             break
 
-    if data_start is None:
-        return None, month, year
+    df = (
+        df_raw
+        .iloc[header_row:]
+        .reset_index(drop=True)
+    )
 
-    rows_out = []
-    i = data_start
+    # =====================================================
+    # SAFE NUMERIC
+    # =====================================================
+    def safe_num(val):
 
-    while i + 3 < len(df_raw):
-        row_nilai  = df_raw.iloc[i]
-        row_aspek  = df_raw.iloc[i + 3]
+        try:
 
-        ket = str(row_nilai.iloc[3]).strip().upper()
-        if ket not in ("NILAI",):
-            # Mungkin baris BOBOT/NILAI AKHIR/NILAI ASPEK → skip 1
+            s = str(val).strip()
+
+            if "," in s:
+                s = s.replace(".", "")
+                s = s.replace(",", ".")
+
+            s = re.sub(
+                r"[^\d.\-]",
+                "",
+                s
+            )
+
+            if s in ("", "-"):
+                return 0.0
+
+            return float(s)
+
+        except:
+            return 0.0
+
+    processed = []
+
+    i = 0
+
+    while i < len(df):
+
+        row = df.iloc[i]
+
+        row_text = " ".join(
+            row.astype(str).str.upper()
+        )
+
+        # =============================================
+        # BARIS NILAI
+        # =============================================
+        if "NILAI" not in row_text:
             i += 1
             continue
 
-        kode_kppn = str(row_nilai.iloc[1]).strip()
-        nama_kppn = str(row_nilai.iloc[2]).strip()
+        try:
+            kode_kppn = str(row.iloc[1]).strip()
+        except:
+            kode_kppn = ""
 
-        # Skip baris invalid (kode bukan numerik)
-        if not re.search(r'\d', kode_kppn):
-            i += 4
+        try:
+            nama_kppn = str(row.iloc[2]).strip()
+        except:
+            nama_kppn = ""
+
+        if not re.search(r"\d", kode_kppn):
+            i += 1
             continue
 
-        rows_out.append({
-            "Kode KPPN":                            kode_kppn,
-            "Nama KPPN":                            nama_kppn,
-            "Revisi DIPA":                          _to_float(row_nilai.iloc[4]),
-            "Deviasi Halaman III DIPA":             _to_float(row_nilai.iloc[5]),
-            "Penyerapan Anggaran":                  _to_float(row_nilai.iloc[6]),
-            "Belanja Kontraktual":                  _to_float(row_nilai.iloc[7]),
-            "Penyelesaian Tagihan":                 _to_float(row_nilai.iloc[8]),
-            "Pengelolaan UP dan TUP":               _to_float(row_nilai.iloc[9]),
-            "Capaian Output":                       _to_float(row_nilai.iloc[10]),
-            "Nilai Total":                          _to_float(row_nilai.iloc[11]),
-            "Konversi Bobot":                       _to_float(row_nilai.iloc[12]),
-            "Dispensasi SPM (Pengurang)":           _to_float(row_nilai.iloc[13]),
-            "Nilai Akhir (Nilai Total/Konversi Bobot)": _to_float(row_nilai.iloc[14]),
-            # Aspek dari baris NILAI ASPEK (baris ke-4)
-            "Kualitas Perencanaan Anggaran":        _to_float(row_aspek.iloc[4]),
-            "Kualitas Pelaksanaan Anggaran":        _to_float(row_aspek.iloc[6]),
-            "Kualitas Hasil Pelaksanaan Anggaran":  _to_float(row_aspek.iloc[10]),
-        })
+        result = {
 
-        i += 4  # loncat ke blok berikutnya
+            "Kode KPPN":
+                kode_kppn,
 
-    return _finalize(rows_out, month, year), month, year
+            "Nama KPPN":
+                nama_kppn,
 
+            "Revisi DIPA":
+                safe_num(row.iloc[4]),
+
+            "Deviasi Halaman III DIPA":
+                safe_num(row.iloc[5]),
+
+            "Penyerapan Anggaran":
+                safe_num(row.iloc[6]),
+
+            "Belanja Kontraktual":
+                safe_num(row.iloc[7]),
+
+            "Penyelesaian Tagihan":
+                safe_num(row.iloc[8]),
+
+            "Pengelolaan UP dan TUP":
+                safe_num(row.iloc[9]),
+
+            "Capaian Output":
+                safe_num(row.iloc[10]),
+
+            "Nilai Total":
+                safe_num(row.iloc[11]),
+
+            "Konversi Bobot":
+                safe_num(row.iloc[12]),
+
+            "Dispensasi SPM (Pengurang)":
+                safe_num(row.iloc[13]),
+
+            "Nilai Akhir (Nilai Total/Konversi Bobot)":
+                safe_num(row.iloc[14]),
+
+            "Kualitas Perencanaan Anggaran":
+                safe_num(df.iloc[i + 3, 4]) if i + 3 < len(df) else 0,
+
+            "Kualitas Pelaksanaan Anggaran":
+                safe_num(df.iloc[i + 3, 6]) if i + 3 < len(df) else 0,
+
+            "Kualitas Hasil Pelaksanaan Anggaran":
+                safe_num(df.iloc[i + 3, 10]) if i + 3 < len(df) else 0,
+        }
+
+        processed.append(result)
+
+        i += 4
+
+    df_final = pd.DataFrame(processed)
+
+    if df_final.empty:
+        return None
+
+    return _finalize(
+        processed,
+        month,
+        year
+    )
+    
 
 def process_kppn_flat(df):
     # ===============================
