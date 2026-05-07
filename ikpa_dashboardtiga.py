@@ -996,6 +996,20 @@ def safe_float(val, default=0):
         return float(str(val).replace(",", "."))
     except:
         return default
+    
+def format_ikpa(v):
+    try:
+        v = float(v)
+
+        # kalau 0 atau 100 → tanpa desimal
+        if v in [0, 100]:
+            return f"{int(v)}"
+
+        # selain itu → 2 angka belakang koma
+        return f"{v:.2f}"
+
+    except:
+        return str(v)
 
 def safe_upper(val):
     if pd.isna(val):
@@ -4076,6 +4090,19 @@ def get_template_file():
         st.error(f"Error membaca template: {e}")
         return None
 
+def format_ikpa(v):
+    try:
+        v = float(v)
+
+        if v in [0, 100]:
+            return f"{int(v)}"
+
+        return f"{v:.2f}"
+
+    except:
+        return str(v)
+    
+
 # Fungsi visualisasi podium/bintang
 def create_ranking_chart(df, title, top=True, limit=10):
     """
@@ -4111,7 +4138,7 @@ def create_ranking_chart(df, title, top=True, limit=10):
         cmin=min_val,
         cmax=max_val,
     ),
-    text=[f"{v:.2f}" for v in df_sorted[nilai_col]],
+    text=[format_ikpa(v) for v in df_sorted[nilai_col]],
     textposition='outside',
     hovertemplate='<b>%{y}</b><br>Nilai: %{x:.2f}<extra></extra>'
 ))
@@ -4194,8 +4221,7 @@ def make_column_chart(data, title, color_scale, y_min, y_max):
     )
 
     fig.update_traces(
-        text=plot_df[nilai_col].apply(lambda x: f"{x:.2f}"),
-        texttemplate="%{x:.2f}",
+        text=plot_df[nilai_col].apply(format_ikpa),
         textposition="outside",
         hovertemplate="<b>%{y}</b><br>Nilai: %{x:.2f}<extra></extra>"
     )
@@ -4235,12 +4261,12 @@ def create_problem_chart(df, column, threshold, title, comparison='less', y_min=
         cmin=min_val,
         cmax=max_val,
         colorbar=dict(
-            x=1.01,          # ⬅️ DEKATKAN KE CHART
-            thickness=12,    # ⬅️ LEBIH RAMPING
-            len=0.85         # ⬅️ TIDAK TERLALU TINGGI
+            x=1.01,         
+            thickness=12,    
+            len=0.85         
         )
         ),
-        text=df_filtered[column].round(2),
+        text=df_filtered[column].apply(format_ikpa),
         textposition='outside',
         textangle=0,
         textfont=dict(family="Arial Black", size=12),
@@ -4757,7 +4783,7 @@ def safe_chart(
 
     fig.update_traces(
         width=0.65 if thin_bar else 0.8,
-        text=[f"{v:.2f}" for v in df_sorted[nilai_col]],
+        text=[format_ikpa(v) for v in df_sorted[nilai_col]],
         texttemplate="%{text}",
         textposition="outside",
         cliponaxis=False
