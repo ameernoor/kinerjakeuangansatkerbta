@@ -10438,9 +10438,45 @@ def page_admin():
 
                                     month = bulan_map.get(bulan_num, "UNKNOWN")
 
-                            # 🔥 FINAL FALLBACK (kalau masih gagal)
+                            
+                            import re
+                            from collections import Counter
+
+                            # ======================
+                            # FIX BULAN DARI NAMA FILE
+                            # ======================
                             if month == "UNKNOWN":
-                                month = "MARET"
+
+                                fname = uploaded_file.name.upper()
+
+                                MONTH_MAP = {
+                                    "JAN": "JANUARI",
+                                    "FEB": "FEBRUARI",
+                                    "MAR": "MARET",
+                                    "APR": "APRIL",
+                                    "MEI": "MEI",
+                                    "MAY": "MEI",
+                                    "JUN": "JUNI",
+                                    "JUL": "JULI",
+                                    "AGU": "AGUSTUS",
+                                    "AGS": "AGUSTUS",
+                                    "SEP": "SEPTEMBER",
+                                    "OKT": "OKTOBER",
+                                    "NOV": "NOVEMBER",
+                                    "DES": "DESEMBER"
+                                }
+
+                                # PRIORITAS 1 → nama file
+                                for k, v in MONTH_MAP.items():
+                                    if k in fname:
+                                        month = v
+                                        break
+
+                            # ======================
+                            # FINAL FALLBACK
+                            # ======================
+                            if month == "UNKNOWN":
+                                month = "JANUARI"
 
                             # ======================
                             # VALIDASI DATA
@@ -10689,7 +10725,10 @@ def page_admin():
                     }
 
                     # ambil bulan terbesar (biasanya bulan laporan terbaru)
-                    month_preview = max(month_candidates, key=lambda x: MONTH_ORDER.get(x, 0))
+                    from collections import Counter
+
+                    # ambil bulan yang paling sering muncul
+                    month_preview = Counter(month_candidates).most_common(1)[0][0]
                 else:
                     month_preview = None
 
