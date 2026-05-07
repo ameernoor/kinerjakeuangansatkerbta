@@ -4111,7 +4111,7 @@ def create_ranking_chart(df, title, top=True, limit=10):
         cmin=min_val,
         cmax=max_val,
     ),
-    text=df_sorted[nilai_col].round(2),
+    text=[f"{v:.2f}" for v in df_sorted[nilai_col]],
     textposition='outside',
     hovertemplate='<b>%{y}</b><br>Nilai: %{x:.2f}<extra></extra>'
 ))
@@ -4194,6 +4194,7 @@ def make_column_chart(data, title, color_scale, y_min, y_max):
     )
 
     fig.update_traces(
+        text=plot_df[nilai_col].apply(lambda x: f"{x:.2f}"),
         texttemplate="%{x:.2f}",
         textposition="outside",
         hovertemplate="<b>%{y}</b><br>Nilai: %{x:.2f}<extra></extra>"
@@ -4756,7 +4757,8 @@ def safe_chart(
 
     fig.update_traces(
         width=0.65 if thin_bar else 0.8,
-        texttemplate="%{text:.2f}",
+        text=[f"{v:.2f}" for v in df_sorted[nilai_col]],
+        texttemplate="%{text}",
         textposition="outside",
         cliponaxis=False
     )
