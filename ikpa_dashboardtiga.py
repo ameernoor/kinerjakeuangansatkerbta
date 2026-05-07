@@ -10838,8 +10838,11 @@ def page_admin():
                             filename,
                             folder=f"Data IKPA KPPN/{year}"
                         )
+
+                        # clear cache saja
                         st.cache_data.clear()
-                        st.session_state.data_storage_kppn = {}
+
+                        st.rerun()
                         
                         log_activity(
                             menu="Upload Data",
@@ -12565,8 +12568,12 @@ def page_admin():
         # ===============================
         # JIKA BELUM ADA DATA
         # ===============================
-        if not data_kppn:
+        if (
+            "data_storage_kppn" not in st.session_state
+            or len(st.session_state.data_storage_kppn) == 0
+        ):
             st.info("ℹ️ Belum ada data IKPA KPPN tersedia untuk diunduh.")
+
 
         else:
             # ===============================
