@@ -6237,6 +6237,7 @@ def page_dashboard():
         # DATA DETAIL SATKER
         # -------------------------
         elif main_tab == "📋 Data Detail Satker":
+            st.markdown("---")
             st.markdown("## 📋 Tabel Detail Satker")
 
             # ===============================
@@ -6260,8 +6261,7 @@ def page_dashboard():
             # PERIODIK TABLE
             # -------------------------
             if sub_tab == "📆 Periodik":
-                st.markdown("#### Periodik — ringkasan per bulan / triwulan / perbandingan")
-
+                st.markdown("---")
                 # Tentukan tahun yang tersedia
                 years = set()
                 for k, df_period in st.session_state.data_storage.items():
@@ -6286,6 +6286,7 @@ def page_dashboard():
                     period_index = 0
                     st.session_state.period_type = "quarterly"
 
+                st.markdown("---")
                 # Radio button
                 period_type = st.radio(
                     "Jenis Periode",
@@ -6297,6 +6298,7 @@ def page_dashboard():
                 )
                 st.session_state.period_type = period_type
 
+                st.markdown("---")
                 # Pilih indikator (satu untuk semua mode)
                 indicator_options = [
                     'Kualitas Perencanaan Anggaran', 'Kualitas Pelaksanaan Anggaran', 'Kualitas Hasil Pelaksanaan Anggaran',
