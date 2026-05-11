@@ -726,60 +726,14 @@ def render_table_pin_satker(df):
     """)
 
     # =====================================================
-    # GRID OPTIONS 
+    # GRID OPTIONS
     # =====================================================
     gb.configure_grid_options(
         domLayout="normal",
         alwaysShowHorizontalScroll=True,
-        suppressHorizontalScroll=False,
-        suppressSizeToFit=True,
-        ensureDomOrder=True,
         getRowStyle=zebra_dark,
         headerHeight=40
     )
-
-    # =====================================================
-    # CUSTOM CSS (injected ke dalam iframe AgGrid)
-    # =====================================================
-    aggrid_custom_css = {
-        # Scrollbar vertikal
-        ".ag-body-vertical-scroll::-webkit-scrollbar": {
-            "width": "10px",
-        },
-        ".ag-body-vertical-scroll::-webkit-scrollbar-thumb": {
-            "background": "#22c55e",
-            "border-radius": "10px",
-        },
-        # Scrollbar horizontal — selalu tampil, di bawah tabel
-        ".ag-body-horizontal-scroll": {
-            "display": "block !important",
-            "overflow-x": "scroll !important",
-            "min-height": "12px !important",
-        },
-        ".ag-body-horizontal-scroll::-webkit-scrollbar": {
-            "height": "12px",
-            "display": "block !important",
-        },
-        ".ag-body-horizontal-scroll::-webkit-scrollbar-track": {
-            "background": "#1e1e1e",
-            "border-radius": "10px",
-        },
-        ".ag-body-horizontal-scroll::-webkit-scrollbar-thumb": {
-            "background": "#22c55e",
-            "border-radius": "10px",
-        },
-        ".ag-body-horizontal-scroll-viewport": {
-            "overflow-x": "scroll !important",
-        },
-        ".ag-body-viewport": {
-            "overflow-x": "hidden !important",
-        },
-    }
-
-    # =====================================================
-    # GRID BUILD
-    # =====================================================
-    _go = gb.build()
 
     # =====================================================
     # TINGGI DINAMIS BERDASARKAN JUMLAH BARIS
@@ -791,69 +745,14 @@ def render_table_pin_satker(df):
     # =====================================================
     grid_response = AgGrid(
         df,
-        gridOptions=_go,
+        gridOptions=gb.build(),
         height=dynamic_height,
-        fit_columns_on_grid_load=False,
+        width="100%",
         theme="streamlit",
         allow_unsafe_jscode=True,
         data_return_mode="FILTERED_AND_SORTED",
         update_mode="MODEL_CHANGED",
-        custom_css=aggrid_custom_css,
     )
-
-    # =====================================================
-    # INJECT CSS HORIZONTAL SCROLL KE IFRAME AGGRID
-    # via JavaScript (menembus iframe st-aggrid)
-    # =====================================================
-    components.html("""
-    <script>
-    (function injectHorizontalScroll() {
-        function inject(doc) {
-            if (!doc) return;
-            var styleId = 'ag-hscroll-fix';
-            if (doc.getElementById(styleId)) return;
-            var style = doc.createElement('style');
-            style.id = styleId;
-            style.textContent = [
-                '.ag-body-horizontal-scroll {',
-                '    display: block !important;',
-                '    overflow-x: scroll !important;',
-                '    min-height: 12px !important;',
-                '}',
-                '.ag-body-horizontal-scroll::-webkit-scrollbar {',
-                '    height: 12px !important;',
-                '    display: block !important;',
-                '}',
-                '.ag-body-horizontal-scroll::-webkit-scrollbar-track {',
-                '    background: #1e1e1e;',
-                '    border-radius: 10px;',
-                '}',
-                '.ag-body-horizontal-scroll::-webkit-scrollbar-thumb {',
-                '    background: #22c55e;',
-                '    border-radius: 10px;',
-                '}',
-                '.ag-body-horizontal-scroll-viewport {',
-                '    overflow-x: scroll !important;',
-                '}'
-            ].join('\\n');
-            doc.head.appendChild(style);
-        }
-
-        function tryInject() {
-            var iframes = window.parent.document.querySelectorAll('iframe');
-            iframes.forEach(function(iframe) {
-                try {
-                    inject(iframe.contentDocument || iframe.contentWindow.document);
-                } catch(e) {}
-            });
-        }
-
-        tryInject();
-        setTimeout(tryInject, 500);
-        setTimeout(tryInject, 1500);
-    })();
-    </script>
-    """, height=0)
 
 
 
