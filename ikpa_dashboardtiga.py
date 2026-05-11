@@ -1004,6 +1004,10 @@ def parse_cms_universal(df_raw):
             rename_map[col] = "STATUS REKENING"
 
     df = df.rename(columns=rename_map)
+    # =====================================
+    # HAPUS KOLOM DUPLIKAT
+    # =====================================
+    df = df.loc[:, ~df.columns.duplicated()]
 
     # =========================================
     # CLEAN SATKER
