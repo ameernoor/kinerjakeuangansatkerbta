@@ -12254,7 +12254,18 @@ def page_admin():
                 # ============================================================
                 # 🔥 SMART OVERWRITE CMS MASTER
                 # ============================================================
-                UNIQUE_KEY = col_satker
+                # =====================================
+                # UNIQUE KEY CMS
+                # =====================================
+                if "SATKER" in df_final.columns:
+                    UNIQUE_KEY = "SATKER"
+
+                elif "KODE SATKER" in df_final.columns:
+                    UNIQUE_KEY = "KODE SATKER"
+
+                else:
+                    st.error("❌ Kolom SATKER tidak ditemukan.")
+                    st.stop()
                 df_final = df_final.drop_duplicates(subset=[UNIQUE_KEY])
 
                 if st.session_state.cms_master.empty:
@@ -12264,6 +12275,18 @@ def page_admin():
                 else:
                     master_df = st.session_state.cms_master.copy()
 
+                    # =====================================
+                    # SAFETY MASTER COLUMN
+                    # =====================================
+                    if UNIQUE_KEY not in master_df.columns:
+
+                        master_df[UNIQUE_KEY] = ""
+
+                    if UNIQUE_KEY not in df_final.columns:
+
+                        st.error(f"❌ Kolom {UNIQUE_KEY} tidak ditemukan di data baru.")
+                        st.stop()
+    
                     overwrite_mask = master_df[UNIQUE_KEY].isin(df_final[UNIQUE_KEY])
                     overwrite_count = overwrite_mask.sum()
 
