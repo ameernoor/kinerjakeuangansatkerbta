@@ -684,7 +684,26 @@ def render_table_pin_satker(df):
             "Uraian Satker-RINGKAS",
             headerName="Nama Satker",
             pinned="left",
-            width=220   # 🔥 lebih lega
+            width=220
+        )
+
+    # Pin "Nama Satker" langsung (untuk tabel Digitalisasi yang tidak pakai Uraian Satker-RINGKAS)
+    if "Nama Satker" in df.columns and "Uraian Satker-RINGKAS" not in df.columns:
+        gb.configure_column(
+            "Nama Satker",
+            pinned="left",
+            width=220,
+            cellStyle={"textAlign": "left"}
+        )
+
+    # Pin "SATKER" (untuk KKP yang pakai kolom SATKER)
+    if "SATKER" in df.columns and "Uraian Satker-RINGKAS" not in df.columns and "Nama Satker" not in df.columns:
+        gb.configure_column(
+            "SATKER",
+            headerName="Nama Satker",
+            pinned="left",
+            width=220,
+            cellStyle={"textAlign": "left"}
         )
 
     if "Kode Satker" in df.columns:
@@ -729,6 +748,16 @@ def render_table_pin_satker(df):
         ".ag-body-vertical-scroll::-webkit-scrollbar-thumb": {
             "background": "#22c55e",
             "border-radius": "10px",
+        },
+        ".ag-body-horizontal-scroll::-webkit-scrollbar": {
+            "height": "10px",
+        },
+        ".ag-body-horizontal-scroll::-webkit-scrollbar-thumb": {
+            "background": "#22c55e",
+            "border-radius": "10px",
+        },
+        ".ag-body-horizontal-scroll": {
+            "overflow-x": "auto !important",
         }
     }
 
@@ -742,8 +771,17 @@ def render_table_pin_satker(df):
     .ag-center-cols-viewport {
         overflow-x: auto !important;
     }
+    .ag-body-horizontal-scroll {
+        overflow-x: auto !important;
+        display: block !important;
+    }
     </style>
     """, unsafe_allow_html=True)
+
+    # =====================================================
+    # TINGGI DINAMIS BERDASARKAN JUMLAH BARIS
+    # =====================================================
+    dynamic_height = calc_grid_height(df)
 
     # =====================================================
     # GRID RENDER
@@ -751,7 +789,7 @@ def render_table_pin_satker(df):
     grid_response = AgGrid(
         df,
         gridOptions=_go,
-        height=650,  
+        height=dynamic_height,
         fit_columns_on_grid_load=False,
         theme="streamlit",
         allow_unsafe_jscode=True,
@@ -7958,6 +7996,18 @@ def page_dashboard():
                             )
 
                         # =====================================================
+                        # FILTER BA (dari session state filter_ba_main)
+                        # =====================================================
+                        selected_ba = st.session_state.get("filter_ba_main", ["SEMUA BA"])
+                        if selected_ba and "SEMUA BA" not in selected_ba:
+                            if "reference_df" in st.session_state:
+                                ref_ba = st.session_state.reference_df.copy()
+                                ref_ba["Kode BA"] = ref_ba["Kode BA"].apply(normalize_kode_ba)
+                                ref_ba["Kode Satker"] = ref_ba["Kode Satker"].astype(str).str.strip()
+                                satker_filtered = ref_ba[ref_ba["Kode BA"].isin(selected_ba)]["Kode Satker"].unique()
+                                df_master = df_master[df_master["Kode Satker"].isin(satker_filtered)].copy()
+
+                        # =====================================================
                         # FILTER
                         # =====================================================
                         col1, col2, col3 = st.columns(3)
@@ -8108,6 +8158,11 @@ def page_dashboard():
 
                         df_pivot = df_pivot.reset_index()
 
+                        # Reorder: Nama Satker dulu, baru Kode Satker (agar pin: No|Nama Satker|Kode Satker)
+                        if "Nama Satker" in df_pivot.columns and "Kode Satker" in df_pivot.columns:
+                            other_cols = [c for c in df_pivot.columns if c not in ["Nama Satker", "Kode Satker"]]
+                            df_pivot = df_pivot[["Nama Satker", "Kode Satker"] + other_cols]
+
                         # =====================================================
                         # FORMAT RIBUAN
                         # =====================================================
@@ -8193,6 +8248,18 @@ def page_dashboard():
                     # normalisasi kode satker
                     df_pivot["Kode Satker"] = df_pivot["Kode Satker"].astype(str).str.zfill(6)
 
+                    # =====================================================
+                    # FILTER BA (dari session state filter_ba_main)
+                    # =====================================================
+                    selected_ba_kkp = st.session_state.get("filter_ba_main", ["SEMUA BA"])
+                    if selected_ba_kkp and "SEMUA BA" not in selected_ba_kkp:
+                        if "reference_df" in st.session_state:
+                            ref_ba_kkp = st.session_state.reference_df.copy()
+                            ref_ba_kkp["Kode BA"] = ref_ba_kkp["Kode BA"].apply(normalize_kode_ba)
+                            ref_ba_kkp["Kode Satker"] = ref_ba_kkp["Kode Satker"].astype(str).str.strip()
+                            satker_filtered_kkp = ref_ba_kkp[ref_ba_kkp["Kode BA"].isin(selected_ba_kkp)]["Kode Satker"].unique()
+                            df_pivot = df_pivot[df_pivot["Kode Satker"].isin(satker_filtered_kkp)].copy()
+
                     # tambah pagu
                     df_pivot = add_kkp_pagu_column(df_pivot, df_master)
 
@@ -8227,6 +8294,11 @@ def page_dashboard():
                         df_pivot["SATKER"] = df_pivot["SATKER"].astype(str).apply(
                             lambda x: re.sub(r"^\d{6}\s*", "", x)
                         )
+
+                    # Reorder: SATKER dulu, baru Kode Satker (pin: No|SATKER|Kode Satker)
+                    if "SATKER" in df_pivot.columns and "Kode Satker" in df_pivot.columns:
+                        other_cols_kkp = [c for c in df_pivot.columns if c not in ["SATKER", "Kode Satker"]]
+                        df_pivot = df_pivot[["SATKER", "Kode Satker"] + other_cols_kkp]
                     
                     render_table_pin_satker(df_pivot)
                                 
@@ -8316,6 +8388,23 @@ def page_dashboard():
                 if df_pivot is None or df_pivot.empty:
                     st.warning("Data CMS tidak tersedia untuk periode yang dipilih")
                     st.stop()
+
+                # =====================================================
+                # FILTER BA (dari session state filter_ba_main) untuk CMS
+                # =====================================================
+                selected_ba_cms = st.session_state.get("filter_ba_main", ["SEMUA BA"])
+                if selected_ba_cms and "SEMUA BA" not in selected_ba_cms:
+                    if "reference_df" in st.session_state:
+                        ref_ba_cms = st.session_state.reference_df.copy()
+                        ref_ba_cms["Kode BA"] = ref_ba_cms["Kode BA"].apply(normalize_kode_ba)
+                        ref_ba_cms["Kode Satker"] = ref_ba_cms["Kode Satker"].astype(str).str.strip()
+                        satker_filtered_cms = ref_ba_cms[ref_ba_cms["Kode BA"].isin(selected_ba_cms)]["Kode Satker"].unique()
+                        # CMS pakai kolom "KODE SATKER"
+                        if "KODE SATKER" in df_pivot.columns:
+                            kode_satker_cms = df_pivot["KODE SATKER"].astype(str).str.zfill(6)
+                            df_pivot = df_pivot[kode_satker_cms.isin(satker_filtered_cms)].copy()
+                        elif "Kode Satker" in df_pivot.columns:
+                            df_pivot = df_pivot[df_pivot["Kode Satker"].astype(str).str.zfill(6).isin(satker_filtered_cms)].copy()
 
                 # =============================
                 # FORMAT PERSEN
