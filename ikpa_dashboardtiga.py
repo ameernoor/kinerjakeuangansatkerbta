@@ -726,14 +726,57 @@ def render_table_pin_satker(df):
     """)
 
     # =====================================================
-    # GRID OPTIONS
+    # GRID OPTIONS 
     # =====================================================
     gb.configure_grid_options(
         domLayout="normal",
         alwaysShowHorizontalScroll=True,
+        suppressHorizontalScroll=False,
+        suppressSizeToFit=True,
+        ensureDomOrder=True,
         getRowStyle=zebra_dark,
         headerHeight=40
     )
+
+    # =====================================================
+    # CUSTOM CSS (MINIMAL & AMAN)
+    # =====================================================
+    aggrid_custom_css = {
+        ".ag-body-vertical-scroll::-webkit-scrollbar": {
+            "width": "10px",
+        },
+        ".ag-body-vertical-scroll::-webkit-scrollbar-thumb": {
+            "background": "#22c55e",
+            "border-radius": "10px",
+        },
+        ".ag-body-horizontal-scroll::-webkit-scrollbar": {
+            "height": "10px",
+        },
+        ".ag-body-horizontal-scroll::-webkit-scrollbar-thumb": {
+            "background": "#22c55e",
+            "border-radius": "10px",
+        },
+        ".ag-body-horizontal-scroll": {
+            "overflow-x": "auto !important",
+        }
+    }
+
+    # =====================================================
+    # GRID BUILD
+    # =====================================================
+    _go = gb.build()
+    
+    st.markdown("""
+    <style>
+    .ag-center-cols-viewport {
+        overflow-x: auto !important;
+    }
+    .ag-body-horizontal-scroll {
+        overflow-x: auto !important;
+        display: block !important;
+    }
+    </style>
+    """, unsafe_allow_html=True)
 
     # =====================================================
     # TINGGI DINAMIS BERDASARKAN JUMLAH BARIS
@@ -745,13 +788,14 @@ def render_table_pin_satker(df):
     # =====================================================
     grid_response = AgGrid(
         df,
-        gridOptions=gb.build(),
+        gridOptions=_go,
         height=dynamic_height,
-        width="100%",
+        fit_columns_on_grid_load=False,
         theme="streamlit",
         allow_unsafe_jscode=True,
         data_return_mode="FILTERED_AND_SORTED",
         update_mode="MODEL_CHANGED",
+        custom_css=aggrid_custom_css,
     )
 
 
