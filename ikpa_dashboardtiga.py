@@ -803,7 +803,7 @@ def render_table_pin_satker(df):
     # =====================================================
     grid_response = AgGrid(
         df,
-        gridOptions=_go,
+        gridOptions=gb.build(),
         height=dynamic_height,
         reload_data=True,
         enable_enterprise_modules=False,
@@ -814,7 +814,6 @@ def render_table_pin_satker(df):
         update_mode="MODEL_CHANGED",
         custom_css=aggrid_custom_css,
     )
-
 
 
     # ===== AMBIL DATA HASIL FILTER =====
