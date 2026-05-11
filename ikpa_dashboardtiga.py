@@ -739,9 +739,10 @@ def render_table_pin_satker(df):
     )
 
     # =====================================================
-    # CUSTOM CSS (MINIMAL & AMAN)
+    # CUSTOM CSS (injected ke dalam iframe AgGrid)
     # =====================================================
     aggrid_custom_css = {
+        # Scrollbar vertikal
         ".ag-body-vertical-scroll::-webkit-scrollbar": {
             "width": "10px",
         },
@@ -749,34 +750,36 @@ def render_table_pin_satker(df):
             "background": "#22c55e",
             "border-radius": "10px",
         },
+        # Scrollbar horizontal — selalu tampil, di bawah tabel
+        ".ag-body-horizontal-scroll": {
+            "display": "block !important",
+            "overflow-x": "scroll !important",
+            "min-height": "12px !important",
+        },
         ".ag-body-horizontal-scroll::-webkit-scrollbar": {
-            "height": "10px",
+            "height": "12px",
+            "display": "block !important",
+        },
+        ".ag-body-horizontal-scroll::-webkit-scrollbar-track": {
+            "background": "#1e1e1e",
+            "border-radius": "10px",
         },
         ".ag-body-horizontal-scroll::-webkit-scrollbar-thumb": {
             "background": "#22c55e",
             "border-radius": "10px",
         },
-        ".ag-body-horizontal-scroll": {
-            "overflow-x": "auto !important",
-        }
+        ".ag-body-horizontal-scroll-viewport": {
+            "overflow-x": "scroll !important",
+        },
+        ".ag-body-viewport": {
+            "overflow-x": "hidden !important",
+        },
     }
 
     # =====================================================
     # GRID BUILD
     # =====================================================
     _go = gb.build()
-    
-    st.markdown("""
-    <style>
-    .ag-center-cols-viewport {
-        overflow-x: auto !important;
-    }
-    .ag-body-horizontal-scroll {
-        overflow-x: auto !important;
-        display: block !important;
-    }
-    </style>
-    """, unsafe_allow_html=True)
 
     # =====================================================
     # TINGGI DINAMIS BERDASARKAN JUMLAH BARIS
@@ -797,6 +800,60 @@ def render_table_pin_satker(df):
         update_mode="MODEL_CHANGED",
         custom_css=aggrid_custom_css,
     )
+
+    # =====================================================
+    # INJECT CSS HORIZONTAL SCROLL KE IFRAME AGGRID
+    # via JavaScript (menembus iframe st-aggrid)
+    # =====================================================
+    components.html("""
+    <script>
+    (function injectHorizontalScroll() {
+        function inject(doc) {
+            if (!doc) return;
+            var styleId = 'ag-hscroll-fix';
+            if (doc.getElementById(styleId)) return;
+            var style = doc.createElement('style');
+            style.id = styleId;
+            style.textContent = [
+                '.ag-body-horizontal-scroll {',
+                '    display: block !important;',
+                '    overflow-x: scroll !important;',
+                '    min-height: 12px !important;',
+                '}',
+                '.ag-body-horizontal-scroll::-webkit-scrollbar {',
+                '    height: 12px !important;',
+                '    display: block !important;',
+                '}',
+                '.ag-body-horizontal-scroll::-webkit-scrollbar-track {',
+                '    background: #1e1e1e;',
+                '    border-radius: 10px;',
+                '}',
+                '.ag-body-horizontal-scroll::-webkit-scrollbar-thumb {',
+                '    background: #22c55e;',
+                '    border-radius: 10px;',
+                '}',
+                '.ag-body-horizontal-scroll-viewport {',
+                '    overflow-x: scroll !important;',
+                '}'
+            ].join('\\n');
+            doc.head.appendChild(style);
+        }
+
+        function tryInject() {
+            var iframes = window.parent.document.querySelectorAll('iframe');
+            iframes.forEach(function(iframe) {
+                try {
+                    inject(iframe.contentDocument || iframe.contentWindow.document);
+                } catch(e) {}
+            });
+        }
+
+        tryInject();
+        setTimeout(tryInject, 500);
+        setTimeout(tryInject, 1500);
+    })();
+    </script>
+    """, height=0)
 
 
 
