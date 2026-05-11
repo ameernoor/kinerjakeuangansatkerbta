@@ -902,190 +902,6 @@ def detect_ikpa_type(df_raw):
         return "UNKNOWN"
     
 
-def parse_cms_universal(df_raw):
-    
-    import pandas as pd
-
-    # =========================================
-    # CARI HEADER
-    # =========================================
-    header_row = None
-
-    for i in range(min(10, len(df_raw))):
-
-        row_text = " ".join(
-            df_raw.iloc[i]
-            .astype(str)
-            .str.upper()
-            .tolist()
-        )
-
-        if (
-            "SATKER" in row_text
-            and (
-                "KPPN" in row_text
-                or "KKPN" in row_text
-            )
-        ):
-            header_row = i
-            break
-
-    if header_row is None:
-        return pd.DataFrame()
-
-    # =========================================
-    # SET HEADER
-    # =========================================
-    df = df_raw.iloc[header_row:].copy()
-
-    df.columns = (
-        df.iloc[0]
-        .astype(str)
-        .str.replace("\n", " ")
-        .str.replace("\r", " ")
-        .str.strip()
-        .str.upper()
-    )
-
-    # hapus row header
-    df = df.iloc[1:].reset_index(drop=True)
-
-    # =========================================
-    # HAPUS KOLOM KOSONG
-    # =========================================
-    df = df.loc[
-        :,
-        ~df.columns.str.contains("^UNNAMED", case=False, na=False)
-    ]
-
-    # =========================================
-    # NORMALISASI KOLOM
-    # =========================================
-    rename_map = {}
-
-    for col in df.columns:
-
-        c = str(col).upper()
-
-        # =====================================
-        # SATKER
-        # =====================================
-        # =====================================
-        # SATKER FLEXIBLE
-        # =====================================
-        if (
-            "SATKER" in c
-            and "NAMA" not in c
-            and "MITRA" not in c
-            and "KPPN" not in c
-            and "KKPN" not in c
-        ):
-            rename_map[col] = "SATKER"
-
-        elif "NAMA SATKER" in c:
-            rename_map[col] = "NAMA SATKER"
-
-        # =====================================
-        # KPPN
-        # =====================================
-        elif (
-            "KKPN" in c
-            or "KPPN" in c
-            or "MITRA SATKER" in c
-        ):
-            rename_map[col] = "KPPN"
-
-        # =====================================
-        # CMS
-        # =====================================
-        elif (
-            "JUMLAH" in c
-            and "CMS" in c
-        ):
-            rename_map[col] = "JUMLAH TRANSAKSI CMS"
-
-        elif (
-            "NILAI" in c
-            and "CMS" in c
-        ):
-            rename_map[col] = "NILAI TRANSAKSI CMS"
-
-        # =====================================
-        # TELLER
-        # =====================================
-        elif (
-            "JUMLAH" in c
-            and "TELLER" in c
-        ):
-            rename_map[col] = "JUMLAH TRANSAKSI TELLER"
-
-        elif (
-            "NILAI" in c
-            and "TELLER" in c
-        ):
-            rename_map[col] = "NILAI TRANSAKSI TELLER"
-
-        # =====================================
-        # STATUS
-        # =====================================
-        elif "KEAKTIFAN" in c:
-            rename_map[col] = "KEAKTIFAN CMS"
-
-        elif "STATUS REKENING" in c:
-            rename_map[col] = "STATUS REKENING"
-
-    df = df.rename(columns=rename_map)
-
-    # =====================================
-    # HAPUS KOLOM DUPLIKAT
-    # =====================================
-    df = df.loc[:, ~df.columns.duplicated()]
-
-
-    print("=== FINAL CMS COLUMNS ===")
-    print(df.columns.tolist())  
-    # =========================================
-    # CLEAN SATKER
-    # =========================================
-    if "SATKER" in df.columns:
-
-        df["SATKER"] = (
-            df["SATKER"]
-            .astype(str)
-            .str.extract(r"(\d{6})")[0]
-            .fillna("")
-        )
-
-    else:
-        return pd.DataFrame()
-
-    # =========================================
-    # CLEAN KPPN
-    # =========================================
-    if "KPPN" in df.columns:
-
-        df["KPPN"] = (
-            df["KPPN"]
-            .astype(str)
-            .str.extract(r"(\d+)")[0]
-            .fillna("")
-            .str.zfill(3)
-        )
-
-        # FILTER KPPN 109
-        df = df[df["KPPN"] == "109"]
-
-    else:
-        return pd.DataFrame()
-
-    # =========================================
-    # DROP BARIS KOSONG
-    # =========================================
-    df = df.dropna(how="all")
-
-    return df.reset_index(drop=True)
-    
-
 # Normalize kode satker
 def normalize_kode_satker(k, width=6):
     if pd.isna(k):
@@ -2053,123 +1869,6 @@ def standardize_ikpa_format(df):
     df = df.reset_index(drop=True)
 
     return df
-
-def parse_cms_baru(df_raw):
-    
-    import pandas as pd
-
-    # =========================
-    # CARI HEADER
-    # =========================
-    header_row = None
-
-    for i in range(10):
-
-        row_text = " ".join(
-            df_raw.iloc[i]
-            .astype(str)
-            .str.upper()
-            .tolist()
-        )
-
-        if (
-            "KODE SATKER" in row_text
-            and "NAMA SATKER" in row_text
-        ):
-            header_row = i
-            break
-
-    if header_row is None:
-        return pd.DataFrame()
-
-    # =========================
-    # HEADER MULTI ROW
-    # =========================
-    header1 = df_raw.iloc[header_row]
-    header2 = df_raw.iloc[header_row + 1]
-
-    cols = []
-
-    for h1, h2 in zip(header1, header2):
-
-        h1 = str(h1).strip().upper()
-        h2 = str(h2).strip().upper()
-
-        full = f"{h1} {h2}"
-
-        # =========================
-        # IDENTITAS SATKER
-        # =========================
-        if "KODE SATKER" in full:
-            cols.append("Kode Satker")
-
-        elif "NAMA SATKER" in full:
-            cols.append("Nama Satker")
-
-        elif "BANK" in full:
-            cols.append("Bank")
-
-        # =========================
-        # CMS
-        # =========================
-        elif "JUMLAH TRANSAKSI CMS" in full:
-            cols.append("Jumlah Transaksi CMS")
-
-        elif "NILAI TRANSAKSI CMS" in full:
-            cols.append("Nilai Transaksi CMS")
-
-        # =========================
-        # TELLER
-        # =========================
-        elif "JUMLAH TRANSAKSI TELLER" in full:
-            cols.append("Jumlah Transaksi Teller")
-
-        elif "NILAI TRANSAKSI TELLER" in full:
-            cols.append("Nilai Transaksi Teller")
-
-        # =========================
-        # AKTIF
-        # =========================
-        elif "KEAKTIFAN" in full:
-            cols.append("Keaktifan CMS")
-
-        elif "STATUS REKENING" in full:
-            cols.append("Status Rekening")
-
-        else:
-            cols.append(f"IGNORE_{len(cols)}")
-
-    # =========================
-    # AMBIL DATA
-    # =========================
-    df = df_raw.iloc[header_row + 2:].copy()
-
-    df.columns = cols
-
-    # =========================
-    # DROP KOLOM SAMPAH
-    # =========================
-    df = df[
-        [c for c in df.columns if not c.startswith("IGNORE")]
-    ]
-
-    # =========================
-    # CLEAN KODE SATKER
-    # =========================
-    if "Kode Satker" in df.columns:
-
-        df["Kode Satker"] = (
-            df["Kode Satker"]
-            .astype(str)
-            .str.extract(r"(\d{6})")[0]
-        )
-
-    # =========================
-    # DROP BARIS KOSONG
-    # =========================
-    df = df.dropna(how="all")
-
-    return df.reset_index(drop=True)
 
 
 #Normalisasi kode BA
@@ -8657,12 +8356,7 @@ def page_dashboard():
                         key="cms_periode"
                     )
 
-                tahun_list = sorted(
-                    df_master["TAHUN"]
-                    .dropna()
-                    .astype(str)
-                    .unique()
-                )
+                tahun_list = sorted(df_master["TAHUN"].dropna().unique())
 
                 with col2:
                     tahun = st.selectbox(
@@ -12238,95 +11932,74 @@ def page_admin():
                 all_valid_data = []
 
                 for sheet in xls.sheet_names:
-    
-                    df_raw = pd.read_excel(
-                        xls,
-                        sheet_name=sheet,
-                        header=None,
-                        dtype=str
-                    )
-                    
-                    # =====================================
-                    # PARSER UNIVERSAL CMS
-                    # =====================================
-                    try:
 
-                        df = parse_cms_universal(df_raw)
+                    df_raw = pd.read_excel(xls, sheet_name=sheet, header=None, dtype=str)
 
-                        # skip sheet kosong / gagal
-                        if df is None or df.empty:
-                            continue
+                    header_row = None
+                    for i in range(min(20, len(df_raw))):
+                        row_text = " ".join(df_raw.iloc[i].astype(str)).upper()
+                        if "SATKER" in row_text and "KANWIL" in row_text:
+                            header_row = i
+                            break
 
-                    except Exception:
+                    if header_row is None:
                         continue
 
-                    # =========================================
-                    # HEADER MULTIROW SUPPORT
-                    # =========================================
-                    header1 = (
-                        df.iloc[0]
-                        .astype(str)
-                        .fillna("")
-                        .str.strip()
+                    df = pd.read_excel(
+                        xls,
+                        sheet_name=sheet,
+                        header=header_row,
+                        dtype=str
                     )
 
-                    # ambil row kedua jika ada
-                    if len(df) > 1:
+                    df.columns = (
+                        df.columns.astype(str)
+                        .str.replace("\n", " ")
+                        .str.replace("\r", " ")
+                        .str.strip()
+                        .str.upper()
+                    )
 
-                        header2 = (
-                            df.iloc[1]
+                    # Cari kolom KPPN
+                    col_kppn = None
+                    for col in df.columns:
+                        test = (
+                            df[col]
                             .astype(str)
+                            .str.extract(r"(\d+)")[0]
                             .fillna("")
-                            .str.strip()
+                            .str.zfill(3)
                         )
+                        if (test == "109").sum() > 5:
+                            col_kppn = col
+                            df[col] = test
+                            break
 
-                    else:
-                        header2 = [""] * len(header1)
+                    if not col_kppn:
+                        continue
 
-                    combined_headers = []
-
-                    for h1, h2 in zip(header1, header2):
-
-                        h1 = str(h1).upper().strip()
-                        h2 = str(h2).upper().strip()
-
-                        # gabungkan multiheader
-                        full = f"{h1} {h2}".strip()
-
-                        # bersihkan unnamed
-                        full = (
-                            full.replace("UNNAMED:", "")
-                            .replace("NAN", "")
-                            .strip()
+                    # Cari kolom Satker
+                    col_satker = None
+                    for col in df.columns:
+                        test = (
+                            df[col]
+                            .astype(str)
+                            .str.extract(r"(\d+)")[0]
+                            .fillna("")
+                            .str.zfill(6)
                         )
+                        if test.str.len().eq(6).sum() > 5:
+                            col_satker = col
+                            df[col] = test
+                            break
 
-                        if full == "":
-                            full = f"COL_{len(combined_headers)}"
+                    if not col_satker:
+                        continue
 
-                        combined_headers.append(full)
+                    df = df[df[col_kppn] == "109"]
 
-                    df.columns = combined_headers
-
-                    # data mulai setelah 2 row header
-                    df = df.iloc[2:].reset_index(drop=True)
-                    
-                    # =====================================
-                    # NORMALISASI FORMAT BARU
-                    # =====================================
-                    rename_map = {
-                        "KODE SATKER": "SATKER",
-                        "NAMA SATKER": "NAMA SATKER",
-                        "KPPN": "KPPN"
-                    }
-
-                    df = df.rename(columns=rename_map)
-                    # =====================================
-                    # NORMALISASI UNIVERSAL
-                    # =====================================
-                    if "KODE SATKER" in df.columns:
-                        df["SATKER"] = df["KODE SATKER"]
-
-                    col_satker = "SATKER"
+                    if df.empty:
+                        continue
 
                     df["TAHUN"] = selected_year
                     df["TRIWULAN"] = selected_triwulan
@@ -12343,18 +12016,7 @@ def page_admin():
                 # ============================================================
                 # 🔥 SMART OVERWRITE CMS MASTER
                 # ============================================================
-                # =====================================
-                # UNIQUE KEY CMS
-                # =====================================
-                if "SATKER" in df_final.columns:
-                    UNIQUE_KEY = "SATKER"
-
-                elif "KODE SATKER" in df_final.columns:
-                    UNIQUE_KEY = "KODE SATKER"
-
-                else:
-                    st.error("❌ Kolom SATKER tidak ditemukan.")
-                    st.stop()
+                UNIQUE_KEY = col_satker
                 df_final = df_final.drop_duplicates(subset=[UNIQUE_KEY])
 
                 if st.session_state.cms_master.empty:
@@ -12364,18 +12026,6 @@ def page_admin():
                 else:
                     master_df = st.session_state.cms_master.copy()
 
-                    # =====================================
-                    # SAFETY MASTER COLUMN
-                    # =====================================
-                    if UNIQUE_KEY not in master_df.columns:
-
-                        master_df[UNIQUE_KEY] = ""
-
-                    if UNIQUE_KEY not in df_final.columns:
-
-                        st.error(f"❌ Kolom {UNIQUE_KEY} tidak ditemukan di data baru.")
-                        st.stop()
-    
                     overwrite_mask = master_df[UNIQUE_KEY].isin(df_final[UNIQUE_KEY])
                     overwrite_count = overwrite_mask.sum()
 
@@ -12462,7 +12112,6 @@ def page_admin():
                     })
                 except Exception as e:
                     st.error(f"❌ Gagal menghapus data: {e}")
-                    
                     
         # Submenu Hapus Data IKPA KPPN
         # ===========================
