@@ -8619,7 +8619,12 @@ def page_dashboard():
                         key="cms_periode"
                     )
 
-                tahun_list = sorted(df_master["TAHUN"].dropna().unique())
+                tahun_list = sorted(
+                    df_master["TAHUN"]
+                    .dropna()
+                    .astype(str)
+                    .unique()
+                )
 
                 with col2:
                     tahun = st.selectbox(
@@ -12217,13 +12222,55 @@ def page_admin():
                     except Exception:
                         continue
 
-                    df.columns = (
-                        df.columns.astype(str)
-                        .str.replace("\n", " ")
-                        .str.replace("\r", " ")
+                    # =========================================
+                    # HEADER MULTIROW SUPPORT
+                    # =========================================
+                    header1 = (
+                        df.iloc[0]
+                        .astype(str)
+                        .fillna("")
                         .str.strip()
-                        .str.upper()
                     )
+
+                    # ambil row kedua jika ada
+                    if len(df) > 1:
+
+                        header2 = (
+                            df.iloc[1]
+                            .astype(str)
+                            .fillna("")
+                            .str.strip()
+                        )
+
+                    else:
+                        header2 = [""] * len(header1)
+
+                    combined_headers = []
+
+                    for h1, h2 in zip(header1, header2):
+
+                        h1 = str(h1).upper().strip()
+                        h2 = str(h2).upper().strip()
+
+                        # gabungkan multiheader
+                        full = f"{h1} {h2}".strip()
+
+                        # bersihkan unnamed
+                        full = (
+                            full.replace("UNNAMED:", "")
+                            .replace("NAN", "")
+                            .strip()
+                        )
+
+                        if full == "":
+                            full = f"COL_{len(combined_headers)}"
+
+                        combined_headers.append(full)
+
+                    df.columns = combined_headers
+
+                    # data mulai setelah 2 row header
+                    df = df.iloc[2:].reset_index(drop=True)
                     
                     # =====================================
                     # NORMALISASI FORMAT BARU
