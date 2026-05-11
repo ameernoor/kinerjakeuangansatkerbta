@@ -911,7 +911,7 @@ def parse_cms_universal(df_raw):
     # =========================================
     header_row = None
 
-    for i in range(min(20, len(df_raw))):
+    for i in range(min(10, len(df_raw))):
 
         row_text = " ".join(
             df_raw.iloc[i]
@@ -925,8 +925,6 @@ def parse_cms_universal(df_raw):
             and (
                 "KPPN" in row_text
                 or "KKPN" in row_text
-                or "CMS" in row_text
-                or "TRANSAKSI" in row_text
             )
         ):
             header_row = i
@@ -936,59 +934,29 @@ def parse_cms_universal(df_raw):
         return pd.DataFrame()
 
     # =========================================
-    # AMBIL DATA
+    # SET HEADER
     # =========================================
     df = df_raw.iloc[header_row:].copy()
 
-    # =========================================
-    # HEADER MULTIROW SUPPORT
-    # =========================================
-    header1 = (
+    df.columns = (
         df.iloc[0]
         .astype(str)
-        .fillna("")
+        .str.replace("\n", " ")
+        .str.replace("\r", " ")
         .str.strip()
+        .str.upper()
     )
 
-    # ambil row kedua jika ada
-    if len(df) > 1:
+    # hapus row header
+    df = df.iloc[1:].reset_index(drop=True)
 
-        header2 = (
-            df.iloc[1]
-            .astype(str)
-            .fillna("")
-            .str.strip()
-        )
-
-    else:
-        header2 = [""] * len(header1)
-
-    combined_headers = []
-
-    for h1, h2 in zip(header1, header2):
-
-        h1 = str(h1).upper().strip()
-        h2 = str(h2).upper().strip()
-
-        # gabungkan multiheader
-        full = f"{h1} {h2}".strip()
-
-        # bersihkan unnamed/nan
-        full = (
-            full.replace("UNNAMED:", "")
-            .replace("NAN", "")
-            .strip()
-        )
-
-        if full == "":
-            full = f"COL_{len(combined_headers)}"
-
-        combined_headers.append(full)
-
-    df.columns = combined_headers
-
-    # data mulai setelah 2 row header
-    df = df.iloc[2:].reset_index(drop=True)
+    # =========================================
+    # HAPUS KOLOM KOSONG
+    # =========================================
+    df = df.loc[
+        :,
+        ~df.columns.str.contains("^UNNAMED", case=False, na=False)
+    ]
 
     # =========================================
     # NORMALISASI KOLOM
@@ -1000,29 +968,24 @@ def parse_cms_universal(df_raw):
         c = str(col).upper()
 
         # =====================================
-        # SATKER FLEXIBLE
+        # SATKER
         # =====================================
         if (
-            "KODE" in c
-            and "SATKER" in c
+            "KODE SATKER" in c
+            or c.strip() == "SATKER"
         ):
-            rename_map[col] = "KODE SATKER"
+            rename_map[col] = "SATKER"
 
-        elif (
-            "NAMA" in c
-            and "SATKER" in c
-        ):
+        elif "NAMA SATKER" in c:
             rename_map[col] = "NAMA SATKER"
-
-        elif c.strip() == "SATKER":
-            rename_map[col] = "KODE SATKER"
 
         # =====================================
         # KPPN
         # =====================================
         elif (
-            "KPPN" in c
-            or "KKPN" in c
+            "KKPN" in c
+            or "KPPN" in c
+            or "MITRA SATKER" in c
         ):
             rename_map[col] = "KPPN"
 
@@ -1072,19 +1035,10 @@ def parse_cms_universal(df_raw):
     # =====================================
     df = df.loc[:, ~df.columns.duplicated()]
 
-    # =====================================
-    # FINAL NORMALISASI SATKER
-    # =====================================
-    if "KODE SATKER" in df.columns:
-
-        df["SATKER"] = (
-            df["KODE SATKER"]
-            .astype(str)
-            .str.extract(r"(\d{6})")[0]
-            .fillna("")
-        )
-
-    elif "SATKER" in df.columns:
+    # =========================================
+    # CLEAN SATKER
+    # =========================================
+    if "SATKER" in df.columns:
 
         df["SATKER"] = (
             df["SATKER"]
@@ -1092,6 +1046,9 @@ def parse_cms_universal(df_raw):
             .str.extract(r"(\d{6})")[0]
             .fillna("")
         )
+
+    else:
+        return pd.DataFrame()
 
     # =========================================
     # CLEAN KPPN
@@ -1106,7 +1063,7 @@ def parse_cms_universal(df_raw):
             .str.zfill(3)
         )
 
-        # FILTER HANYA 109
+        # FILTER KPPN 109
         df = df[df["KPPN"] == "109"]
 
     else:
