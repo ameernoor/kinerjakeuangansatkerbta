@@ -936,20 +936,59 @@ def parse_cms_universal(df_raw):
         return pd.DataFrame()
 
     # =========================================
-    # SET HEADER
+    # AMBIL DATA
     # =========================================
     df = df_raw.iloc[header_row:].copy()
 
-    df.columns = (
+    # =========================================
+    # HEADER MULTIROW SUPPORT
+    # =========================================
+    header1 = (
         df.iloc[0]
         .astype(str)
-        .str.replace("\n", " ")
-        .str.replace("\r", " ")
+        .fillna("")
         .str.strip()
-        .str.upper()
     )
 
-    df = df.iloc[1:].reset_index(drop=True)
+    # ambil row kedua jika ada
+    if len(df) > 1:
+
+        header2 = (
+            df.iloc[1]
+            .astype(str)
+            .fillna("")
+            .str.strip()
+        )
+
+    else:
+        header2 = [""] * len(header1)
+
+    combined_headers = []
+
+    for h1, h2 in zip(header1, header2):
+
+        h1 = str(h1).upper().strip()
+        h2 = str(h2).upper().strip()
+
+        # gabungkan multiheader
+        full = f"{h1} {h2}".strip()
+
+        # bersihkan unnamed/nan
+        full = (
+            full.replace("UNNAMED:", "")
+            .replace("NAN", "")
+            .strip()
+        )
+
+        if full == "":
+            full = f"COL_{len(combined_headers)}"
+
+        combined_headers.append(full)
+
+    df.columns = combined_headers
+
+    # data mulai setelah 2 row header
+    df = df.iloc[2:].reset_index(drop=True)
 
     # =========================================
     # NORMALISASI KOLOM
@@ -960,43 +999,66 @@ def parse_cms_universal(df_raw):
 
         c = str(col).upper()
 
-        # SATKER
-        if "KODE SATKER" in c:
+        # =====================================
+        # SATKER FLEXIBLE
+        # =====================================
+        if (
+            "KODE" in c
+            and "SATKER" in c
+        ):
             rename_map[col] = "KODE SATKER"
 
-        elif "NAMA SATKER" in c:
+        elif (
+            "NAMA" in c
+            and "SATKER" in c
+        ):
             rename_map[col] = "NAMA SATKER"
 
+        elif c.strip() == "SATKER":
+            rename_map[col] = "KODE SATKER"
+
+        # =====================================
         # KPPN
+        # =====================================
         elif (
             "KPPN" in c
             or "KKPN" in c
         ):
             rename_map[col] = "KPPN"
 
+        # =====================================
         # CMS
+        # =====================================
         elif (
-            "JUMLAH TRANSAKSI CMS" in c
+            "JUMLAH" in c
+            and "CMS" in c
         ):
             rename_map[col] = "JUMLAH TRANSAKSI CMS"
 
         elif (
-            "NILAI TRANSAKSI CMS" in c
+            "NILAI" in c
+            and "CMS" in c
         ):
             rename_map[col] = "NILAI TRANSAKSI CMS"
 
+        # =====================================
         # TELLER
+        # =====================================
         elif (
-            "JUMLAH TRANSAKSI TELLER" in c
+            "JUMLAH" in c
+            and "TELLER" in c
         ):
             rename_map[col] = "JUMLAH TRANSAKSI TELLER"
 
         elif (
-            "NILAI TRANSAKSI TELLER" in c
+            "NILAI" in c
+            and "TELLER" in c
         ):
             rename_map[col] = "NILAI TRANSAKSI TELLER"
 
+        # =====================================
         # STATUS
+        # =====================================
         elif "KEAKTIFAN" in c:
             rename_map[col] = "KEAKTIFAN CMS"
 
@@ -1004,18 +1066,28 @@ def parse_cms_universal(df_raw):
             rename_map[col] = "STATUS REKENING"
 
     df = df.rename(columns=rename_map)
+
     # =====================================
     # HAPUS KOLOM DUPLIKAT
     # =====================================
     df = df.loc[:, ~df.columns.duplicated()]
 
-    # =========================================
-    # CLEAN SATKER
-    # =========================================
+    # =====================================
+    # FINAL NORMALISASI SATKER
+    # =====================================
     if "KODE SATKER" in df.columns:
 
-        df["KODE SATKER"] = (
+        df["SATKER"] = (
             df["KODE SATKER"]
+            .astype(str)
+            .str.extract(r"(\d{6})")[0]
+            .fillna("")
+        )
+
+    elif "SATKER" in df.columns:
+
+        df["SATKER"] = (
+            df["SATKER"]
             .astype(str)
             .str.extract(r"(\d{6})")[0]
             .fillna("")
