@@ -970,9 +970,15 @@ def parse_cms_universal(df_raw):
         # =====================================
         # SATKER
         # =====================================
+        # =====================================
+        # SATKER FLEXIBLE
+        # =====================================
         if (
-            "KODE SATKER" in c
-            or c.strip() == "SATKER"
+            "SATKER" in c
+            and "NAMA" not in c
+            and "MITRA" not in c
+            and "KPPN" not in c
+            and "KKPN" not in c
         ):
             rename_map[col] = "SATKER"
 
@@ -1035,6 +1041,9 @@ def parse_cms_universal(df_raw):
     # =====================================
     df = df.loc[:, ~df.columns.duplicated()]
 
+
+    print("=== FINAL CMS COLUMNS ===")
+    print(df.columns.tolist())  
     # =========================================
     # CLEAN SATKER
     # =========================================
