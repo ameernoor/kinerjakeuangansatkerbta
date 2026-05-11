@@ -2118,7 +2118,7 @@ def parse_cms_baru(df_raw):
             break
 
     if header_row is None:
-        raise ValueError("Header CMS baru tidak ditemukan")
+        return pd.DataFrame()
 
     # =========================
     # HEADER MULTI ROW
