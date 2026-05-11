@@ -729,7 +729,7 @@ def render_table_pin_satker(df):
     # GRID OPTIONS 
     # =====================================================
     gb.configure_grid_options(
-        domLayout="normal",
+        domLayout="autoHeight",
         alwaysShowHorizontalScroll=True,
         suppressHorizontalScroll=False,
         suppressSizeToFit=True,
@@ -764,24 +764,39 @@ def render_table_pin_satker(df):
     # =====================================================
     # GRID BUILD
     # =====================================================
-    _go = gb.build()
-    
     st.markdown("""
     <style>
+
+    /* horizontal scroll */
     .ag-center-cols-viewport {
         overflow-x: auto !important;
+        overflow-y: auto !important;
     }
+
+    /* scrollbar bawah */
     .ag-body-horizontal-scroll {
         overflow-x: auto !important;
         display: block !important;
+        min-height: 14px !important;
     }
+
+    /* wrapper jangan motong */
+    .ag-root-wrapper {
+        overflow: visible !important;
+    }
+
+    /* kasih jarak bawah */
+    .element-container:has(.ag-root-wrapper) {
+        margin-bottom: 30px !important;
+    }
+
     </style>
     """, unsafe_allow_html=True)
 
     # =====================================================
     # TINGGI DINAMIS BERDASARKAN JUMLAH BARIS
     # =====================================================
-    dynamic_height = calc_grid_height(df)
+    dynamic_height = calc_grid_height(df) + 70
 
     # =====================================================
     # GRID RENDER
@@ -790,6 +805,8 @@ def render_table_pin_satker(df):
         df,
         gridOptions=_go,
         height=dynamic_height,
+        reload_data=True,
+        enable_enterprise_modules=False,
         fit_columns_on_grid_load=False,
         theme="streamlit",
         allow_unsafe_jscode=True,
