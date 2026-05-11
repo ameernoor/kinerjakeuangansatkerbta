@@ -12198,6 +12198,20 @@ def page_admin():
                         header=None,
                         dtype=str
                     )
+                    
+                    # =====================================
+                    # PARSER UNIVERSAL CMS
+                    # =====================================
+                    try:
+
+                        df = parse_cms_universal(df_raw)
+
+                        # skip sheet kosong / gagal
+                        if df is None or df.empty:
+                            continue
+
+                    except Exception:
+                        continue
 
                     df.columns = (
                         df.columns.astype(str)
