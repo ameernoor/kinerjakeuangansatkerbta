@@ -358,7 +358,7 @@ def render_table_pin_satker(df):
                 <span style="color:#d1d5db">
                 Mengukur ketepatan waktu penyelesaian tagihan kontraktual (SPM-LS) dari
                 tanggal BAST/BAPP sampai diterima KPPN. Batas waktu tepat maksimal
-                7 hari kerja.
+                17 hari kerja sejak tanggal BAST/BAPP.
                 </span>
 
                 <br/><br/>
