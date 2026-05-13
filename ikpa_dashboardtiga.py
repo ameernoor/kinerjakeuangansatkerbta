@@ -11350,6 +11350,36 @@ def page_admin():
                     ]
 
                     SPM_COL = "NILAI TRANSAKSI (NILAI SPM)"
+                    
+                    # =====================================================
+                    # SINKRON FORMAT BARU ↔ FORMAT LAMA
+                    # =====================================================
+
+                    # dashboard baru pakai ini
+                    df_kkp["Nilai Transaksi"] = (
+                        pd.to_numeric(
+                            df_kkp[SPM_COL],
+                            errors="coerce"
+                        ).fillna(0)
+                    )
+
+                    # dashboard lama pakai ini
+                    df_kkp["NILAI TRANSAKSI (NILAI SPM)"] = (
+                        df_kkp["Nilai Transaksi"]
+                    )
+
+                    # fallback nama satker
+                    if "SATKER" not in df_kkp.columns:
+
+                        if "Nama Satker" in df_kkp.columns:
+                            df_kkp["SATKER"] = df_kkp["Nama Satker"]
+
+                        else:
+                            df_kkp["SATKER"] = ""
+
+                    # fallback jumlah transaksi
+                    if "JUMLAH TRANSAKSI" not in df_kkp.columns:
+                        df_kkp["JUMLAH TRANSAKSI"] = 1
 
                     # Pastikan numeric
                     df_kkp[SPM_COL] = pd.to_numeric(
@@ -12147,6 +12177,26 @@ def page_admin():
                     )
 
                     df.columns = headers
+                    
+                    # =====================================================
+                    # FIX DUPLIKAT HEADER
+                    # =====================================================
+
+                    seen = {}
+                    new_cols = []
+
+                    for col in df.columns:
+
+                        col = str(col).strip()
+
+                        if col in seen:
+                            seen[col] += 1
+                            new_cols.append(f"{col}_{seen[col]}")
+                        else:
+                            seen[col] = 0
+                            new_cols.append(col)
+
+                    df.columns = new_cols
 
                     # data mulai setelah header
                     df = df.iloc[header_row + 1:].reset_index(drop=True)
@@ -12194,8 +12244,18 @@ def page_admin():
 
                     for col in df.columns:
 
+                        # ============================================
+                        # SAFETY SERIES
+                        # ============================================
+
+                        series_col = df[col]
+
+                        # kalau duplicate header → ambil kolom pertama
+                        if isinstance(series_col, pd.DataFrame):
+                            series_col = series_col.iloc[:, 0]
+
                         test = (
-                            df[col]
+                            series_col
                             .astype(str)
                             .str.extract(r"(\d+)")[0]
                             .fillna("")
@@ -12216,8 +12276,13 @@ def page_admin():
                     col_satker = None
                     for col in df.columns:
 
+                        series_col = df[col]
+
+                        if isinstance(series_col, pd.DataFrame):
+                            series_col = series_col.iloc[:, 0]
+
                         test = (
-                            df[col]
+                            series_col
                             .astype(str)
                             .str.extract(r"(\d{6})")[0]
                             .fillna("")
