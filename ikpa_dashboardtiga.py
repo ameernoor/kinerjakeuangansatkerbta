@@ -8294,19 +8294,57 @@ def page_dashboard():
 
                     df_master = st.session_state.kkp_master.copy()
 
+
                     # =============================
                     # NORMALISASI PERIODE
+                    # SUPPORT FORMAT LAMA & BARU
                     # =============================
+
                     if "PERIODE" in df_master.columns:
 
-                        df_master["PERIODE"] = df_master["PERIODE"].astype(str)
+                        df_master["PERIODE"] = (
+                            df_master["PERIODE"]
+                            .astype(str)
+                            .str.strip()
+                        )
 
-                        df_master["TAHUN"] = df_master["PERIODE"].str[:4].astype(int)
-                        df_master["BULAN"] = df_master["PERIODE"].str[5:7].astype(int)
+                        df_master["TAHUN"] = (
+                            pd.to_numeric(
+                                df_master["PERIODE"].str[:4],
+                                errors="coerce"
+                            )
+                            .fillna(datetime.now().year)
+                            .astype(int)
+                        )
 
+                        df_master["BULAN"] = (
+                            pd.to_numeric(
+                                df_master["PERIODE"].str[5:7],
+                                errors="coerce"
+                            )
+                            .fillna(1)
+                            .astype(int)
+                        )
+
+                    # =====================================================
+                    # FORMAT BARU KKP
+                    # TIDAK PUNYA PERIODE
+                    # =====================================================
                     else:
-                        st.error("Kolom PERIODE tidak ditemukan pada data KKP")
-                        st.stop()
+
+                        # fallback otomatis
+                        current_year = datetime.now().year
+
+                        if "TAHUN" not in df_master.columns:
+                            df_master["TAHUN"] = current_year
+
+                        if "BULAN" not in df_master.columns:
+                            df_master["BULAN"] = 1
+
+                        df_master["PERIODE"] = (
+                            df_master["TAHUN"].astype(str)
+                            + "-01"
+                        )
 
                     col1, col2, col3 = st.columns(3)
 
@@ -12172,22 +12210,103 @@ def page_admin():
                 df_final = pd.concat(all_valid_data, ignore_index=True)
 
                 # ============================================================
-                # 🔥 SMART OVERWRITE CMS MASTER
+                # SMART OVERWRITE CMS MASTER (SUPPORT FORMAT LAMA & BARU)
                 # ============================================================
-                UNIQUE_KEY = col_satker
+
+                # ============================================================
+                # DETEKSI UNIQUE KEY
+                # ============================================================
+
+                if "Kode Satker" in df_final.columns:
+                    UNIQUE_KEY = "Kode Satker"
+
+                elif "KODE SATKER" in df_final.columns:
+                    UNIQUE_KEY = "KODE SATKER"
+
+                else:
+                    UNIQUE_KEY = None
+
+                # ============================================================
+                # FALLBACK UNIQUE KEY
+                # ============================================================
+
+                if UNIQUE_KEY is None:
+
+                    df_final["UNIQUE_KEY"] = (
+                        pd.Series(range(len(df_final)))
+                        .astype(str)
+                    )
+
+                    UNIQUE_KEY = "UNIQUE_KEY"
+
+                # ============================================================
+                # NORMALISASI KEY
+                # ============================================================
+
+                df_final[UNIQUE_KEY] = (
+                    df_final[UNIQUE_KEY]
+                    .astype(str)
+                    .str.strip()
+                )
+
+                # ============================================================
+                # DROP DUPLIKAT
+                # ============================================================
+
                 df_final = df_final.drop_duplicates(subset=[UNIQUE_KEY])
 
+                # ============================================================
+                # JIKA MASTER MASIH KOSONG
+                # ============================================================
+
                 if st.session_state.cms_master.empty:
+
                     st.session_state.cms_master = df_final.copy()
+
                     new_count = len(df_final)
                     overwrite_count = 0
+
+                # ============================================================
+                # OVERWRITE DATA LAMA
+                # ============================================================
+
                 else:
+
                     master_df = st.session_state.cms_master.copy()
 
-                    overwrite_mask = master_df[UNIQUE_KEY].isin(df_final[UNIQUE_KEY])
+                    # ============================================
+                    # SAFETY KOLOM KEY DI MASTER
+                    # ============================================
+
+                    if UNIQUE_KEY not in master_df.columns:
+                        master_df[UNIQUE_KEY] = ""
+
+                    master_df[UNIQUE_KEY] = (
+                        master_df[UNIQUE_KEY]
+                        .astype(str)
+                        .str.strip()
+                    )
+
+                    # ============================================
+                    # DETEKSI DATA YANG DIOVERWRITE
+                    # ============================================
+
+                    overwrite_mask = (
+                        master_df[UNIQUE_KEY]
+                        .isin(df_final[UNIQUE_KEY])
+                    )
+
                     overwrite_count = overwrite_mask.sum()
 
+                    # ============================================
+                    # HAPUS DATA LAMA
+                    # ============================================
+
                     master_df = master_df[~overwrite_mask]
+
+                    # ============================================
+                    # GABUNG DATA BARU
+                    # ============================================
 
                     master_df = pd.concat(
                         [master_df, df_final],
@@ -12195,6 +12314,7 @@ def page_admin():
                     )
 
                     new_count = len(df_final) - overwrite_count
+
                     st.session_state.cms_master = master_df.copy()
 
                 # ============================================================
