@@ -12198,8 +12198,36 @@ def page_admin():
 
                     df.columns = new_cols
 
-                    # data mulai setelah header
+                    # =====================================================
+                    # DATA MULAI SETELAH HEADER
+                    # =====================================================
+
                     df = df.iloc[header_row + 1:].reset_index(drop=True)
+
+                    # =====================================================
+                    # HAPUS BARIS KOSONG
+                    # =====================================================
+
+                    df = df.dropna(how="all")
+
+                    # =====================================================
+                    # HAPUS BARIS HEADER GANDA
+                    # =====================================================
+
+                    first_col = str(df.columns[0]).upper()
+
+                    df = df[
+                        ~df.iloc[:, 0]
+                        .astype(str)
+                        .str.upper()
+                        .str.contains(first_col, na=False)
+                    ]
+
+                    # =====================================================
+                    # RESET INDEX
+                    # =====================================================
+
+                    df = df.reset_index(drop=True)
 
                     # =====================================================
                     # NORMALISASI HEADER
@@ -12337,6 +12365,37 @@ def page_admin():
                     df["TRIWULAN"] = selected_triwulan
                     df["SOURCE_SHEET"] = sheet
 
+                    # =====================================================
+                    # FILTER HANYA SATKER VALID
+                    # =====================================================
+
+                    if "Kode Satker" in df.columns:
+
+                        df["Kode Satker"] = (
+                            df["Kode Satker"]
+                            .astype(str)
+                            .str.extract(r"(\d{6})")[0]
+                        )
+
+                        df = df[
+                            df["Kode Satker"]
+                            .notna()
+                        ]
+
+                        df = df[
+                            df["Kode Satker"] != ""
+                        ]
+
+                    # =====================================================
+                    # DEBUG JUMLAH DATA
+                    # =====================================================
+
+                    st.write(
+                        f"Sheet {sheet} terbaca:",
+                        len(df),
+                        "baris"
+                    )    
+                    
                     all_valid_data.append(df)
 
                 if not all_valid_data:
