@@ -11294,14 +11294,62 @@ def page_admin():
                         st.error("Data KKP kosong setelah diproses.")
                         st.stop()
 
-                    UNIQUE_KEY = ["PERIODE", "Kode Satker", "JENIS KKP"]
-                    SPM_COL = "NILAI TRANSAKSI (NILAI SPM)"
+                    # =====================================================
+                    # SUPPORT FORMAT LAMA & BARU KKP
+                    # =====================================================
 
-                    # Validasi kolom wajib
-                    for col in UNIQUE_KEY:
-                        if col not in df_kkp.columns:
-                            st.error(f"Kolom {col} tidak ditemukan.")
-                            st.stop()
+                    # ===============================
+                    # PERIODE
+                    # ===============================
+                    if "PERIODE" not in df_kkp.columns:
+
+                        current_year = upload_year_kkp
+
+                        if "TAHUN" not in df_kkp.columns:
+                            df_kkp["TAHUN"] = current_year
+
+                        if "BULAN" not in df_kkp.columns:
+                            df_kkp["BULAN"] = 1
+
+                        df_kkp["PERIODE"] = (
+                            df_kkp["TAHUN"].astype(str)
+                            + "-"
+                            + df_kkp["BULAN"].astype(str).str.zfill(2)
+                        )
+
+                    # ===============================
+                    # JENIS KKP
+                    # ===============================
+                    if "JENIS KKP" not in df_kkp.columns:
+
+                        # fallback format baru
+                        df_kkp["JENIS KKP"] = "KKP"
+
+                    # ===============================
+                    # NILAI TRANSAKSI
+                    # ===============================
+                    if "NILAI TRANSAKSI (NILAI SPM)" not in df_kkp.columns:
+
+                        # fallback format baru
+                        if "Nilai Transaksi" in df_kkp.columns:
+
+                            df_kkp["NILAI TRANSAKSI (NILAI SPM)"] = (
+                                df_kkp["Nilai Transaksi"]
+                            )
+
+                        else:
+                            df_kkp["NILAI TRANSAKSI (NILAI SPM)"] = 0
+
+                    # ===============================
+                    # UNIQUE KEY
+                    # ===============================
+                    UNIQUE_KEY = [
+                        "PERIODE",
+                        "Kode Satker",
+                        "JENIS KKP"
+                    ]
+
+                    SPM_COL = "NILAI TRANSAKSI (NILAI SPM)"
 
                     # Pastikan numeric
                     df_kkp[SPM_COL] = pd.to_numeric(
@@ -11442,8 +11490,6 @@ def page_admin():
                     # UPDATE SESSION
                     # ===============================
                     st.session_state.kkp_master = final_df.reset_index(drop=True)
-
-  
 
                     # =====================================================
                     # SIMPAN KE GITHUB (1 FILE MASTER)
@@ -12081,12 +12127,29 @@ def page_admin():
                     # =====================================================
                     # LOAD DENGAN HEADER
                     # =====================================================
+                    # =====================================================
+                    # LOAD TANPA HEADER DULU
+                    # =====================================================
+
                     df = pd.read_excel(
                         xls,
                         sheet_name=sheet,
-                        header=header_row,
+                        header=None,
                         dtype=str
                     )
+
+                    # ambil header manual
+                    headers = (
+                        df.iloc[header_row]
+                        .fillna("")
+                        .astype(str)
+                        .str.strip()
+                    )
+
+                    df.columns = headers
+
+                    # data mulai setelah header
+                    df = df.iloc[header_row + 1:].reset_index(drop=True)
 
                     # =====================================================
                     # NORMALISASI HEADER
@@ -12099,6 +12162,14 @@ def page_admin():
                         .str.upper()
                         .str.replace(r"\s+", " ", regex=True)
                     )
+                    
+                    # =====================================================
+                    # HAPUS KOLOM KOSONG
+                    # =====================================================
+
+                    df = df.loc[:, ~df.columns.astype(str).str.contains("^Unnamed", na=False)]
+
+                    df = df.loc[:, df.columns.astype(str).str.strip() != ""]
 
                     # =====================================================
                     # FORMAT BARU CMS SATKER TW I
