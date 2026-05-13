@@ -12197,6 +12197,11 @@ def page_admin():
                             new_cols.append(col)
 
                     df.columns = new_cols
+                    st.write("HEADER CMS TERBACA:")
+                    st.write(df.columns.tolist())
+
+                    st.write("SAMPLE DATA CMS:")
+                    st.dataframe(df.head(10))
 
                     # =====================================================
                     # DATA MULAI SETELAH HEADER
@@ -12317,6 +12322,12 @@ def page_admin():
                             )
 
                             break
+
+                    st.write("HASIL DETEKSI KPPN:")
+                    st.write({
+                        "col_kppn": col_kppn,
+                        "columns": df.columns.tolist()
+                    })
 
                     if not col_kppn:
                         continue
