@@ -4196,6 +4196,8 @@ def process_excel_file_kkp(uploaded_file):
 
     return df.reset_index(drop=True)
 
+
+
 #DATA IKPA KPPN
 def get_all_kppn_files(repo, path="Data IKPA KPPN"):
     all_files = []
@@ -12103,7 +12105,6 @@ def page_admin():
                     # DETEKSI SATKER
                     # =====================================================
                     col_satker = None
-
                     for col in df.columns:
 
                         test = (
