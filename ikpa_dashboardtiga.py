@@ -12271,67 +12271,99 @@ def page_admin():
                             df.rename(columns={old_col: new_col}, inplace=True)
 
                     # =====================================================
-                    # DETEKSI KPPN
-                    # =====================================================
-                    # =====================================================
-                    # DETEKSI KPPN (FORMAT LAMA & BARU)
+                    # DETEKSI KPPN FORMAT BARU CMS
                     # =====================================================
 
                     col_kppn = None
 
-                    for col in df.columns:
+                    possible_kppn_cols = [
+                        "KODE KPPN",
+                        "KODE KPPN MITRA SATKER",
+                        "KODE KKPN MITRA SATKER",
+                        "KPPN",
+                        "KODE_KPPN"
+                    ]
 
-                        series_col = df[col]
+                    for c in df.columns:
 
-                        # duplicate header safety
-                        if isinstance(series_col, pd.DataFrame):
-                            series_col = series_col.iloc[:, 0]
+                        c_clean = str(c).upper().strip()
 
-                        raw_text = (
-                            series_col
-                            .astype(str)
-                            .str.upper()
-                            .str.strip()
-                        )
-
-                        # ambil angka
-                        test = (
-                            raw_text
-                            .str.extract(r"(\d{3})")[0]
-                            .fillna("")
-                            .str.zfill(3)
-                        )
-
-                        # ============================================
-                        # DETEKSI KPPN 109
-                        # ============================================
-
-                        total_109 = (
-                            test.eq("109")
-                        ).sum()
-
-                        if total_109 > 0:
-
-                            col_kppn = col
-
-                            df[col] = test
-
-                            st.write(
-                                f"Kolom KPPN ditemukan: {col} | jumlah 109:",
-                                total_109
-                            )
-
+                        if c_clean in possible_kppn_cols:
+                            col_kppn = c
                             break
 
-                    st.write("HASIL DETEKSI KPPN:")
-                    st.write({
-                        "col_kppn": col_kppn,
-                        "columns": df.columns.tolist()
-                    })
+                    # =====================================================
+                    # JIKA TIDAK ADA → CARI MANUAL
+                    # =====================================================
 
-                    if not col_kppn:
+                    if col_kppn is None:
+
+                        for c in df.columns:
+
+                            series_col = df[c]
+
+                            if isinstance(series_col, pd.DataFrame):
+                                series_col = series_col.iloc[:, 0]
+
+                            test = (
+                                series_col
+                                .astype(str)
+                                .str.extract(r"(\d{3})")[0]
+                                .fillna("")
+                                .str.zfill(3)
+                            )
+
+                            total_109 = (test == "109").sum()
+
+                            if total_109 > 5:
+
+                                col_kppn = c
+                                df[c] = test
+                                break
+
+                    # =====================================================
+                    # GAGAL DETEKSI
+                    # =====================================================
+
+                    if col_kppn is None:
+
+                        st.error("Kolom KPPN tidak ditemukan pada format CMS.")
+
+                        st.write("HEADER TERBACA:")
+                        st.write(df.columns.tolist())
+
                         continue
 
+                    # =====================================================
+                    # NORMALISASI KPPN
+                    # =====================================================
+
+                    series_kppn = df[col_kppn]
+
+                    if isinstance(series_kppn, pd.DataFrame):
+                        series_kppn = series_kppn.iloc[:, 0]
+
+                    df["KPPN_NORMALIZED"] = (
+                        series_kppn
+                        .astype(str)
+                        .str.extract(r"(\d{3})")[0]
+                        .fillna("")
+                        .str.zfill(3)
+                    )
+
+                    st.write(
+                        "Jumlah data KPPN 109:",
+                        (df["KPPN_NORMALIZED"] == "109").sum()
+                    )
+
+                    # =====================================================
+                    # FILTER KPPN 109
+                    # =====================================================
+
+                    df = df[
+                        df["KPPN_NORMALIZED"] == "109"
+                    ]
+                    
                     # =====================================================
                     # DETEKSI SATKER
                     # =====================================================
