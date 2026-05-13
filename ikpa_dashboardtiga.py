@@ -12268,31 +12268,54 @@ def page_admin():
                     # =====================================================
                     # DETEKSI KPPN
                     # =====================================================
+                    # =====================================================
+                    # DETEKSI KPPN (FORMAT LAMA & BARU)
+                    # =====================================================
+
                     col_kppn = None
 
                     for col in df.columns:
 
-                        # ============================================
-                        # SAFETY SERIES
-                        # ============================================
-
                         series_col = df[col]
 
-                        # kalau duplicate header → ambil kolom pertama
+                        # duplicate header safety
                         if isinstance(series_col, pd.DataFrame):
                             series_col = series_col.iloc[:, 0]
 
-                        test = (
+                        raw_text = (
                             series_col
                             .astype(str)
-                            .str.extract(r"(\d+)")[0]
+                            .str.upper()
+                            .str.strip()
+                        )
+
+                        # ambil angka
+                        test = (
+                            raw_text
+                            .str.extract(r"(\d{3})")[0]
                             .fillna("")
                             .str.zfill(3)
                         )
 
-                        if (test == "109").sum() > 0:
+                        # ============================================
+                        # DETEKSI KPPN 109
+                        # ============================================
+
+                        total_109 = (
+                            test.eq("109")
+                        ).sum()
+
+                        if total_109 > 0:
+
                             col_kppn = col
+
                             df[col] = test
+
+                            st.write(
+                                f"Kolom KPPN ditemukan: {col} | jumlah 109:",
+                                total_109
+                            )
+
                             break
 
                     if not col_kppn:
@@ -12324,10 +12347,22 @@ def page_admin():
                     if not col_satker:
                         continue
 
+
                     # =====================================================
                     # FILTER KPPN 109
                     # =====================================================
-                    df = df[df[col_kppn] == "109"]
+
+                    df[col_kppn] = (
+                        df[col_kppn]
+                        .astype(str)
+                        .str.extract(r"(\d{3})")[0]
+                        .fillna("")
+                        .str.zfill(3)
+                    )
+
+                    df = df[
+                        df[col_kppn] == "109"
+                    ]
 
                     if df.empty:
                         continue
