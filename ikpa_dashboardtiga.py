@@ -3995,7 +3995,7 @@ def load_digipay_from_github():
 # ============================================================
 @st.cache_data(show_spinner=False, ttl=300)
 def load_cms_from_github():
-    
+
     token = st.secrets.get("GITHUB_TOKEN")
     repo_name = st.secrets.get("GITHUB_REPO")
 
@@ -4013,17 +4013,271 @@ def load_cms_from_github():
     file_count = 0
 
     for file in contents:
-        if file.name.endswith(".xlsx"):
+
+        if not file.name.endswith(".xlsx"):
+            continue
+
+        try:
+
             file_content = base64.b64decode(file.content)
-            df = pd.read_excel(io.BytesIO(file_content), dtype=str)
+            file_obj = io.BytesIO(file_content)
+
+            df = process_cms_file(file_obj)
 
             if not df.empty:
                 all_df.append(df)
                 file_count += 1
 
+        except Exception as e:
+            print(f"CMS ERROR {file.name}: {e}")
+            continue
+
     if all_df:
-        return pd.concat(all_df, ignore_index=True), file_count
+
+        final_df = pd.concat(
+            all_df,
+            ignore_index=True
+        )
+
+        final_df = normalize_cms_columns(final_df)
+
+        return final_df, file_count
+
     return pd.DataFrame(), file_count
+
+
+# ============================================================
+# NORMALISASI HEADER CMS
+# ============================================================
+def normalize_cms_columns(df):
+
+    import re
+
+    df = df.copy()
+
+    # =============================
+    # BERSIHKAN HEADER
+    # =============================
+    df.columns = (
+        pd.Index(df.columns)
+        .astype(str)
+        .str.replace("\n", " ", regex=False)
+        .str.replace(r"\s+", " ", regex=True)
+        .str.strip()
+    )
+
+    rename_map = {
+        "Kode Satker": "Kode Satker",
+        "KODE SATKER": "Kode Satker",
+        "Kode Satker ": "Kode Satker",
+
+        "Nama Satker": "Nama Satker",
+        "NAMA SATKER": "Nama Satker",
+        "Nama Satker ": "Nama Satker",
+
+        "Jumlah Transaksi CMS": "Jumlah Transaksi CMS",
+        "Nilai Transaksi CMS": "Nilai Transaksi CMS",
+
+        "Jumlah Transaksi Kartu Debit": "Jumlah Transaksi Kartu Debit",
+        "Nilai Transaksi Kartu Debit": "Nilai Transaksi Kartu Debit",
+
+        "Jumlah Transaksi Teller": "Jumlah Transaksi Teller",
+        "Nilai Transaksi Teller": "Nilai Transaksi Teller",
+
+        "Keaktifan Transaksi CMS": "Keaktifan Transaksi CMS",
+        "Keaktifan transaksi": "Keaktifan transaksi",
+
+        "Status Rekening (Aktif/Tutup)": "Status Rekening",
+        "Status Rekening  (Aktif/Tutup)": "Status Rekening",
+
+        # FORMAT BARU CMS SATKER
+        "frek": "Persentase Frekuensi",
+        "nilai": "Persentase Nilai",
+        "rata2": "Rata-rata CMS"
+    }
+
+    final_cols = []
+
+    for col in df.columns:
+
+        c = str(col).strip()
+        c = re.sub(r"\s+", " ", c)
+
+        if c in rename_map:
+            final_cols.append(rename_map[c])
+        else:
+            final_cols.append(c)
+
+    df.columns = final_cols
+
+    # =============================
+    # HAPUS DUPLIKAT
+    # =============================
+    df = df.loc[:, ~df.columns.duplicated()].copy()
+
+    return df
+
+# ============================================================
+# PARSER CMS UNIVERSAL
+# SUPPORT:
+# - MASTER DATA CMS (lama)
+# - CMS SATKER (baru)
+# ============================================================
+def process_cms_file(uploaded_file):
+
+    uploaded_file.seek(0)
+
+    df_raw = pd.read_excel(
+        uploaded_file,
+        header=None,
+        dtype=str
+    )
+
+    # =====================================================
+    # DETEKSI HEADER
+    # =====================================================
+    header_row = None
+
+    for i in range(min(10, len(df_raw))):
+
+        row_text = " ".join(
+            df_raw.iloc[i]
+            .astype(str)
+            .fillna("")
+            .tolist()
+        ).upper()
+
+        if (
+            "KODE" in row_text
+            and "SATKER" in row_text
+            and "TRANSAKSI" in row_text
+        ):
+            header_row = i
+            break
+
+    if header_row is None:
+        return pd.DataFrame()
+
+    # =====================================================
+    # LOAD ULANG DENGAN HEADER
+    # =====================================================
+    uploaded_file.seek(0)
+
+    df = pd.read_excel(
+        uploaded_file,
+        header=header_row,
+        dtype=str
+    )
+
+    # =====================================================
+    # NORMALISASI HEADER
+    # =====================================================
+    df = normalize_cms_columns(df)
+
+    # =====================================================
+    # HAPUS BARIS KOSONG
+    # =====================================================
+    df = df.dropna(how="all")
+
+    # =====================================================
+    # FIX KODE SATKER
+    # =====================================================
+    satker_col = None
+
+    for c in df.columns:
+        if "Kode Satker" in str(c):
+            satker_col = c
+            break
+
+    if satker_col is None:
+        return pd.DataFrame()
+
+    df["Kode Satker"] = (
+        df[satker_col]
+        .astype(str)
+        .str.extract(r"(\d{6})")[0]
+        .fillna("")
+    )
+
+    df["Kode Satker"] = (
+        df["Kode Satker"]
+        .astype(str)
+        .str.zfill(6)
+    )
+
+    # =====================================================
+    # FIX NAMA SATKER
+    # =====================================================
+    nama_col = None
+
+    for c in df.columns:
+        if "Nama Satker" in str(c):
+            nama_col = c
+            break
+
+    if nama_col:
+        df["Nama Satker"] = (
+            df[nama_col]
+            .astype(str)
+            .str.strip()
+        )
+    else:
+        df["Nama Satker"] = ""
+
+    # =====================================================
+    # CLEAN NUMERIC
+    # =====================================================
+    numeric_cols = [
+        "Jumlah Transaksi CMS",
+        "Nilai Transaksi CMS",
+        "Jumlah Transaksi Kartu Debit",
+        "Nilai Transaksi Kartu Debit",
+        "Jumlah Transaksi Teller",
+        "Nilai Transaksi Teller",
+        "Persentase Frekuensi",
+        "Persentase Nilai",
+        "Rata-rata CMS"
+    ]
+
+    for col in numeric_cols:
+
+        if col in df.columns:
+
+            df[col] = (
+                df[col]
+                .astype(str)
+                .str.replace(",", ".", regex=False)
+                .str.replace(r"[^\d\.]", "", regex=True)
+                .replace("", "0")
+            )
+
+            df[col] = pd.to_numeric(
+                df[col],
+                errors="coerce"
+            ).fillna(0)
+
+    # =====================================================
+    # FILTER VALID
+    # =====================================================
+    df = df[
+        (df["Kode Satker"] != "") &
+        (df["Kode Satker"] != "000000")
+    ]
+
+    # =====================================================
+    # DROP KOLOM UNNAMED
+    # =====================================================
+    drop_cols = [
+        c for c in df.columns
+        if "Unnamed" in str(c)
+    ]
+
+    if drop_cols:
+        df = df.drop(columns=drop_cols)
+
+    return df.reset_index(drop=True)
+
+
 
 
 # FILE KKP
@@ -4195,6 +4449,7 @@ def process_excel_file_kkp(uploaded_file):
         df = df[df["NO"].notna()]
 
     return df.reset_index(drop=True)
+
 
 
 
