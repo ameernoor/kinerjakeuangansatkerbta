@@ -5946,104 +5946,308 @@ def add_kkp_percentage_columns(df_pivot, df_master):
 
 # =========================================================================
 # PROPORSI CMS
+# SUPPORT:
+# - FORMAT LAMA
+# - CMS SATKER BARU
 # =========================================================================
-def generate_cms_from_session(df_master, periode="Tahunan", tahun_filter=None):
-    
+def generate_cms_from_session(
+    df_master,
+    periode="Tahunan",
+    tahun_filter=None
+):
+
     df = df_master.copy()
 
-    # =============================
-    # FILTER TAHUN
-    # =============================
-    if tahun_filter is not None:
-        df = df[df["TAHUN"] == tahun_filter]
+    # =====================================================
+    # NORMALISASI HEADER
+    # =====================================================
+    df.columns = [
+        str(c).upper().strip()
+        for c in df.columns
+    ]
 
-    # =============================
+    # =====================================================
+    # FIX NAMA KOLOM SATKER
+    # =====================================================
+    rename_map = {}
+
+    for c in df.columns:
+
+        cc = str(c).upper()
+
+        # KODE SATKER
+        if (
+            "SATKER" in cc
+            and "KODE" in cc
+        ):
+            rename_map[c] = "KODE SATKER"
+
+        # NAMA SATKER
+        elif (
+            "SATKER" in cc
+            and "NAMA" in cc
+        ):
+            rename_map[c] = "NAMA SATKER"
+
+        # KPPN
+        elif "KPPN" in cc:
+            rename_map[c] = "KODE KPPN"
+
+    df = df.rename(columns=rename_map)
+
+    # =====================================================
+    # FILTER TAHUN
+    # =====================================================
+    if (
+        tahun_filter is not None
+        and "TAHUN" in df.columns
+    ):
+
+        df["TAHUN"] = pd.to_numeric(
+            df["TAHUN"],
+            errors="coerce"
+        )
+
+        df = df[
+            df["TAHUN"] == tahun_filter
+        ]
+
+    # =====================================================
     # NORMALISASI NUMERIK
-    # =============================
+    # =====================================================
     numeric_cols = [
+
         "JUMLAH TRANSAKSI CMS",
         "NILAI TRANSAKSI CMS",
+
         "JUMLAH TRANSAKSI KARTU DEBIT",
         "NILAI TRANSAKSI KARTU DEBIT",
+
         "JUMLAH TRANSAKSI TELLER",
         "NILAI TRANSAKSI TELLER",
+
+        # FORMAT BARU
+        "PERSENTASE FREKUENSI",
+        "PERSENTASE NILAI",
+        "RATA-RATA CMS"
     ]
 
     for col in numeric_cols:
 
-        df[col] = (
-            df[col]
-            .astype(str)
-            .str.replace(".", "", regex=False)
-            .str.replace(",", ".", regex=False)
-        )
+        if col in df.columns:
 
-        df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0)
+            df[col] = (
 
+                df[col]
 
-    # =============================
+                .astype(str)
+
+                .str.replace(".", "", regex=False)
+
+                .str.replace(",", ".", regex=False)
+
+                .str.replace(r"[^\d\.]", "", regex=True)
+
+                .replace("", "0")
+            )
+
+            df[col] = pd.to_numeric(
+                df[col],
+                errors="coerce"
+            ).fillna(0)
+
+    # =====================================================
+    # FIX KODE SATKER
+    # =====================================================
+    if "KODE SATKER" not in df.columns:
+        return pd.DataFrame()
+
+    df["KODE SATKER"] = (
+
+        df["KODE SATKER"]
+
+        .astype(str)
+
+        .str.extract(r"(\d{6})")[0]
+
+        .fillna("")
+
+        .str.zfill(6)
+    )
+
+    # =====================================================
+    # FILTER VALID
+    # =====================================================
+    df = df[
+        (df["KODE SATKER"] != "")
+        &
+        (df["KODE SATKER"] != "000000")
+    ]
+
+    # =====================================================
     # AGREGASI BERDASARKAN KODE SATKER
-    # =============================
-    df_group = (
-        df.groupby("KODE SATKER")
-        .agg(
-            NAMA_SATKER=("NAMA SATKER", "first"),
+    # =====================================================
+    agg_dict = {
 
-            CMS_TRX=("JUMLAH TRANSAKSI CMS", "sum"),
-            CMS_NOM=("NILAI TRANSAKSI CMS", "sum"),
+        "NAMA SATKER": ("NAMA SATKER", "first"),
 
-            DEBIT_TRX=("JUMLAH TRANSAKSI KARTU DEBIT", "sum"),
-            DEBIT_NOM=("NILAI TRANSAKSI KARTU DEBIT", "sum"),
+        "CMS_TRX": (
+            "JUMLAH TRANSAKSI CMS",
+            "sum"
+        ),
 
-            TELLER_TRX=("JUMLAH TRANSAKSI TELLER", "sum"),
-            TELLER_NOM=("NILAI TRANSAKSI TELLER", "sum"),
+        "CMS_NOM": (
+            "NILAI TRANSAKSI CMS",
+            "sum"
+        ),
+
+        "DEBIT_TRX": (
+            "JUMLAH TRANSAKSI KARTU DEBIT",
+            "sum"
+        ),
+
+        "DEBIT_NOM": (
+            "NILAI TRANSAKSI KARTU DEBIT",
+            "sum"
+        ),
+
+        "TELLER_TRX": (
+            "JUMLAH TRANSAKSI TELLER",
+            "sum"
+        ),
+
+        "TELLER_NOM": (
+            "NILAI TRANSAKSI TELLER",
+            "sum"
         )
+    }
+
+    # =====================================================
+    # FORMAT BARU CMS SATKER
+    # =====================================================
+    if "PERSENTASE FREKUENSI" in df.columns:
+
+        agg_dict["PERSENTASE_FREKUENSI"] = (
+            "PERSENTASE FREKUENSI",
+            "mean"
+        )
+
+    if "PERSENTASE NILAI" in df.columns:
+
+        agg_dict["PERSENTASE_NILAI"] = (
+            "PERSENTASE NILAI",
+            "mean"
+        )
+
+    if "RATA-RATA CMS" in df.columns:
+
+        agg_dict["RATA_RATA_CMS"] = (
+            "RATA-RATA CMS",
+            "mean"
+        )
+
+    df_group = (
+
+        df.groupby("KODE SATKER")
+
+        .agg(**agg_dict)
+
         .reset_index()
     )
 
-    df_group = df_group.rename(columns={
-        "NAMA_SATKER": "NAMA SATKER"
-    })
-    
-    
-    # =============================
+    # =====================================================
     # TOTAL
-    # =============================
+    # =====================================================
     df_group["TOTAL_TRX"] = (
+
         df_group["CMS_TRX"]
+
         + df_group["DEBIT_TRX"]
+
         + df_group["TELLER_TRX"]
     )
 
     df_group["TOTAL_NOM"] = (
+
         df_group["CMS_NOM"]
+
         + df_group["DEBIT_NOM"]
+
         + df_group["TELLER_NOM"]
     )
 
-    # =============================
+    # =====================================================
     # PROPORSI CMS
-    # =============================
-    df_group["Proporsi Transaksi CMS"] = (
-        df_group["CMS_TRX"] / df_group["TOTAL_TRX"] * 100
+    # =====================================================
+    df_group["Proporsi Transaksi CMS"] = np.where(
+
+        df_group["TOTAL_TRX"] > 0,
+
+        (
+            df_group["CMS_TRX"]
+            / df_group["TOTAL_TRX"]
+        ) * 100,
+
+        0
     )
 
-    df_group["Proporsi Nominal CMS"] = (
-        df_group["CMS_NOM"] / df_group["TOTAL_NOM"] * 100
-    )
-    
+    df_group["Proporsi Nominal CMS"] = np.where(
 
-    # =============================
-    # OUTPUT
-    # =============================
-    result = df_group[
-        [
-            "KODE SATKER",
-            "NAMA SATKER",
-            "Proporsi Transaksi CMS",
-            "Proporsi Nominal CMS",
-        ]
+        df_group["TOTAL_NOM"] > 0,
+
+        (
+            df_group["CMS_NOM"]
+            / df_group["TOTAL_NOM"]
+        ) * 100,
+
+        0
+    )
+
+    # =====================================================
+    # ROUNDING
+    # =====================================================
+    percent_cols = [
+
+        "Proporsi Transaksi CMS",
+        "Proporsi Nominal CMS",
+
+        "PERSENTASE_FREKUENSI",
+        "PERSENTASE_NILAI",
+        "RATA_RATA_CMS"
     ]
+
+    for col in percent_cols:
+
+        if col in df_group.columns:
+
+            df_group[col] = (
+                df_group[col]
+                .round(2)
+            )
+
+    # =====================================================
+    # OUTPUT
+    # =====================================================
+    output_cols = [
+
+        "KODE SATKER",
+        "NAMA SATKER",
+
+        "Proporsi Transaksi CMS",
+        "Proporsi Nominal CMS"
+    ]
+
+    # FORMAT BARU
+    if "PERSENTASE_FREKUENSI" in df_group.columns:
+        output_cols.append("PERSENTASE_FREKUENSI")
+
+    if "PERSENTASE_NILAI" in df_group.columns:
+        output_cols.append("PERSENTASE_NILAI")
+
+    if "RATA_RATA_CMS" in df_group.columns:
+        output_cols.append("RATA_RATA_CMS")
+
+    result = df_group[output_cols]
 
     return result.fillna(0)
 
