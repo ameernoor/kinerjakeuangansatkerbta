@@ -12956,14 +12956,32 @@ def page_admin():
                             continue
 
                         # =========================================
-                        # FILTER KPPN USER
+                        # FILTER HANYA KPPN 109
                         # =========================================
-                        selected_kppn = "109"   # bisa diganti dynamic nanti
+                        selected_kppn = "109"
 
                         if "KODE KPPN" in df.columns:
 
                             # =====================================
-                            # DEBUG SEMUA KPPN
+                            # NORMALISASI KPPN
+                            # =====================================
+                            df["KODE KPPN"] = (
+
+                                df["KODE KPPN"]
+
+                                .astype(str)
+
+                                .str.replace(".0", "", regex=False)
+
+                                .str.replace(r"[^\d]", "", regex=True)
+
+                                .str[-3:]
+
+                                .str.zfill(3)
+                            )
+
+                            # =====================================
+                            # DEBUG
                             # =====================================
                             st.write("SEMUA KPPN CMS:")
 
@@ -12971,7 +12989,6 @@ def page_admin():
                                 sorted(
                                     df["KODE KPPN"]
                                     .dropna()
-                                    .astype(str)
                                     .unique()
                                     .tolist()
                                 )[:50]
@@ -12980,24 +12997,9 @@ def page_admin():
                             # =====================================
                             # FILTER
                             # =====================================
-                            df_kppn = df[
+                            df = df[
                                 df["KODE KPPN"] == selected_kppn
                             ]
-
-                            # =====================================
-                            # JIKA TIDAK ADA
-                            # =====================================
-                            if df_kppn.empty:
-
-                                st.warning(
-                                    f"Tidak ada data KPPN "
-                                    f"{selected_kppn}, "
-                                    f"pakai semua data."
-                                )
-
-                            else:
-
-                                df = df_kppn
 
                         # =========================================
                         # JIKA MASIH KOSONG
