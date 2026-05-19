@@ -4214,10 +4214,10 @@ def process_cms_file(uploaded_file):
             header_row = i
             break
 
+    # =========================================
+    # BUKAN FORMAT DATA CMS SATKER
+    # =========================================
     if header_row is None:
-
-        st.error("❌ HEADER CMS TIDAK DITEMUKAN")
-
         return pd.DataFrame()
 
     # =====================================================
@@ -4382,10 +4382,10 @@ def process_cms_file(uploaded_file):
             satker_col = c
             break
 
+    # =========================================
+    # BUKAN SHEET DATA SATKER
+    # =========================================
     if satker_col is None:
-
-        st.error("❌ KOLOM KODE SATKER TIDAK DITEMUKAN")
-
         return pd.DataFrame()
 
     df["KODE SATKER"] = (
@@ -4499,6 +4499,12 @@ def process_cms_file(uploaded_file):
             .value_counts()
             .head(20)
         )
+
+    # =========================================
+    # MINIMAL DATA VALID
+    # =========================================
+    if len(df) < 5:
+        return pd.DataFrame()
 
     # =====================================================
     # RETURN
@@ -12810,9 +12816,6 @@ def page_admin():
         # ============================================================
         # PROSES FILE
         # ============================================================
-        # =====================================================
-        # PROSES FILE
-        # =====================================================
         if uploaded_cms:
 
             with st.spinner("Memproses Data CMS..."):
@@ -12825,6 +12828,25 @@ def page_admin():
                 # LOOP SHEET
                 # =================================================
                 for sheet in xls.sheet_names:
+                    sheet_upper = sheet.upper()
+
+                    # =========================================
+                    # SKIP SHEET REKAP
+                    # =========================================
+                    skip_keywords = [
+                        "KANWIL",
+                        "REKAP",
+                        "PENGGUNA_KANWIL",
+                        "TRANSAKSI_KANWIL",
+                        "PENGGUNA_KPPN",
+                        "TRANSAKSI_KPPN"
+                    ]
+
+                    if any(k in sheet_upper for k in skip_keywords):
+
+                        st.warning(f"SKIP SHEET: {sheet}")
+
+                        continue
 
                     try:
 
