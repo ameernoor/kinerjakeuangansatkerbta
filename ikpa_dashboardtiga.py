@@ -4186,15 +4186,9 @@ def process_cms_file(uploaded_file):
     )
 
     # =====================================================
-    # DETEKSI HEADER YANG BENAR
+    # DETEKSI HEADER CMS YANG BENAR
     # =====================================================
     header_row = None
-
-    required_columns = [
-        "KODE SATKER",
-        "NAMA SATKER",
-        "TRANSAKSI"
-    ]
 
     for i in range(min(20, len(df_raw))):
 
@@ -4208,28 +4202,41 @@ def process_cms_file(uploaded_file):
         row_text = " ".join(row_values).upper()
 
         # =============================================
-        # HITUNG SCORE
+        # HEADER CMS VALID
         # =============================================
-        score = 0
+        required_keywords = [
+            "KODE",
+            "SATKER",
+            "KPPN",
+            "TRANSAKSI"
+        ]
 
-        for keyword in required_columns:
+        score = sum(
+            keyword in row_text
+            for keyword in required_keywords
+        )
 
-            if keyword in row_text:
-                score += 1
+        # =============================================
+        # HARUS PUNYA BANYAK KOLOM
+        # =============================================
+        non_empty_cols = sum(
+            str(v).strip() != ""
+            and str(v).strip().lower() != "nan"
+            for v in row_values
+        )
 
         # =============================================
         # HEADER VALID
         # =============================================
-        if score >= 2:
+        if (
+            score >= 3
+            and non_empty_cols >= 10
+            and "REKAPITULASI" not in row_text
+            and "PERIODE" not in row_text
+        ):
 
-            # pastikan bukan judul laporan
-            if (
-                "REKAPITULASI" not in row_text
-                and len(row_values) > 5
-            ):
-
-                header_row = i
-                break
+            header_row = i
+            break
 
     # =========================================
     # BUKAN FORMAT DATA CMS SATKER
