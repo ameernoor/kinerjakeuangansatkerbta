@@ -4190,29 +4190,46 @@ def process_cms_file(uploaded_file):
     # =====================================================
     header_row = None
 
-    for i in range(min(10, len(df_raw))):
+    required_columns = [
+        "KODE SATKER",
+        "NAMA SATKER",
+        "TRANSAKSI"
+    ]
 
-        row_text = " ".join(
+    for i in range(min(20, len(df_raw))):
+
+        row_values = (
             df_raw.iloc[i]
-            .astype(str)
             .fillna("")
+            .astype(str)
             .tolist()
-        ).upper()
-
-        required_keywords = [
-            "SATKER",
-            "KPPN",
-            "TRANSAKSI"
-        ]
-
-        score = sum(
-            k in row_text
-            for k in required_keywords
         )
 
+        row_text = " ".join(row_values).upper()
+
+        # =============================================
+        # HITUNG SCORE
+        # =============================================
+        score = 0
+
+        for keyword in required_columns:
+
+            if keyword in row_text:
+                score += 1
+
+        # =============================================
+        # HEADER VALID
+        # =============================================
         if score >= 2:
-            header_row = i
-            break
+
+            # pastikan bukan judul laporan
+            if (
+                "REKAPITULASI" not in row_text
+                and len(row_values) > 5
+            ):
+
+                header_row = i
+                break
 
     # =========================================
     # BUKAN FORMAT DATA CMS SATKER
