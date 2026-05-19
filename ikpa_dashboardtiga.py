@@ -4186,7 +4186,7 @@ def process_cms_file(uploaded_file):
     )
 
     # =====================================================
-    # DETEKSI HEADER CMS YANG BENAR
+    # DETEKSI HEADER CMS
     # =====================================================
     header_row = None
 
@@ -4201,9 +4201,6 @@ def process_cms_file(uploaded_file):
 
         row_text = " ".join(row_values).upper()
 
-        # =============================================
-        # HEADER CMS VALID
-        # =============================================
         required_keywords = [
             "KODE",
             "SATKER",
@@ -4216,18 +4213,12 @@ def process_cms_file(uploaded_file):
             for keyword in required_keywords
         )
 
-        # =============================================
-        # HARUS PUNYA BANYAK KOLOM
-        # =============================================
         non_empty_cols = sum(
             str(v).strip() != ""
             and str(v).strip().lower() != "nan"
             for v in row_values
         )
 
-        # =============================================
-        # HEADER VALID
-        # =============================================
         if (
             score >= 3
             and non_empty_cols >= 10
@@ -4238,9 +4229,9 @@ def process_cms_file(uploaded_file):
             header_row = i
             break
 
-    # =========================================
-    # BUKAN FORMAT DATA CMS SATKER
-    # =========================================
+    # =====================================================
+    # BUKAN FORMAT CMS
+    # =====================================================
     if header_row is None:
         return pd.DataFrame()
 
@@ -4259,46 +4250,6 @@ def process_cms_file(uploaded_file):
     # NORMALISASI HEADER
     # =====================================================
     df = normalize_cms_columns(df)
-    
-    # =====================================================
-    # SAMAKAN NAMA KOLOM KPPN
-    # =====================================================
-    if (
-        "KODE KPPN" not in df.columns
-        and "KODE KKPN MITRA SATKER" in df.columns
-    ):
-
-        df["KODE KPPN"] = df["KODE KKPN MITRA SATKER"]
-    
-    # =====================================================
-    # NORMALISASI KODE KPPN
-    # =====================================================
-    if "KODE KPPN" in df.columns:
-
-        df["KODE KPPN"] = (
-
-            df["KODE KPPN"]
-
-            .astype(str)
-
-            .str.replace(".0", "", regex=False)
-
-            .str.replace(r"[^\d]", "", regex=True)
-
-            .fillna("")
-
-            # ambil 3 digit terakhir
-            .str[-3:]
-
-            .str.zfill(3)
-        )
-
-        # =========================================
-        # FILTER HANYA KPPN 109
-        # =========================================
-        df = df[
-            df["KODE KPPN"] == "109"
-        ]   
 
     # =====================================================
     # HAPUS HEADER DUPLIKAT
@@ -4336,56 +4287,42 @@ def process_cms_file(uploaded_file):
         )
 
     # =====================================================
-    # NORMALISASI HEADER FINAL
+    # HEADER FINAL
     # =====================================================
     df.columns = [
         str(c).upper().strip()
         for c in df.columns
     ]
 
-    # =====================================================
-    # DEBUG HEADER
-    # =====================================================
     st.write("HEADER CMS FINAL:")
     st.write(df.columns.tolist())
 
     # =====================================================
-    # NORMALISASI KPPN SUPER KUAT
+    # SAMAKAN KOLOM KPPN
     # =====================================================
-    kppn_col = None
+    rename_map = {}
 
-    # PRIORITAS:
-    # KPPN MITRA SATKER
     for col in df.columns:
 
-        cc = str(col).upper().strip()
+        col_upper = str(col).upper()
 
         if (
-            "KPPN" in cc
-            and "MITRA" in cc
+            "KPPN" in col_upper
+            or "KKPN" in col_upper
         ):
 
-            kppn_col = col
-            break
+            rename_map[col] = "KODE KPPN"
 
-    # FALLBACK
-    if kppn_col is None:
-
-        for col in df.columns:
-
-            if "KPPN" in str(col).upper():
-
-                kppn_col = col
-                break
+    df = df.rename(columns=rename_map)
 
     # =====================================================
-    # CLEAN KPPN
+    # NORMALISASI KPPN
     # =====================================================
-    if kppn_col:
+    if "KODE KPPN" in df.columns:
 
         df["KODE KPPN"] = (
 
-            df[kppn_col]
+            df["KODE KPPN"]
 
             .astype(str)
 
@@ -4395,33 +4332,20 @@ def process_cms_file(uploaded_file):
 
             .fillna("")
 
-            # ====================================
-            # AMBIL 3 DIGIT TERAKHIR
-            # ====================================
             .str[-3:]
 
             .str.zfill(3)
         )
-        
-    # =========================================
-    # FILTER HANYA KPPN 109
-    # =========================================
-    df = df[
-        df["KODE KPPN"] == "109"
-    ]
 
-    # =====================================================
-    # FILTER KPPN VALID
-    # =====================================================
-    if "KODE KPPN" in df.columns:
-
+        # =============================================
+        # FILTER HANYA KPPN 109
+        # =============================================
         df = df[
-            df["KODE KPPN"]
-            .str.match(r"^\d{3}$", na=False)
+            df["KODE KPPN"] == "109"
         ]
 
     # =====================================================
-    # DEBUG SAMPLE KPPN
+    # DEBUG KPPN
     # =====================================================
     if "KODE KPPN" in df.columns:
 
@@ -4430,14 +4354,14 @@ def process_cms_file(uploaded_file):
         st.write(
             df["KODE KPPN"]
             .dropna()
-            .astype(str)
             .unique()[:20]
         )
 
     # =====================================================
-    # HAPUS BARIS KOSONG
+    # JIKA KOSONG SETELAH FILTER
     # =====================================================
-    df = df.dropna(how="all")
+    if len(df) == 0:
+        return pd.DataFrame()
 
     # =====================================================
     # FIX KODE SATKER
@@ -4446,7 +4370,7 @@ def process_cms_file(uploaded_file):
 
     for c in df.columns:
 
-        cc = str(c).upper().strip()
+        cc = str(c).upper()
 
         if (
             "SATKER" in cc
@@ -4456,19 +4380,11 @@ def process_cms_file(uploaded_file):
             satker_col = c
             break
 
-    # =========================================
-    # BUKAN SHEET DATA SATKER
-    # =========================================
     if satker_col is None:
         return pd.DataFrame()
 
     # =====================================================
-    # CLEAN KODE SATKER SUPER KUAT
-    # SUPPORT:
-    # - 007130
-    # - 7130
-    # - 007130.0
-    # - 0007130
+    # CLEAN KODE SATKER
     # =====================================================
     df["KODE SATKER_RAW"] = (
 
@@ -4486,7 +4402,7 @@ def process_cms_file(uploaded_file):
     )
 
     # =====================================================
-    # AMBIL 6 DIGIT TERAKHIR
+    # NORMALISASI SATKER
     # =====================================================
     df["KODE SATKER"] = (
 
@@ -4498,17 +4414,6 @@ def process_cms_file(uploaded_file):
     )
 
     # =====================================================
-    # DEBUG SATKER
-    # =====================================================
-    st.write("SAMPLE SATKER:")
-    st.write(
-        df["KODE SATKER"]
-        .dropna()
-        .astype(str)
-        .unique()[:20]
-    )
-
-    # =====================================================
     # FILTER SATKER VALID
     # =====================================================
     df = df[
@@ -4516,9 +4421,6 @@ def process_cms_file(uploaded_file):
         .str.match(r"^\d{6}$", na=False)
     ]
 
-    # =====================================================
-    # DEBUG JUMLAH SATKER VALID
-    # =====================================================
     st.write(
         "JUMLAH SATKER VALID:",
         len(df)
@@ -4531,7 +4433,7 @@ def process_cms_file(uploaded_file):
 
     for c in df.columns:
 
-        cc = str(c).upper().strip()
+        cc = str(c).upper()
 
         if (
             "NAMA" in cc
@@ -4544,11 +4446,8 @@ def process_cms_file(uploaded_file):
     if nama_col:
 
         df["NAMA SATKER"] = (
-
             df[nama_col]
-
             .astype(str)
-
             .str.strip()
         )
 
@@ -4568,11 +4467,7 @@ def process_cms_file(uploaded_file):
         "NILAI TRANSAKSI KARTU DEBIT",
 
         "JUMLAH TRANSAKSI TELLER",
-        "NILAI TRANSAKSI TELLER",
-
-        "PERSENTASE FREKUENSI",
-        "PERSENTASE NILAI",
-        "RATA-RATA CMS"
+        "NILAI TRANSAKSI TELLER"
     ]
 
     for col in numeric_cols:
@@ -4614,9 +4509,9 @@ def process_cms_file(uploaded_file):
             .head(20)
         )
 
-    # =========================================
+    # =====================================================
     # MINIMAL DATA VALID
-    # =========================================
+    # =====================================================
     if len(df) < 5:
         return pd.DataFrame()
 
