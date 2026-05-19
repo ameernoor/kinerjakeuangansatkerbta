@@ -4049,48 +4049,81 @@ def load_cms_from_github():
 # ============================================================
 # NORMALISASI HEADER CMS
 # ============================================================
+# ============================================================
+# NORMALISASI HEADER CMS (VERSI KUAT)
+# ============================================================
 def normalize_cms_columns(df):
 
     import re
 
     df = df.copy()
 
-    # =============================
-    # BERSIHKAN HEADER
-    # =============================
-    df.columns = (
-        pd.Index(df.columns)
-        .astype(str)
-        .str.replace("\n", " ", regex=False)
-        .str.replace(r"\s+", " ", regex=True)
-        .str.strip()
-    )
+    cleaned_cols = []
 
+    for col in df.columns:
+
+        c = str(col)
+
+        # newline -> spasi
+        c = c.replace("\n", " ")
+
+        # multiple spaces
+        c = re.sub(r"\s+", " ", c)
+
+        # trim
+        c = c.strip()
+
+        # unnamed / kosong
+        if c.lower().startswith("unnamed"):
+            c = ""
+
+        cleaned_cols.append(c)
+
+    df.columns = cleaned_cols
+
+    # =====================================================
+    # RENAME FORMAT BARU + FORMAT LAMA
+    # =====================================================
     rename_map = {
-        "Kode Satker": "Kode Satker",
-        "KODE SATKER": "Kode Satker",
-        "Kode Satker ": "Kode Satker",
 
+        "Kode BA": "Kode BA",
+        "Nama BA": "Nama BA",
+
+        "Kode Es. I": "Kode Es. I",
+        "Nama Es. I": "Nama Es. I",
+
+        "Kode Satker": "Kode Satker",
         "Nama Satker": "Nama Satker",
-        "NAMA SATKER": "Nama Satker",
-        "Nama Satker ": "Nama Satker",
+
+        "Kode Kanwil": "Kode Kanwil",
+
+        "Kode KKPN Mitra Satker": "Kode KKPN Mitra Satker",
 
         "Jumlah Transaksi CMS": "Jumlah Transaksi CMS",
         "Nilai Transaksi CMS": "Nilai Transaksi CMS",
 
-        "Jumlah Transaksi Kartu Debit": "Jumlah Transaksi Kartu Debit",
-        "Nilai Transaksi Kartu Debit": "Nilai Transaksi Kartu Debit",
+        "Jumlah Transaksi Kartu Debit":
+            "Jumlah Transaksi Kartu Debit",
 
-        "Jumlah Transaksi Teller": "Jumlah Transaksi Teller",
-        "Nilai Transaksi Teller": "Nilai Transaksi Teller",
+        "Nilai Transaksi Kartu Debit":
+            "Nilai Transaksi Kartu Debit",
 
-        "Keaktifan Transaksi CMS": "Keaktifan Transaksi CMS",
-        "Keaktifan transaksi": "Keaktifan transaksi",
+        "Jumlah Transaksi Teller":
+            "Jumlah Transaksi Teller",
 
-        "Status Rekening (Aktif/Tutup)": "Status Rekening",
-        "Status Rekening  (Aktif/Tutup)": "Status Rekening",
+        "Nilai Transaksi Teller":
+            "Nilai Transaksi Teller",
 
-        # FORMAT BARU CMS SATKER
+        "Keaktifan Transaksi CMS":
+            "Keaktifan Transaksi CMS",
+
+        "Keaktifan transaksi":
+            "Keaktifan transaksi",
+
+        "Status Rekening (Aktif/Tutup)":
+            "Status Rekening",
+
+        # FORMAT BARU
         "frek": "Persentase Frekuensi",
         "nilai": "Persentase Nilai",
         "rata2": "Rata-rata CMS"
@@ -4098,10 +4131,7 @@ def normalize_cms_columns(df):
 
     final_cols = []
 
-    for col in df.columns:
-
-        c = str(col).strip()
-        c = re.sub(r"\s+", " ", c)
+    for c in df.columns:
 
         if c in rename_map:
             final_cols.append(rename_map[c])
@@ -4110,12 +4140,31 @@ def normalize_cms_columns(df):
 
     df.columns = final_cols
 
-    # =============================
-    # HAPUS DUPLIKAT
-    # =============================
+    # =====================================================
+    # HAPUS KOLOM SAMPAH
+    # =====================================================
+    bad_cols = [
+        "",
+        "_1",
+        "_2",
+        "_3",
+        "_4",
+        "Bank_1",
+        "None"
+    ]
+
+    df = df.drop(
+        columns=[c for c in bad_cols if c in df.columns],
+        errors="ignore"
+    )
+
+    # =====================================================
+    # DROP DUPLIKAT
+    # =====================================================
     df = df.loc[:, ~df.columns.duplicated()].copy()
 
     return df
+
 
 # ============================================================
 # PARSER CMS UNIVERSAL
@@ -4150,7 +4199,6 @@ def process_cms_file(uploaded_file):
         if (
             "KODE" in row_text
             and "SATKER" in row_text
-            and "TRANSAKSI" in row_text
         ):
             header_row = i
             break
@@ -4173,6 +4221,19 @@ def process_cms_file(uploaded_file):
     # NORMALISASI HEADER
     # =====================================================
     df = normalize_cms_columns(df)
+    
+    # =====================================================
+    # NORMALISASI KODE KPPN
+    # =====================================================
+    if "Kode KKPN Mitra Satker" in df.columns:
+
+        df["Kode KKPN Mitra Satker"] = (
+            df["Kode KKPN Mitra Satker"]
+            .astype(str)
+            .str.extract(r"(\\d+)")[0]
+            .fillna("")
+            .str.zfill(3)
+        )
 
     # =====================================================
     # HAPUS BARIS KOSONG
