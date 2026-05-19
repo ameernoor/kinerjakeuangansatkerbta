@@ -12810,356 +12810,153 @@ def page_admin():
         # ============================================================
         # PROSES FILE
         # ============================================================
+        # =====================================================
+        # PROSES FILE
+        # =====================================================
         if uploaded_cms:
 
             with st.spinner("Memproses Data CMS..."):
 
                 xls = pd.ExcelFile(uploaded_cms)
+
                 all_valid_data = []
 
+                # =================================================
+                # LOOP SHEET
+                # =================================================
                 for sheet in xls.sheet_names:
-    
-                    df_raw = pd.read_excel(xls, sheet_name=sheet, header=None, dtype=str)
 
-                    # =====================================================
-                    # DETEKSI HEADER
-                    # =====================================================
-                    header_row = None
+                    try:
 
-                    for i in range(min(20, len(df_raw))):
-                        row_text = " ".join(df_raw.iloc[i].astype(str)).upper()
+                        # =========================================
+                        # LOAD SHEET KE MEMORY
+                        # =========================================
+                        temp_file = io.BytesIO()
 
-                        if (
-                            "SATKER" in row_text
-                            and "TRANSAKSI" in row_text
-                        ):
-                            header_row = i
-                            break
+                        with pd.ExcelWriter(
+                            temp_file,
+                            engine="openpyxl"
+                        ) as writer:
 
-                    if header_row is None:
-                        continue
-
-                    # =====================================================
-                    # LOAD DENGAN HEADER
-                    # =====================================================
-                    # =====================================================
-                    # LOAD TANPA HEADER DULU
-                    # =====================================================
-
-                    df = pd.read_excel(
-                        xls,
-                        sheet_name=sheet,
-                        header=None,
-                        dtype=str
-                    )
-
-                    # ambil header manual
-                    headers = (
-                        df.iloc[header_row]
-                        .fillna("")
-                        .astype(str)
-                        .str.strip()
-                    )
-
-                    df.columns = headers
-                    
-                    # =====================================================
-                    # FIX DUPLIKAT HEADER
-                    # =====================================================
-
-                    seen = {}
-                    new_cols = []
-
-                    for col in df.columns:
-
-                        col = str(col).strip()
-
-                        if col in seen:
-                            seen[col] += 1
-                            new_cols.append(f"{col}_{seen[col]}")
-                        else:
-                            seen[col] = 0
-                            new_cols.append(col)
-
-                    df.columns = new_cols
-                    st.write("HEADER CMS TERBACA:")
-                    st.write(df.columns.tolist())
-
-                    st.write("SAMPLE DATA CMS:")
-                    st.dataframe(df.head(10))
-
-                    # =====================================================
-                    # DATA MULAI SETELAH HEADER
-                    # =====================================================
-
-                    df = df.iloc[header_row + 1:].reset_index(drop=True)
-
-                    # =====================================================
-                    # HAPUS BARIS KOSONG
-                    # =====================================================
-
-                    df = df.dropna(how="all")
-
-                    # =====================================================
-                    # HAPUS BARIS HEADER GANDA
-                    # =====================================================
-
-                    first_col = str(df.columns[0]).upper()
-
-                    df = df[
-                        ~df.iloc[:, 0]
-                        .astype(str)
-                        .str.upper()
-                        .str.contains(first_col, na=False)
-                    ]
-
-                    # =====================================================
-                    # RESET INDEX
-                    # =====================================================
-
-                    df = df.reset_index(drop=True)
-
-                    # =====================================================
-                    # NORMALISASI HEADER
-                    # =====================================================
-                    df.columns = (
-                        df.columns.astype(str)
-                        .str.replace("\n", " ")
-                        .str.replace("\r", " ")
-                        .str.strip()
-                        .str.upper()
-                        .str.replace(r"\s+", " ", regex=True)
-                    )
-                    
-                    # =====================================================
-                    # HAPUS KOLOM KOSONG
-                    # =====================================================
-
-                    df = df.loc[:, ~df.columns.astype(str).str.contains("^Unnamed", na=False)]
-
-                    df = df.loc[:, df.columns.astype(str).str.strip() != ""]
-
-                    # =====================================================
-                    # FORMAT BARU CMS SATKER TW I
-                    # =====================================================
-                    rename_map = {
-                        "KODE SATKER": "KODE SATKER",
-                        "NAMA SATKER": "NAMA SATKER",
-                        "KODE KKPN MITRA SATKER": "KODE KPPN",
-                        "JUMLAH TRANSAKSI CMS": "JUMLAH TRANSAKSI CMS",
-                        "NILAI TRANSAKSI CMS": "NILAI TRANSAKSI CMS",
-                        "KEAKTIFAN TRANSAKSI CMS": "KEAKTIFAN TRANSAKSI CMS",
-                    }
-
-                    for old_col, new_col in rename_map.items():
-                        if old_col in df.columns:
-                            df.rename(columns={old_col: new_col}, inplace=True)
-
-                    # =====================================================
-                    # DETEKSI KPPN FORMAT BARU CMS
-                    # =====================================================
-
-                    col_kppn = None
-
-                    possible_kppn_cols = [
-                        "KODE KPPN",
-                        "KODE KPPN MITRA SATKER",
-                        "KODE KKPN MITRA SATKER",
-                        "KPPN",
-                        "KODE_KPPN"
-                    ]
-
-                    for c in df.columns:
-
-                        c_clean = str(c).upper().strip()
-
-                        if c_clean in possible_kppn_cols:
-                            col_kppn = c
-                            break
-
-                    # =====================================================
-                    # JIKA TIDAK ADA → CARI MANUAL
-                    # =====================================================
-
-                    if col_kppn is None:
-
-                        for c in df.columns:
-
-                            series_col = df[c]
-
-                            if isinstance(series_col, pd.DataFrame):
-                                series_col = series_col.iloc[:, 0]
-
-                            test = (
-                                series_col
-                                .astype(str)
-                                .str.extract(r"(\d{3})")[0]
-                                .fillna("")
-                                .str.zfill(3)
+                            df_sheet = pd.read_excel(
+                                xls,
+                                sheet_name=sheet,
+                                header=None,
+                                dtype=str
                             )
 
-                            total_109 = (test == "109").sum()
+                            df_sheet.to_excel(
+                                writer,
+                                index=False,
+                                header=False
+                            )
 
-                            if total_109 > 5:
+                        temp_file.seek(0)
 
-                                col_kppn = c
-                                df[c] = test
-                                break
+                        # =========================================
+                        # PAKAI PARSER UNIVERSAL
+                        # =========================================
+                        df = process_cms_file(temp_file)
 
-                    # =====================================================
-                    # GAGAL DETEKSI
-                    # =====================================================
+                        # =========================================
+                        # JIKA KOSONG
+                        # =========================================
+                        if df.empty:
 
-                    if col_kppn is None:
+                            st.warning(
+                                f"Sheet {sheet} tidak terbaca."
+                            )
 
-                        st.error("Kolom KPPN tidak ditemukan pada format CMS.")
+                            continue
 
-                        st.write("HEADER TERBACA:")
-                        st.write(df.columns.tolist())
+                        # =========================================
+                        # FILTER KPPN 109
+                        # =========================================
+                        if "KODE KPPN" in df.columns:
 
-                        continue
+                            df = df[
+                                df["KODE KPPN"] == "109"
+                            ]
 
-                    # =====================================================
-                    # NORMALISASI KPPN
-                    # =====================================================
+                        # =========================================
+                        # JIKA MASIH KOSONG
+                        # =========================================
+                        if df.empty:
 
-                    series_kppn = df[col_kppn]
+                            st.warning(
+                                f"Sheet {sheet} tidak punya data KPPN 109."
+                            )
 
-                    if isinstance(series_kppn, pd.DataFrame):
-                        series_kppn = series_kppn.iloc[:, 0]
+                            continue
 
-                    df["KPPN_NORMALIZED"] = (
-                        series_kppn
-                        .astype(str)
-                        .str.extract(r"(\d{3})")[0]
-                        .fillna("")
-                        .str.zfill(3)
-                    )
+                        # =========================================
+                        # METADATA
+                        # =========================================
+                        df["TAHUN"] = selected_year
+                        df["TRIWULAN"] = selected_triwulan
+                        df["SOURCE_SHEET"] = sheet
 
-                    st.write(
-                        "Jumlah data KPPN 109:",
-                        (df["KPPN_NORMALIZED"] == "109").sum()
-                    )
-
-                    # =====================================================
-                    # FILTER KPPN 109
-                    # =====================================================
-
-                    df = df[
-                        df["KPPN_NORMALIZED"] == "109"
-                    ]
-                    
-                    # =====================================================
-                    # DETEKSI SATKER
-                    # =====================================================
-                    col_satker = None
-                    for col in df.columns:
-
-                        series_col = df[col]
-
-                        if isinstance(series_col, pd.DataFrame):
-                            series_col = series_col.iloc[:, 0]
-
-                        test = (
-                            series_col
-                            .astype(str)
-                            .str.extract(r"(\d{6})")[0]
-                            .fillna("")
+                        # =========================================
+                        # DEBUG
+                        # =========================================
+                        st.success(
+                            f"Sheet {sheet} berhasil "
+                            f"({len(df)} baris)"
                         )
 
-                        if test.notna().sum() > 0:
-                            col_satker = col
-                            df[col] = test
-                            break
+                        st.write(df.head())
 
-                    if not col_satker:
-                        continue
+                        # =========================================
+                        # SIMPAN
+                        # =========================================
+                        all_valid_data.append(df)
 
+                    except Exception as e:
 
-                    # =====================================================
-                    # FILTER KPPN 109
-                    # =====================================================
-
-                    df[col_kppn] = (
-                        df[col_kppn]
-                        .astype(str)
-                        .str.extract(r"(\d{3})")[0]
-                        .fillna("")
-                        .str.zfill(3)
-                    )
-
-                    df = df[
-                        df[col_kppn] == "109"
-                    ]
-
-                    if df.empty:
-                        continue
-
-                    # =====================================================
-                    # NORMALISASI KOLOM
-                    # =====================================================
-                    df["Kode Satker"] = df[col_satker]
-                    df["Kode KPPN"] = df[col_kppn]
-
-                    # nama satker
-                    nama_col = None
-
-                    for c in df.columns:
-                        if "NAMA SATKER" in c or "SATKER" in c:
-                            nama_col = c
-                            break
-
-                    if nama_col:
-                        df["Nama Satker"] = df[nama_col]
-                    else:
-                        df["Nama Satker"] = ""
-
-                    # transaksi cms
-                    if "JUMLAH TRANSAKSI CMS" not in df.columns:
-                        df["JUMLAH TRANSAKSI CMS"] = 0
-
-                    if "NILAI TRANSAKSI CMS" not in df.columns:
-                        df["NILAI TRANSAKSI CMS"] = 0
-
-                    # =====================================================
-                    # METADATA
-                    # =====================================================
-                    df["TAHUN"] = selected_year
-                    df["TRIWULAN"] = selected_triwulan
-                    df["SOURCE_SHEET"] = sheet
-
-                    # =====================================================
-                    # FILTER HANYA SATKER VALID
-                    # =====================================================
-
-                    if "Kode Satker" in df.columns:
-
-                        df["Kode Satker"] = (
-                            df["Kode Satker"]
-                            .astype(str)
-                            .str.extract(r"(\d{6})")[0]
+                        st.error(
+                            f"ERROR sheet {sheet}: {e}"
                         )
 
-                        df = df[
-                            df["Kode Satker"]
-                            .notna()
-                        ]
+                        continue
 
-                        df = df[
-                            df["Kode Satker"] != ""
-                        ]
+                # =================================================
+                # TIDAK ADA DATA
+                # =================================================
+                if not all_valid_data:
 
-                    # =====================================================
-                    # DEBUG JUMLAH DATA
-                    # =====================================================
+                    st.error(
+                        "❌ Tidak ada data CMS KPPN 109 ditemukan."
+                    )
+
+                    st.stop()
+
+                # =================================================
+                # GABUNGKAN
+                # =================================================
+                df_final = pd.concat(
+                    all_valid_data,
+                    ignore_index=True
+                )
+
+                # =================================================
+                # DROP DUPLIKAT
+                # =================================================
+                df_final = df_final.drop_duplicates()
+
+                # =================================================
+                # DEBUG FINAL
+                # =================================================
+                st.write("FINAL CMS:")
+                st.write(df_final.head())
+
+                st.write("TOTAL DATA:", len(df_final))
+
+                if "KODE KPPN" in df_final.columns:
 
                     st.write(
-                        f"Sheet {sheet} terbaca:",
-                        len(df),
-                        "baris"
-                    )    
-                    
-                    all_valid_data.append(df)
+                        df_final["KODE KPPN"]
+                        .value_counts()
+                    )
 
                 if not all_valid_data:
                     st.error("❌ Tidak ada data CMS KPPN 109 ditemukan.")
