@@ -4231,26 +4231,51 @@ def process_cms_file(uploaded_file):
     # =====================================================
     # NORMALISASI KPPN SUPER KUAT
     # =====================================================
+    kppn_col = None
+
+    # PRIORITAS:
+    # KPPN MITRA SATKER
     for col in df.columns:
 
-        if "KPPN" in str(col).upper():
+        cc = str(col).upper().strip()
 
-            df[col] = (
-                df[col]
-                .astype(str)
-                .str.replace(".0", "", regex=False)
-                .str.extract(r"(\d+)")[0]
-                .fillna("")
-                .str.strip()
-                .str.zfill(3)
-            )
+        if (
+            "KPPN" in cc
+            and "MITRA" in cc
+        ):
 
-            df.rename(
-                columns={col: "Kode KKPN Mitra Satker"},
-                inplace=True
-            )
-
+            kppn_col = col
             break
+
+    # FALLBACK
+    if kppn_col is None:
+
+        for col in df.columns:
+
+            if "KPPN" in str(col).upper():
+
+                kppn_col = col
+                break
+
+    # CLEAN
+    if kppn_col:
+
+        df["Kode KKPN Mitra Satker"] = (
+
+            df[kppn_col]
+
+            .astype(str)
+
+            .str.replace(".0", "", regex=False)
+
+            .str.extract(r"(\d+)")[0]
+
+            .fillna("")
+
+            .str.strip()
+
+            .str.zfill(3)
+        )
 
     # =====================================================
     # DEBUG SAMPLE KPPN
@@ -4276,7 +4301,14 @@ def process_cms_file(uploaded_file):
     satker_col = None
 
     for c in df.columns:
-        if "Kode Satker" in str(c):
+
+        cc = str(c).upper().strip()
+
+        if (
+            "SATKER" in cc
+            and "KODE" in cc
+        ):
+
             satker_col = c
             break
 
@@ -4302,17 +4334,27 @@ def process_cms_file(uploaded_file):
     nama_col = None
 
     for c in df.columns:
-        if "Nama Satker" in str(c):
+
+        cc = str(c).upper().strip()
+
+        if (
+            "NAMA" in cc
+            and "SATKER" in cc
+        ):
+
             nama_col = c
             break
 
     if nama_col:
+
         df["Nama Satker"] = (
             df[nama_col]
             .astype(str)
             .str.strip()
         )
+
     else:
+
         df["Nama Satker"] = ""
 
     # =====================================================
@@ -4359,12 +4401,18 @@ def process_cms_file(uploaded_file):
     # DROP KOLOM UNNAMED
     # =====================================================
     drop_cols = [
+
         c for c in df.columns
-        if "Unnamed" in str(c)
+
+        if (
+            "UNNAMED" in str(c).upper()
+            or str(c).strip() == ""
+            or str(c).upper().startswith("_")
+        )
     ]
 
     if drop_cols:
-        df = df.drop(columns=drop_cols)
+        df = df.drop(columns=drop_cols, errors="ignore")
 
     # =====================================================
     # FINAL DEBUG
@@ -4372,6 +4420,7 @@ def process_cms_file(uploaded_file):
     if "Kode KKPN Mitra Satker" in df.columns:
 
         st.write("JUMLAH DATA PER KPPN:")
+
         st.write(
             df["Kode KKPN Mitra Satker"]
             .value_counts()
@@ -4379,7 +4428,6 @@ def process_cms_file(uploaded_file):
         )
 
     return df.reset_index(drop=True)
-
 
 
 # FILE KKP
