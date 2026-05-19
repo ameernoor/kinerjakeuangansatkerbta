@@ -4259,6 +4259,46 @@ def process_cms_file(uploaded_file):
     # NORMALISASI HEADER
     # =====================================================
     df = normalize_cms_columns(df)
+    
+    # =====================================================
+    # SAMAKAN NAMA KOLOM KPPN
+    # =====================================================
+    if (
+        "KODE KPPN" not in df.columns
+        and "KODE KKPN MITRA SATKER" in df.columns
+    ):
+
+        df["KODE KPPN"] = df["KODE KKPN MITRA SATKER"]
+    
+    # =====================================================
+    # NORMALISASI KODE KPPN
+    # =====================================================
+    if "KODE KPPN" in df.columns:
+
+        df["KODE KPPN"] = (
+
+            df["KODE KPPN"]
+
+            .astype(str)
+
+            .str.replace(".0", "", regex=False)
+
+            .str.replace(r"[^\d]", "", regex=True)
+
+            .fillna("")
+
+            # ambil 3 digit terakhir
+            .str[-3:]
+
+            .str.zfill(3)
+        )
+
+        # =========================================
+        # FILTER HANYA KPPN 109
+        # =========================================
+        df = df[
+            df["KODE KPPN"] == "109"
+        ]   
 
     # =====================================================
     # HAPUS HEADER DUPLIKAT
