@@ -4332,9 +4332,11 @@ def process_cms_file(uploaded_file):
 
             .fillna("")
 
-            .str[-3:]
-
-            .str.zfill(3)
+            .apply(
+                lambda x: x[-3:]
+                if len(x) >= 3
+                else x.zfill(3)
+            )
         )
 
         # =============================================
