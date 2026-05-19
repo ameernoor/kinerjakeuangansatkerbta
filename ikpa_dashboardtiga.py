@@ -4412,27 +4412,67 @@ def process_cms_file(uploaded_file):
     if satker_col is None:
         return pd.DataFrame()
 
-    df["KODE SATKER"] = (
+    # =====================================================
+    # CLEAN KODE SATKER SUPER KUAT
+    # SUPPORT:
+    # - 007130
+    # - 7130
+    # - 007130.0
+    # - 0007130
+    # =====================================================
+    df["KODE SATKER_RAW"] = (
 
         df[satker_col]
 
         .astype(str)
 
-        .str.extract(r"(\d{6})")[0]
+        .str.replace(".0", "", regex=False)
+
+        .str.replace(r"[^\d]", "", regex=True)
 
         .fillna("")
 
+        .str.strip()
+    )
+
+    # =====================================================
+    # AMBIL 6 DIGIT TERAKHIR
+    # =====================================================
+    df["KODE SATKER"] = (
+
+        df["KODE SATKER_RAW"]
+
+        .str[-6:]
+
         .str.zfill(6)
+    )
+
+    # =====================================================
+    # DEBUG SATKER
+    # =====================================================
+    st.write("SAMPLE SATKER:")
+    st.write(
+        df["KODE SATKER"]
+        .dropna()
+        .astype(str)
+        .unique()[:20]
     )
 
     # =====================================================
     # FILTER SATKER VALID
     # =====================================================
     df = df[
-        (df["KODE SATKER"] != "")
-        &
-        (df["KODE SATKER"] != "000000")
+        df["KODE SATKER"]
+        .str.match(r"^\d{6}$", na=False)
     ]
+
+    # =====================================================
+    # DEBUG JUMLAH SATKER VALID
+    # =====================================================
+    st.write(
+        "JUMLAH SATKER VALID:",
+        len(df)
+    )
 
     # =====================================================
     # FIX NAMA SATKER
