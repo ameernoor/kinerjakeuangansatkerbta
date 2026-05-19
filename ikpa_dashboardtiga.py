@@ -4221,18 +4221,48 @@ def process_cms_file(uploaded_file):
     # NORMALISASI HEADER
     # =====================================================
     df = normalize_cms_columns(df)
-    
+
     # =====================================================
-    # NORMALISASI KODE KPPN
+    # DEBUG HEADER
+    # =====================================================
+    st.write("HEADER CMS FINAL:")
+    st.write(df.columns.tolist())
+
+    # =====================================================
+    # NORMALISASI KPPN SUPER KUAT
+    # =====================================================
+    for col in df.columns:
+
+        if "KPPN" in str(col).upper():
+
+            df[col] = (
+                df[col]
+                .astype(str)
+                .str.replace(".0", "", regex=False)
+                .str.extract(r"(\d+)")[0]
+                .fillna("")
+                .str.strip()
+                .str.zfill(3)
+            )
+
+            df.rename(
+                columns={col: "Kode KKPN Mitra Satker"},
+                inplace=True
+            )
+
+            break
+
+    # =====================================================
+    # DEBUG SAMPLE KPPN
     # =====================================================
     if "Kode KKPN Mitra Satker" in df.columns:
 
-        df["Kode KKPN Mitra Satker"] = (
+        st.write("SAMPLE KPPN:")
+        st.write(
             df["Kode KKPN Mitra Satker"]
+            .dropna()
             .astype(str)
-            .str.extract(r"(\\d+)")[0]
-            .fillna("")
-            .str.zfill(3)
+            .unique()[:20]
         )
 
     # =====================================================
@@ -4336,8 +4366,19 @@ def process_cms_file(uploaded_file):
     if drop_cols:
         df = df.drop(columns=drop_cols)
 
-    return df.reset_index(drop=True)
+    # =====================================================
+    # FINAL DEBUG
+    # =====================================================
+    if "Kode KKPN Mitra Satker" in df.columns:
 
+        st.write("JUMLAH DATA PER KPPN:")
+        st.write(
+            df["Kode KKPN Mitra Satker"]
+            .value_counts()
+            .head(20)
+        )
+
+    return df.reset_index(drop=True)
 
 
 
