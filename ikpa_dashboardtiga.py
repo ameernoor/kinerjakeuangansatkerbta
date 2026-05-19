@@ -4351,14 +4351,24 @@ def process_cms_file(uploaded_file):
 
             .str.replace(".0", "", regex=False)
 
-            .str.extract(r"(\d+)")[0]
+            .str.replace(r"[^\d]", "", regex=True)
 
             .fillna("")
 
-            .str.strip()
+            # ====================================
+            # AMBIL 3 DIGIT TERAKHIR
+            # ====================================
+            .str[-3:]
 
             .str.zfill(3)
         )
+        
+    # =========================================
+    # FILTER HANYA KPPN 109
+    # =========================================
+    df = df[
+        df["KODE KPPN"] == "109"
+    ]
 
     # =====================================================
     # FILTER KPPN VALID
