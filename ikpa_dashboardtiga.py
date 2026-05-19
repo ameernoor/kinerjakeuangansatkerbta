@@ -12956,13 +12956,48 @@ def page_admin():
                             continue
 
                         # =========================================
-                        # FILTER KPPN 109
+                        # FILTER KPPN USER
                         # =========================================
+                        selected_kppn = "109"   # bisa diganti dynamic nanti
+
                         if "KODE KPPN" in df.columns:
 
-                            df = df[
-                                df["KODE KPPN"] == "109"
+                            # =====================================
+                            # DEBUG SEMUA KPPN
+                            # =====================================
+                            st.write("SEMUA KPPN CMS:")
+
+                            st.write(
+                                sorted(
+                                    df["KODE KPPN"]
+                                    .dropna()
+                                    .astype(str)
+                                    .unique()
+                                    .tolist()
+                                )[:50]
+                            )
+
+                            # =====================================
+                            # FILTER
+                            # =====================================
+                            df_kppn = df[
+                                df["KODE KPPN"] == selected_kppn
                             ]
+
+                            # =====================================
+                            # JIKA TIDAK ADA
+                            # =====================================
+                            if df_kppn.empty:
+
+                                st.warning(
+                                    f"Tidak ada data KPPN "
+                                    f"{selected_kppn}, "
+                                    f"pakai semua data."
+                                )
+
+                            else:
+
+                                df = df_kppn
 
                         # =========================================
                         # JIKA MASIH KOSONG
