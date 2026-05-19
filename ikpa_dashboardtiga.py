@@ -13011,7 +13011,19 @@ def page_admin():
                 # =================================================
                 # DROP DUPLIKAT
                 # =================================================
-                df_final = df_final.drop_duplicates()
+                # =================================================
+                # DROP DUPLIKAT AMAN
+                # =================================================
+                # JANGAN HAPUS DATA BERDASARKAN SATKER
+                # karena 1 satker bisa punya banyak rekening VA
+                # =================================================
+                df_final = df_final.drop_duplicates(
+                    subset=[
+                        "KODE SATKER",
+                        "NOMOR REKENING VA"
+                    ],
+                    keep="first"
+                )
 
                 # =================================================
                 # DEBUG FINAL
