@@ -12430,6 +12430,16 @@ def page_admin():
                         # =========================================
                         # CONCAT AMAN
                         # =========================================
+                        new_df = new_df.loc[
+                            :,
+                            ~new_df.columns.duplicated()
+                        ]
+
+                        master_df = master_df.loc[
+                            :,
+                            ~master_df.columns.duplicated()
+                        ]
+
                         master_df = pd.concat(
                             [master_df, new_df],
                             ignore_index=True
@@ -12460,8 +12470,26 @@ def page_admin():
                         # ===============================
                         if new_count > 0:
 
-                            new_rows_clean = new_rows[
-                                df_kkp.columns.intersection(new_rows.columns)
+                            # ambil hanya kolom asli upload
+                            cols_safe = [
+                                c for c in df_kkp.columns
+                                if c in new_rows.columns
+                            ]
+
+                            new_rows_clean = (
+                                new_rows[cols_safe]
+                                .copy()
+                            )
+
+                            # BUANG DUPLIKAT KOLOM
+                            new_rows_clean = new_rows_clean.loc[
+                                :,
+                                ~new_rows_clean.columns.duplicated()
+                            ]
+
+                            master_df = master_df.loc[
+                                :,
+                                ~master_df.columns.duplicated()
                             ]
 
                             master_df = pd.concat(
