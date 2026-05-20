@@ -12381,8 +12381,18 @@ def page_admin():
                         else:
                             df_kkp["NILAI TRANSAKSI (NILAI SPM)"] = 0
 
+                   # ===============================
+                    # FALLBACK NOMOR KARTU
                     # ===============================
-                    # UNIQUE KEY
+                    if "NOMOR KARTU" not in df_kkp.columns:
+                        df_kkp["NOMOR KARTU"] = "TIDAK ADA"
+
+                    if not master_df.empty:
+                        if "NOMOR KARTU" not in master_df.columns:
+                            master_df["NOMOR KARTU"] = "TIDAK ADA"
+
+                    # ===============================
+                    # UNIQUE KEY BARU (ANTI REDUNDAN)
                     # ===============================
                     UNIQUE_KEY = [
                         "PERIODE",
