@@ -1083,6 +1083,119 @@ def normalize_month(val):
     return MONTH_MAP.get(val, safe_upper(val))
 
 
+# =====================================================
+# NORMALISASI DATA KKP (FORMAT LAMA + BARU)
+# =====================================================
+def normalize_kkp_dataframe(df):
+
+    df = df.copy()
+
+    # =========================
+    # NORMALISASI NAMA KOLOM
+    # =========================
+    df.columns = (
+        df.columns
+        .astype(str)
+        .str.strip()
+        .str.upper()
+    )
+
+    # =========================
+    # PASTIKAN KOLOM ADA
+    # =========================
+    required_cols = [
+        "KODE SATKER",
+        "NOMOR KARTU",
+        "PERIODE",
+        "TAHUN",
+        "BULAN",
+        "NILAI TRANSAKSI (NILAI SPM)",
+        "NILAI_FINAL"
+    ]
+
+    for col in required_cols:
+        if col not in df.columns:
+            df[col] = np.nan
+
+    # =========================
+    # CLEAN KEY
+    # =========================
+    key_cols = [
+        "KODE SATKER",
+        "NOMOR KARTU",
+        "PERIODE"
+    ]
+
+    for col in key_cols:
+        df[col] = (
+            df[col]
+            .astype(str)
+            .str.strip()
+            .replace("NAN", "")
+            .replace("NONE", "")
+        )
+
+    # =========================
+    # NORMALISASI NILAI
+    # =========================
+    transaksi_cols = [
+        "NILAI TRANSAKSI (NILAI SPM)",
+        "NILAI_FINAL"
+    ]
+
+    for col in transaksi_cols:
+
+        df[col] = (
+            df[col]
+            .astype(str)
+            .str.replace(".", "", regex=False)
+            .str.replace(",", ".", regex=False)
+            .str.replace(r"[^\d\.\-]", "", regex=True)
+            .replace("", np.nan)
+        )
+
+        df[col] = pd.to_numeric(
+            df[col],
+            errors="coerce"
+        )
+
+    # =========================
+    # NILAI FINAL
+    # =========================
+    df["NILAI_FINAL"] = (
+        df["NILAI TRANSAKSI (NILAI SPM)"]
+        .fillna(
+            df["NILAI_FINAL)"]
+        )
+    )
+
+    # =========================
+    # FIX PERIODE
+    # =========================
+    periode_dt = pd.to_datetime(
+        df["PERIODE"],
+        errors="coerce"
+    )
+
+    # =========================
+    # FIX TAHUN
+    # =========================
+    df["TAHUN"] = (
+        pd.to_numeric(df["TAHUN"], errors="coerce")
+        .fillna(periode_dt.dt.year)
+    )
+
+    # =========================
+    # FIX BULAN
+    # =========================
+    df["BULAN"] = (
+        pd.to_numeric(df["BULAN"], errors="coerce")
+        .fillna(periode_dt.dt.month)
+    )
+
+    return df
+
+
 def fix_ikpa_header(df_raw):
     
     import pandas as pd
@@ -12217,6 +12330,32 @@ def page_admin():
                             + "-"
                             + df_kkp["BULAN"].astype(str).str.zfill(2)
                         )
+                        
+                    # =====================================================
+                    # FIX TAHUN & BULAN DARI PERIODE
+                    # =====================================================
+                    periode_dt = pd.to_datetime(
+                        df_kkp["PERIODE"],
+                        errors="coerce"
+                    )
+
+                    if "TAHUN" not in df_kkp.columns:
+                        df_kkp["TAHUN"] = periode_dt.dt.year
+
+                    else:
+                        df_kkp["TAHUN"] = (
+                            pd.to_numeric(df_kkp["TAHUN"], errors="coerce")
+                            .fillna(periode_dt.dt.year)
+                        )
+
+                    if "BULAN" not in df_kkp.columns:
+                        df_kkp["BULAN"] = periode_dt.dt.month
+
+                    else:
+                        df_kkp["BULAN"] = (
+                            pd.to_numeric(df_kkp["BULAN"], errors="coerce")
+                            .fillna(periode_dt.dt.month)
+                        )
 
                     # ===============================
                     # JENIS KKP
@@ -12247,7 +12386,8 @@ def page_admin():
                     UNIQUE_KEY = [
                         "PERIODE",
                         "Kode Satker",
-                        "JENIS KKP"
+                        "NOMOR KARTU",
+                        "NILAI TRANSAKSI (NILAI SPM)"
                     ]
 
                     SPM_COL = "NILAI TRANSAKSI (NILAI SPM)"
@@ -12262,6 +12402,25 @@ def page_admin():
                             df_kkp[SPM_COL],
                             errors="coerce"
                         ).fillna(0)
+                    )
+                    
+                    # =====================================================
+                    # NILAI FINAL (UNTUK FORMAT LAMA + BARU)
+                    # =====================================================
+                    if "TOTAL TRANSAKSI (NILAI TAGIHAN TERKAIT APBN)" not in df_kkp.columns:
+                        df_kkp["TOTAL TRANSAKSI (NILAI TAGIHAN TERKAIT APBN)"] = np.nan
+
+                    df_kkp["NILAI_FINAL"] = (
+                        pd.to_numeric(
+                            df_kkp["NILAI TRANSAKSI (NILAI SPM)"],
+                            errors="coerce"
+                        )
+                        .fillna(
+                            pd.to_numeric(
+                                df_kkp["TOTAL TRANSAKSI (NILAI TAGIHAN TERKAIT APBN)"],
+                                errors="coerce"
+                            )
+                        )
                     )
 
                     # dashboard lama pakai ini
@@ -12400,7 +12559,7 @@ def page_admin():
                             "JENIS KKP",
                             "BANK PENERBIT KKP",
                             "PERIODE",
-                            "TOTAL TRANSAKSI (NILAI TAGIHAN TERKAIT APBN)",
+                            "NILAI_FINAL",
                             "NILAI TRANSAKSI (NILAI SPM)",
                             "Kode BA",
                             "Kode Satker",
@@ -12444,6 +12603,14 @@ def page_admin():
                             [master_df, new_df],
                             ignore_index=True
                         )
+                        
+                        # ==========================================
+                        # HAPUS DUPLIKAT SUPER AMAN
+                        # ==========================================
+                        master_df = master_df.drop_duplicates(
+                            subset=UNIQUE_KEY,
+                            keep="first"
+                        ).reset_index(drop=True)
                         
                         # ===============================
                         # HAPUS DATA LAMA YANG DIUPDATE
