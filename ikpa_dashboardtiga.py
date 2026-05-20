@@ -12183,12 +12183,31 @@ def page_admin():
                     # ===============================
                     # PERIODE
                     # ===============================
+                    # fallback default
+                    upload_year_kkp = datetime.now().year
+
+                    # coba ambil tahun dari PERIODE jika ada
+                    if "PERIODE" in df_kkp.columns:
+
+                        periode_text = " ".join(
+                            df_kkp["PERIODE"]
+                            .astype(str)
+                            .tolist()
+                        )
+
+                        tahun_match = re.search(r"(20\d{2})", periode_text)
+
+                        if tahun_match:
+                            upload_year_kkp = int(tahun_match.group(1))
+
+                    # simpan ke session
+                    st.session_state["upload_year_kkp"] = upload_year_kkp
+
+                    # kalau format baru belum punya PERIODE
                     if "PERIODE" not in df_kkp.columns:
 
-                        current_year = upload_year_kkp
-
                         if "TAHUN" not in df_kkp.columns:
-                            df_kkp["TAHUN"] = current_year
+                            df_kkp["TAHUN"] = upload_year_kkp
 
                         if "BULAN" not in df_kkp.columns:
                             df_kkp["BULAN"] = 1
@@ -12391,7 +12410,7 @@ def page_admin():
                         # =========================================
                         # NORMALISASI DATA BARU
                         # =========================================
-                        new_df = new_df.copy()
+                        new_df = df_kkp.copy()
 
                         # rename kolom tambahan format baru
                         rename_map = {
@@ -12440,8 +12459,13 @@ def page_admin():
                         # TAMBAH DATA BARU
                         # ===============================
                         if new_count > 0:
+
+                            new_rows_clean = new_rows[
+                                df_kkp.columns.intersection(new_rows.columns)
+                            ]
+
                             master_df = pd.concat(
-                                [master_df, new_rows[df_kkp.columns]],
+                                [master_df, new_rows_clean],
                                 ignore_index=True
                             )
 
