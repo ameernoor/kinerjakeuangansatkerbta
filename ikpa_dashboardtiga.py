@@ -4526,27 +4526,68 @@ def process_cms_file(uploaded_file):
 # FILE KKP
 def process_excel_file_kkp(uploaded_file):
     
+    import pandas as pd
+    import re
+
+    # =========================================
+    # RESET POINTER FILE
+    # =========================================
     uploaded_file.seek(0)
 
-    df_raw = pd.read_excel(uploaded_file, header=None, dtype=str)
+    # =========================================
+    # READ RAW
+    # =========================================
+    df_raw = pd.read_excel(
+        uploaded_file,
+        header=None,
+        dtype=str
+    )
 
-    # =========================================================
-    # DETEKSI FORMAT
-    # =========================================================
+    df_raw = df_raw.fillna("")
+
+    # =========================================
+    # PREVIEW TEXT
+    # =========================================
     preview_text = " ".join(
-        df_raw.head(10).astype(str).fillna("").values.flatten()
+        df_raw.head(15)
+        .astype(str)
+        .values
+        .flatten()
     ).upper()
 
-    # =========================================================
+    # =====================================================
+    # HELPER NORMALISASI HEADER
+    # =====================================================
+    def normalize_columns(df):
+        df.columns = (
+            df.columns.astype(str)
+            .str.strip()
+            .str.upper()
+            .str.replace("\n", " ")
+            .str.replace(r"\s+", " ", regex=True)
+        )
+        return df
+
+    # =====================================================
+    # =====================================================
     # FORMAT BARU
     # DAFTAR TRANSAKSI GUP/PTUP KKP
-    # =========================================================
+    # =====================================================
+    # =====================================================
     if "DAFTAR TRANSAKSI GUP/PTUP KKP" in preview_text:
 
         header_row = None
 
-        for i in range(min(10, len(df_raw))):
-            row_text = " ".join(df_raw.iloc[i].astype(str)).upper()
+        # =========================================
+        # DETEKSI HEADER
+        # =========================================
+        for i in range(min(15, len(df_raw))):
+
+            row_text = " ".join(
+                df_raw.iloc[i]
+                .astype(str)
+                .tolist()
+            ).upper()
 
             if (
                 "SATKER" in row_text
@@ -4558,6 +4599,11 @@ def process_excel_file_kkp(uploaded_file):
         if header_row is None:
             return pd.DataFrame()
 
+        # =========================================
+        # READ ULANG DENGAN HEADER
+        # =========================================
+        uploaded_file.seek(0)
+
         df = pd.read_excel(
             uploaded_file,
             sheet_name=0,
@@ -4565,20 +4611,22 @@ def process_excel_file_kkp(uploaded_file):
             dtype=str
         )
 
-        # =====================================================
-        # NORMALISASI HEADER
-        # =====================================================
-        df.columns = (
-            df.columns.astype(str)
-            .str.strip()
-            .str.upper()
-            .str.replace("\n", " ")
-            .str.replace(r"\s+", " ", regex=True)
-        )
+        df = normalize_columns(df)
 
-        # =====================================================
-        # NORMALISASI SATKER
-        # =====================================================
+        # =========================================
+        # HAPUS HEADER GANDA
+        # =========================================
+        if "NO" in df.columns:
+            df = df[
+                ~df["NO"]
+                .astype(str)
+                .str.upper()
+                .eq("NO")
+            ]
+
+        # =========================================
+        # DETEKSI KOLOM SATKER
+        # =========================================
         satker_col = None
 
         for c in df.columns:
@@ -4589,6 +4637,9 @@ def process_excel_file_kkp(uploaded_file):
         if satker_col is None:
             return pd.DataFrame()
 
+        # =========================================
+        # KODE SATKER
+        # =========================================
         df["Kode Satker"] = (
             df[satker_col]
             .astype(str)
@@ -4596,19 +4647,28 @@ def process_excel_file_kkp(uploaded_file):
             .fillna("")
         )
 
+        # =========================================
+        # NAMA SATKER
+        # =========================================
         df["SATKER"] = (
             df[satker_col]
             .astype(str)
             .str.replace(r"^\d{6}\s*-\s*", "", regex=True)
+            .str.strip()
         )
 
-        # =====================================================
-        # NILAI TRANSAKSI
-        # =====================================================
+        # =========================================
+        # KOLOM NILAI
+        # =========================================
         nilai_col = None
 
         for c in df.columns:
-            if "NILAI TRANSAKSI KKP" in c:
+            cc = str(c).upper()
+
+            if (
+                "NILAI TRANSAKSI" in cc
+                or "TOTAL TRANSAKSI" in cc
+            ):
                 nilai_col = c
                 break
 
@@ -4623,53 +4683,116 @@ def process_excel_file_kkp(uploaded_file):
         else:
             df["Nilai Transaksi"] = 0
 
-        # =====================================================
+        # =========================================
+        # NOMOR SPM
+        # =========================================
+        nomor_spm_col = None
+
+        for c in df.columns:
+            if "NOMOR SPM" in c:
+                nomor_spm_col = c
+                break
+
+        if nomor_spm_col:
+            df["Nomor SPM"] = df[nomor_spm_col]
+        else:
+            df["Nomor SPM"] = ""
+
+        # =========================================
+        # JENIS SPM
+        # =========================================
+        jenis_col = None
+
+        for c in df.columns:
+            if "JENIS SPM" in c:
+                jenis_col = c
+                break
+
+        if jenis_col:
+            df["Jenis SPM"] = df[jenis_col]
+        else:
+            df["Jenis SPM"] = ""
+
+        # =========================================
         # FILTER VALID
-        # =====================================================
-        df = df[df["Kode Satker"] != ""]
+        # =========================================
+        df = df[
+            df["Kode Satker"]
+            .astype(str)
+            .str.len()
+            .eq(6)
+        ]
+
+        # =========================================
+        # DROP DUPLIKAT HEADER
+        # =========================================
+        df = df[
+            ~df["Kode Satker"]
+            .astype(str)
+            .str.contains("SATKER", na=False)
+        ]
 
         return df.reset_index(drop=True)
 
-    # =========================================================
+    # =====================================================
+    # =====================================================
     # FORMAT LAMA
     # KARTU PENGAWASAN
-    # =========================================================
+    # =====================================================
+    # =====================================================
 
     header_row = None
 
-    for i in range(min(10, len(df_raw))):
-        row_text = " ".join(df_raw.iloc[i].astype(str)).upper()
+    for i in range(min(15, len(df_raw))):
 
-        if "BA/KL" in row_text and "SATKER" in row_text:
+        row_text = " ".join(
+            df_raw.iloc[i]
+            .astype(str)
+            .tolist()
+        ).upper()
+
+        if (
+            "BA/KL" in row_text
+            and "SATKER" in row_text
+        ):
             header_row = i
             break
 
     if header_row is None:
         return pd.DataFrame()
 
+    # =========================================
+    # BUILD DATAFRAME
+    # =========================================
     df = df_raw.iloc[header_row + 1:].copy()
     df.columns = df_raw.iloc[header_row]
 
     df = df.reset_index(drop=True)
 
-    df.columns = (
-        df.columns.astype(str)
-        .str.strip()
-        .str.upper()
-        .str.replace("\n", " ")
-        .str.replace(r"\s+", " ", regex=True)
-    )
+    df = normalize_columns(df)
 
-    if "BA/KL" not in df.columns or "SATKER" not in df.columns:
+    # =========================================
+    # VALIDASI KOLOM WAJIB
+    # =========================================
+    if "SATKER" not in df.columns:
         return pd.DataFrame()
 
-    df["Kode BA"] = (
-        df["BA/KL"]
-        .astype(str)
-        .str.extract(r"(\d{3})")[0]
-        .fillna("")
-    )
+    # =========================================
+    # KODE BA
+    # =========================================
+    if "BA/KL" in df.columns:
+        df["Kode BA"] = (
+            df["BA/KL"]
+            .astype(str)
+            .str.extract(r"(\d{3})")[0]
+            .fillna("")
+        )
+    else:
+        df["Kode BA"] = ""
 
+    # =========================================
+    # KODE SATKER
+    # =========================================
     df["Kode Satker"] = (
         df["SATKER"]
         .astype(str)
@@ -4677,22 +4800,86 @@ def process_excel_file_kkp(uploaded_file):
         .fillna("")
     )
 
-    if "NOMOR KARTU" in df.columns:
+    # =========================================
+    # NAMA SATKER
+    # =========================================
+    df["SATKER"] = (
+        df["SATKER"]
+        .astype(str)
+        .str.replace(r"^\d{6}\s*", "", regex=True)
+        .str.strip(" -")
+        .str.strip()
+    )
+
+    # =========================================
+    # NOMOR KARTU
+    # =========================================
+    nomor_kartu_col = None
+
+    for c in df.columns:
+        if "NOMOR KARTU" in c:
+            nomor_kartu_col = c
+            break
+
+    if nomor_kartu_col:
         df["Nomor Kartu"] = (
-            df["NOMOR KARTU"]
+            df[nomor_kartu_col]
             .astype(str)
             .str.replace(r"\.0$", "", regex=True)
+            .str.strip()
         )
     else:
         df["Nomor Kartu"] = ""
 
-    df = df[df["Kode Satker"] != ""]
+    # =========================================
+    # NILAI TRANSAKSI
+    # =========================================
+    nilai_col = None
 
+    for c in df.columns:
+        cc = str(c).upper()
+
+        if (
+            "NILAI TRANSAKSI" in cc
+            or "NILAI SPM" in cc
+            or "TOTAL TRANSAKSI" in cc
+        ):
+            nilai_col = c
+            break
+
+    if nilai_col:
+        df["Nilai Transaksi"] = (
+            df[nilai_col]
+            .astype(str)
+            .str.replace(r"[^\d]", "", regex=True)
+            .replace("", "0")
+            .astype(float)
+        )
+    else:
+        df["Nilai Transaksi"] = 0
+
+    # =========================================
+    # FILTER VALID
+    # =========================================
+    df = df[
+        df["Kode Satker"]
+        .astype(str)
+        .str.len()
+        .eq(6)
+    ]
+
+    # =========================================
+    # HAPUS HEADER NYASAR
+    # =========================================
     if "NO" in df.columns:
-        df = df[df["NO"].notna()]
+        df = df[
+            ~df["NO"]
+            .astype(str)
+            .str.upper()
+            .eq("NO")
+        ]
 
     return df.reset_index(drop=True)
-
 
 
 
