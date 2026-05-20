@@ -12131,13 +12131,6 @@ def page_admin():
         st.markdown("---")
         st.subheader("💳 Upload Data KKP")
 
-        upload_year_kkp = st.selectbox(
-            "Pilih Tahun Data KKP",
-            list(range(2020, 2031)),
-            index=list(range(2020, 2031)).index(datetime.now().year),
-            key="tahun_kkp"
-        )
-
         uploaded_file_kkp = st.file_uploader(
             "Pilih file Excel Data KKP",
             type=["xlsx", "xls"],
@@ -12375,6 +12368,54 @@ def page_admin():
 
                         update_count = len(updated_rows)
 
+                        # =========================================
+                        # SCHEMA MASTER KKP
+                        # =========================================
+                        MASTER_COLUMNS = [
+                            "NO",
+                            "BA/KL",
+                            "SATKER",
+                            "NOMOR KARTU",
+                            "NAMA PEMEGANG KKP",
+                            "LIMIT KKP",
+                            "JENIS KKP",
+                            "BANK PENERBIT KKP",
+                            "PERIODE",
+                            "TOTAL TRANSAKSI (NILAI TAGIHAN TERKAIT APBN)",
+                            "NILAI TRANSAKSI (NILAI SPM)",
+                            "Kode BA",
+                            "Kode Satker",
+                            "Nomor Kartu"
+                        ]
+
+                        # =========================================
+                        # NORMALISASI DATA BARU
+                        # =========================================
+                        new_df = new_df.copy()
+
+                        # rename kolom tambahan format baru
+                        rename_map = {
+                            "Nilai Transaksi": "NILAI TRANSAKSI (NILAI SPM)",
+                        }
+
+                        new_df.rename(columns=rename_map, inplace=True)
+
+                        # isi kolom yang belum ada
+                        for col in MASTER_COLUMNS:
+                            if col not in new_df.columns:
+                                new_df[col] = None
+
+                        # ambil hanya schema master
+                        new_df = new_df[MASTER_COLUMNS]
+
+                        # =========================================
+                        # CONCAT AMAN
+                        # =========================================
+                        master_df = pd.concat(
+                            [master_df, new_df],
+                            ignore_index=True
+                        )
+                        
                         # ===============================
                         # HAPUS DATA LAMA YANG DIUPDATE
                         # ===============================
@@ -12393,6 +12434,7 @@ def page_admin():
                             master_df = master_df.drop(columns=["_merge"])
 
                             master_df = pd.concat([master_df, update_df], ignore_index=True)
+                        
 
                         # ===============================
                         # TAMBAH DATA BARU
