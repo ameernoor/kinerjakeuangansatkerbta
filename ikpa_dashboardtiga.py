@@ -12566,20 +12566,48 @@ def page_admin():
                         # SCHEMA MASTER KKP
                         # =========================================
                         MASTER_COLUMNS = [
+
+                            # IDENTITAS
                             "NO",
                             "BA/KL",
                             "SATKER",
+                            "Kode BA",
+                            "Kode Satker",
+
+                            # KKP
                             "NOMOR KARTU",
+                            "Nomor Kartu",
                             "NAMA PEMEGANG KKP",
                             "LIMIT KKP",
                             "JENIS KKP",
                             "BANK PENERBIT KKP",
+
+                            # PERIODE
                             "PERIODE",
-                            "NILAI_FINAL",
+                            "TAHUN",
+                            "BULAN",
+
+                            # TRANSAKSI
+                            "TOTAL TRANSAKSI (NILAI TAGIHAN TERKAIT APBN)",
                             "NILAI TRANSAKSI (NILAI SPM)",
-                            "Kode BA",
-                            "Kode Satker",
-                            "Nomor Kartu"
+                            "NILAI_FINAL",
+                            "Nilai Transaksi",
+                            "JUMLAH TRANSAKSI",
+
+                            # SPM/SP2D
+                            "TANGGAL SPM",
+                            "NOMOR SPM",
+                            "TANGGAL SP2D",
+                            "NOMOR SP2D",
+                            "NILAI TRANSAKSI KKP (RP)",
+                            "JENIS SPM/SP2D",
+                            "PROGRAM / KEGIATAN / OUTPUT / AKUN",
+                            "TOTAL TRANSAKSI KKP (RP)",
+
+                            # FORMAT BARU
+                            "SATKER2",
+                            "Nomor SPM",
+                            "Jenis SPM"
                         ]
 
                         # =========================================
@@ -12653,7 +12681,7 @@ def page_admin():
                         # ===============================
                         if new_count > 0:
 
-                            # ambil hanya kolom asli upload
+                            # ambil data baru saja
                             cols_safe = [
                                 c for c in df_kkp.columns
                                 if c in new_rows.columns
@@ -12664,7 +12692,18 @@ def page_admin():
                                 .copy()
                             )
 
-                            # BUANG DUPLIKAT KOLOM
+                            # ==========================================
+                            # SAMAKAN SCHEMA MASTER
+                            # ==========================================
+                            for col in MASTER_COLUMNS:
+
+                                if col not in new_rows_clean.columns:
+                                    new_rows_clean[col] = None
+
+                            # urutkan kolom
+                            new_rows_clean = new_rows_clean[MASTER_COLUMNS]
+
+                            # buang duplicate column
                             new_rows_clean = new_rows_clean.loc[
                                 :,
                                 ~new_rows_clean.columns.duplicated()
@@ -12675,10 +12714,17 @@ def page_admin():
                                 ~master_df.columns.duplicated()
                             ]
 
+                            # concat aman
                             master_df = pd.concat(
                                 [master_df, new_rows_clean],
                                 ignore_index=True
                             )
+
+                            # hapus duplicate final
+                            master_df = master_df.drop_duplicates(
+                                subset=UNIQUE_KEY,
+                                keep="first"
+                            ).reset_index(drop=True)
 
                         final_df = master_df.copy()
 
