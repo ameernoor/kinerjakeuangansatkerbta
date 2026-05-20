@@ -12307,7 +12307,8 @@ def page_admin():
                             .astype(str)
                             .tolist()
                         )
-
+                        
+                        import re
                         tahun_match = re.search(r"(20\d{2})", periode_text)
 
                         if tahun_match:
