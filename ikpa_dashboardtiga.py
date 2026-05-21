@@ -1086,13 +1086,17 @@ def normalize_month(val):
 # =====================================================
 # NORMALISASI DATA KKP 
 # =====================================================
+# =====================================================
+# NORMALISASI DATA KKP FINAL
+# (DETAIL TRANSAKSI)
+# =====================================================
 def normalize_kkp_dataframe(df):
 
     df = df.copy()
 
-    # =========================
+    # ==========================================
     # NORMALISASI HEADER
-    # =========================
+    # ==========================================
     df.columns = (
         df.columns
         .astype(str)
@@ -1100,158 +1104,126 @@ def normalize_kkp_dataframe(df):
         .str.upper()
     )
 
-    # =========================
-    # PASTIKAN KOLOM ADA
-    # =========================
-    required_cols = [
-        "KODE SATKER",
-        "NAMA SATKER",
-        "SATKER",
-        "TAHUN",
-        "BULAN",
-        "PERIODE",
-        "NILAI TRANSAKSI (NILAI SPM)",
-        "NILAI_FINAL"
-    ]
+    # ==========================================
+    # RENAME FINAL
+    # ==========================================
+    rename_map = {
+        "LIMIT KKP": "Pagu KKP Per Bulan",
+    }
 
-    for col in required_cols:
-        if col not in df.columns:
-            df[col] = np.nan
+    df.rename(columns=rename_map, inplace=True)
 
-    # =========================
+    # ==========================================
     # KODE SATKER
-    # =========================
-    df["KODE SATKER"] = (
-        df["KODE SATKER"]
-        .apply(normalize_kode_satker)
-    )
+    # ==========================================
+    if "KODE SATKER" in df.columns:
 
-    # =========================
-    # NAMA SATKER
-    # =========================
-    df["Nama Satker"] = (
-        df["NAMA SATKER"]
-        .fillna(df["SATKER"])
-        .astype(str)
-        .str.strip()
-    )
-
-    # =========================
-    # CLEAN NILAI
-    # =========================
-    transaksi_cols = [
-        "NILAI TRANSAKSI (NILAI SPM)",
-        "NILAI_FINAL"
-    ]
-
-    for col in transaksi_cols:
-
-        df[col] = (
-            df[col]
-            .astype(str)
-            .str.replace(".", "", regex=False)
-            .str.replace(",", ".", regex=False)
-            .str.replace(r"[^\d\.\-]", "", regex=True)
-            .replace("", np.nan)
+        df["Kode Satker"] = (
+            df["KODE SATKER"]
+            .apply(normalize_kode_satker)
         )
 
-        df[col] = pd.to_numeric(
-            df[col],
+    elif "KODE SATKER " in df.columns:
+
+        df["Kode Satker"] = (
+            df["KODE SATKER "]
+            .apply(normalize_kode_satker)
+        )
+
+    else:
+
+        df["Kode Satker"] = ""
+
+    # ==========================================
+    # NAMA SATKER
+    # ==========================================
+    if "SATKER" in df.columns:
+
+        df["SATKER"] = (
+            df["SATKER"]
+            .astype(str)
+            .str.strip()
+        )
+
+    elif "NAMA SATKER" in df.columns:
+
+        df["SATKER"] = (
+            df["NAMA SATKER"]
+            .astype(str)
+            .str.strip()
+        )
+
+    else:
+
+        df["SATKER"] = ""
+
+    # ==========================================
+    # TAHUN & BULAN
+    # ==========================================
+    if "PERIODE" in df.columns:
+
+        periode_dt = pd.to_datetime(
+            df["PERIODE"],
             errors="coerce"
         )
 
-    # =========================
-    # NILAI TERBESAR
-    # =========================
-    df["Nilai Transaksi"] = (
-        df[
-            [
-                "NILAI TRANSAKSI (NILAI SPM)",
-                "NILAI_FINAL"
-            ]
-        ]
-        .max(axis=1)
-        .fillna(0)
-    )
+        df["TAHUN"] = periode_dt.dt.year
+        df["BULAN"] = periode_dt.dt.month
 
-    # =========================
-    # PERIODE
-    # =========================
-    periode_dt = pd.to_datetime(
-        df["PERIODE"],
-        errors="coerce"
-    )
+    else:
 
-    # =========================
-    # TAHUN
-    # =========================
-    df["Tahun"] = (
-        pd.to_numeric(df["TAHUN"], errors="coerce")
-        .fillna(periode_dt.dt.year)
-    )
+        if "TAHUN" not in df.columns:
+            df["TAHUN"] = np.nan
 
-    # =========================
-    # BULAN
-    # =========================
-    df["Bulan"] = (
-        pd.to_numeric(df["BULAN"], errors="coerce")
-        .fillna(periode_dt.dt.month)
-    )
+        if "BULAN" not in df.columns:
+            df["BULAN"] = np.nan
 
-    # =========================
-    # FINAL
-    # =========================
-    df = df[
-        [
-            "KODE SATKER",
-            "Nama Satker",
-            "Tahun",
-            "Bulan",
-            "Nilai Transaksi"
-        ]
-    ].copy()
+    # ==========================================
+    # NILAI TRANSAKSI FINAL
+    # ==========================================
+    nilai_cols = []
 
-    df.columns = [
-        "Kode Satker",
-        "Nama Satker",
-        "Tahun",
-        "Bulan",
-        "Nilai Transaksi"
+    kandidat_cols = [
+        "NILAI TRANSAKSI (NILAI SPM)",
+        "NILAI TAGIHAN",
+        "NILAI_FINAL",
+        "TRANSAKSI"
     ]
 
-    return df
+    for col in kandidat_cols:
 
-# =====================================================
-# AGREGASI FINAL KKP
-# =====================================================
-def aggregate_kkp(df):
+        if col in df.columns:
 
-    df = df.copy()
+            s = (
+                df[col]
+                .astype(str)
+                .str.replace(".", "", regex=False)
+                .str.replace(",", ".", regex=False)
+                .str.replace(r"[^\d\.\-]", "", regex=True)
+                .replace("", np.nan)
+            )
 
-    df["Nilai Transaksi"] = pd.to_numeric(
-        df["Nilai Transaksi"],
-        errors="coerce"
-    ).fillna(0)
+            s = pd.to_numeric(
+                s,
+                errors="coerce"
+            )
 
-    # ======================================
-    # AGREGASI FINAL
-    # ======================================
-    df = (
-        df.groupby(
-            [
-                "Kode Satker",
-                "Tahun",
-                "Bulan"
-            ],
-            as_index=False
+            nilai_cols.append(s)
+
+    if nilai_cols:
+
+        df["Nilai Transaksi"] = (
+            pd.concat(nilai_cols, axis=1)
+            .max(axis=1)
+            .fillna(0)
         )
-        .agg({
-            "Nama Satker": "first",
-            "Nilai Transaksi": "max"
-        })
-    )
+
+    else:
+
+        df["Nilai Transaksi"] = 0
 
     return df
+
 
 
 def fix_ikpa_header(df_raw):
@@ -12486,193 +12458,212 @@ def page_admin():
                     )
 
                     # =====================================================
-                    # KOLOM STANDAR MASTER KKP
+                    # NORMALISASI HEADER
                     # =====================================================
-                    MASTER_COLUMNS = [
-                        "Kode Satker",
-                        "Nama Satker",
-                        "TAHUN",
-                        "BULAN",
+
+                    df_kkp.columns = (
+                        df_kkp.columns
+                        .astype(str)
+                        .str.strip()
+                    )
+
+                    # =====================================================
+                    # RENAME KOLOM FINAL
+                    # =====================================================
+
+                    rename_map = {
+                        "LIMIT KKP": "Pagu KKP Per Bulan"
+                    }
+
+                    df_kkp = df_kkp.rename(columns=rename_map)
+
+                    # =====================================================
+                    # KODE SATKER
+                    # =====================================================
+
+                    if "Kode Satker" not in df_kkp.columns:
+
+                        if "KODE SATKER" in df_kkp.columns:
+
+                            df_kkp["Kode Satker"] = (
+                                df_kkp["KODE SATKER"]
+                                .astype(str)
+                                .str.extract(r"(\d+)")[0]
+                                .str.zfill(6)
+                            )
+
+                        else:
+
+                            df_kkp["Kode Satker"] = ""
+
+                    else:
+
+                        df_kkp["Kode Satker"] = (
+                            df_kkp["Kode Satker"]
+                            .astype(str)
+                            .str.extract(r"(\d+)")[0]
+                            .str.zfill(6)
+                        )
+
+                    # =====================================================
+                    # SATKER
+                    # =====================================================
+
+                    if "SATKER" not in df_kkp.columns:
+
+                        if "Nama Satker" in df_kkp.columns:
+                            df_kkp["SATKER"] = df_kkp["Nama Satker"]
+
+                        elif "NAMA SATKER" in df_kkp.columns:
+                            df_kkp["SATKER"] = df_kkp["NAMA SATKER"]
+
+                        else:
+                            df_kkp["SATKER"] = ""
+
+                    # =====================================================
+                    # TAHUN & BULAN
+                    # =====================================================
+
+                    periode_dt = pd.to_datetime(
+                        df_kkp["PERIODE"],
+                        errors="coerce"
+                    )
+
+                    df_kkp["TAHUN"] = (
+                        pd.to_numeric(
+                            df_kkp["TAHUN"],
+                            errors="coerce"
+                        )
+                        .fillna(periode_dt.dt.year)
+                    )
+
+                    df_kkp["BULAN"] = (
+                        pd.to_numeric(
+                            df_kkp["BULAN"],
+                            errors="coerce"
+                        )
+                        .fillna(periode_dt.dt.month)
+                    )
+
+                    # =====================================================
+                    # NILAI TRANSAKSI FINAL
+                    # =====================================================
+
+                    nilai_cols = []
+
+                    candidate_cols = [
+                        "NILAI TRANSAKSI (NILAI SPM)",
+                        "NILAI TAGIHAN",
+                        "NILAI_FINAL",
+                        "TRANSAKSI",
                         "Nilai Transaksi"
                     ]
 
-                    SPM_COL = "NILAI TRANSAKSI (NILAI SPM)"
+                    for col in candidate_cols:
 
-                    # =====================================================
-                    # NORMALISASI FINAL KKP
-                    # =====================================================
+                        if col in df_kkp.columns:
 
-                    # Kode Satker
-                    df_kkp["Kode Satker"] = (
-                        df_kkp["Kode Satker"]
-                        .astype(str)
-                        .str.extract(r"(\d+)")[0]
-                        .str.zfill(6)
-                    )
-
-                    # Nama Satker
-                    if "Nama Satker" not in df_kkp.columns:
-
-                        if "SATKER" in df_kkp.columns:
-                            df_kkp["Nama Satker"] = df_kkp["SATKER"]
-
-                        elif "NAMA SATKER" in df_kkp.columns:
-                            df_kkp["Nama Satker"] = df_kkp["NAMA SATKER"]
-
-                        else:
-                            df_kkp["Nama Satker"] = ""
-
-                    # Nilai transaksi
-                    nilai_cols = []
-
-                    if "NILAI TRANSAKSI (NILAI SPM)" in df_kkp.columns:
-                        nilai_cols.append(
-                            pd.to_numeric(
-                                df_kkp["NILAI TRANSAKSI (NILAI SPM)"],
-                                errors="coerce"
+                            nilai_cols.append(
+                                pd.to_numeric(
+                                    df_kkp[col],
+                                    errors="coerce"
+                                )
                             )
-                        )
-
-                    if "NILAI_FINAL" in df_kkp.columns:
-                        nilai_cols.append(
-                            pd.to_numeric(
-                                df_kkp["NILAI_FINAL"],
-                                errors="coerce"
-                            )
-                        )
 
                     if nilai_cols:
+
                         df_kkp["Nilai Transaksi"] = (
                             pd.concat(nilai_cols, axis=1)
                             .max(axis=1)
                             .fillna(0)
                         )
-                    else:
-                        df_kkp["Nilai Transaksi"] = 0
 
-                    # =====================================================
-                    # FINAL AGREGASI
-                    # =====================================================
-                    df_kkp = (
-                        df_kkp.groupby(
-                            [
-                                "Kode Satker",
-                                "TAHUN",
-                                "BULAN"
-                            ],
-                            as_index=False
-                        )
-                        .agg({
-                            "Nama Satker": "first",
-                            "Nilai Transaksi": "max"
-                        })
-                    )
+                    else:
+
+                        df_kkp["Nilai Transaksi"] = 0
 
                     # =====================================================
                     # MASTER EXISTING
                     # =====================================================
+
                     master_df = st.session_state.get(
                         "kkp_master",
                         pd.DataFrame()
                     )
 
                     # =====================================================
-                    # FIRST UPLOAD
+                    # KALAU MASTER MASIH KOSONG
                     # =====================================================
+
                     if master_df.empty:
 
                         final_df = df_kkp.copy()
 
-                        new_count = len(final_df)
+                        new_count = len(df_kkp)
 
                         update_count = 0
 
                     # =====================================================
-                    # MERGE EXISTING
+                    # REPLACE EXISTING
+                    # BERDASARKAN:
+                    # Kode Satker + Tahun + Bulan
                     # =====================================================
+
                     else:
 
+                        # key upload baru
+                        new_keys = (
+                            df_kkp[
+                                ["Kode Satker", "TAHUN", "BULAN"]
+                            ]
+                            .drop_duplicates()
+                        )
+
+                        # normalisasi existing
                         master_df["Kode Satker"] = (
                             master_df["Kode Satker"]
                             .astype(str)
                             .str.zfill(6)
                         )
 
-                        master_df["Nilai Transaksi"] = pd.to_numeric(
-                            master_df["Nilai Transaksi"],
-                            errors="coerce"
-                        ).fillna(0)
+                        # hapus existing yg key sama
+                        master_df = master_df.merge(
+                            new_keys,
+                            on=["Kode Satker", "TAHUN", "BULAN"],
+                            how="left",
+                            indicator=True
+                        )
 
+                        master_df = (
+                            master_df[master_df["_merge"] == "left_only"]
+                            .drop(columns=["_merge"])
+                        )
+
+                        # gabungkan existing + upload baru
                         final_df = pd.concat(
                             [master_df, df_kkp],
                             ignore_index=True
                         )
 
-                        # ambil transaksi terbesar
-                        final_df = (
-                            final_df
-                            .sort_values(
-                                "Nilai Transaksi",
-                                ascending=False
-                            )
-                            .drop_duplicates(
-                                subset=[
-                                    "Kode Satker",
-                                    "TAHUN",
-                                    "BULAN"
-                                ],
-                                keep="first"
-                            )
-                            .reset_index(drop=True)
-                        )
-
                         new_count = len(df_kkp)
 
-                        update_count = 0
-                    # =====================================================
-                    # FINAL CLEAN KKP MASTER
-                    # =====================================================
+                        update_count = len(new_keys)
 
-                    # pastikan nama satker ada
-                    if "Nama Satker" not in final_df.columns:
-
-                        if "SATKER" in final_df.columns:
-                            final_df["Nama Satker"] = final_df["SATKER"]
-
-                        elif "NAMA SATKER" in final_df.columns:
-                            final_df["Nama Satker"] = final_df["NAMA SATKER"]
-
-                        else:
-                            final_df["Nama Satker"] = ""
-
-                    # hanya simpan kolom final
-                    final_df = final_df[
-                        [
-                            "Kode Satker",
-                            "Nama Satker",
-                            "TAHUN",
-                            "BULAN",
-                            "Nilai Transaksi"
-                        ]
-                    ].copy()
-                    
                     # =====================================================
                     # NOMOR URUT
                     # =====================================================
 
-                    # hapus dulu kalau sudah ada
                     if "NO" in final_df.columns:
                         final_df = final_df.drop(columns=["NO"])
 
-                    # reset index
                     final_df = final_df.reset_index(drop=True)
 
-                    # insert ulang nomor urut
                     final_df.insert(
                         0,
                         "NO",
                         range(1, len(final_df) + 1)
                     )
+                    
 
                     # ===============================
                     # UPDATE SESSION
