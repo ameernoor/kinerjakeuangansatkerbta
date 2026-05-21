@@ -12629,6 +12629,32 @@ def page_admin():
                         new_count = len(df_kkp)
 
                         update_count = 0
+                    # =====================================================
+                    # FINAL CLEAN KKP MASTER
+                    # =====================================================
+
+                    # pastikan nama satker ada
+                    if "Nama Satker" not in final_df.columns:
+
+                        if "SATKER" in final_df.columns:
+                            final_df["Nama Satker"] = final_df["SATKER"]
+
+                        elif "NAMA SATKER" in final_df.columns:
+                            final_df["Nama Satker"] = final_df["NAMA SATKER"]
+
+                        else:
+                            final_df["Nama Satker"] = ""
+
+                    # hanya simpan kolom final
+                    final_df = final_df[
+                        [
+                            "Kode Satker",
+                            "Nama Satker",
+                            "TAHUN",
+                            "BULAN",
+                            "Nilai Transaksi"
+                        ]
+                    ].copy()
                     
                     # =====================================================
                     # NOMOR URUT
