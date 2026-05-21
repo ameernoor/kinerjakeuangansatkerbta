@@ -1084,11 +1084,8 @@ def normalize_month(val):
 
 
 # =====================================================
-# NORMALISASI DATA KKP 
-# =====================================================
-# =====================================================
 # NORMALISASI DATA KKP FINAL
-# (DETAIL TRANSAKSI)
+# SUPPORT FORMAT LAMA & FORMAT BARU
 # =====================================================
 def normalize_kkp_dataframe(df):
 
@@ -1105,29 +1102,126 @@ def normalize_kkp_dataframe(df):
     )
 
     # ==========================================
-    # RENAME FINAL
+    # NORMALISASI NAMA KOLOM
+    # FORMAT LAMA & FORMAT BARU
     # ==========================================
-    rename_map = {
+    COLUMN_MAPPING = {
+
+        # ======================================
+        # SATKER
+        # ======================================
+        "SATKER": "SATKER",
+        "NAMA SATKER": "SATKER",
+
+        # ======================================
+        # PAGU KKP
+        # ======================================
         "LIMIT KKP": "Pagu KKP Per Bulan",
+        "PAGU KKP PER BULAN": "Pagu KKP Per Bulan",
+
+        # ======================================
+        # NOMOR KARTU
+        # ======================================
+        "NOMOR KARTU": "NOMOR KARTU",
+        "NO KARTU": "NOMOR KARTU",
+
+        # ======================================
+        # PEMEGANG KKP
+        # ======================================
+        "NAMA PEMEGANG KKP": "NAMA PEMEGANG KKP",
+        "NAMA PEMEGANG": "NAMA PEMEGANG KKP",
+
+        # ======================================
+        # BANK
+        # ======================================
+        "BANK PENERBIT KKP": "BANK PENERBIT KKP",
+        "BANK PENERBIT": "BANK PENERBIT KKP",
+
+        # ======================================
+        # TOTAL TRANSAKSI
+        # ======================================
+        "TOTAL TRANSAKSI KKP (RP)": "TOTAL TRANSAKSI (NILAI TAGIHAN TERKAIT APBN)",
+        "TOTAL TRANSAKSI (NILAI TAGIHAN TERKAIT APBN)": "TOTAL TRANSAKSI (NILAI TAGIHAN TERKAIT APBN)",
+
+        # ======================================
+        # NILAI TRANSAKSI
+        # ======================================
+        "NILAI TRANSAKSI KKP (RP)": "Nilai Transaksi",
+        "NILAI TRANSAKSI (NILAI SPM)": "Nilai Transaksi",
+        "TRANSAKSI": "Nilai Transaksi",
+        "NILAI TAGIHAN": "Nilai Transaksi",
+        "NILAI_FINAL": "Nilai Transaksi",
+
+        # ======================================
+        # PROGRAM
+        # ======================================
+        "PROGRAM / KEGIATAN / OUTPUT / AKUN": "PROGRAM / KEGIATAN / OUTPUT / AKUN",
+
+        # ======================================
+        # JENIS SPM
+        # ======================================
+        "JENIS SPM/SP2D": "JENIS SPM/SP2D",
+
+        # ======================================
+        # KODE SATKER
+        # ======================================
+        "KODE SATKER": "Kode Satker",
+
+        # ======================================
+        # PERIODE
+        # ======================================
+        "PERIODE": "PERIODE",
+
+        # ======================================
+        # BA/KL
+        # ======================================
+        "BA/KL": "BA/KL",
+        "KODE BA": "Kode BA",
+
+        # ======================================
+        # JENIS KKP
+        # ======================================
+        "JENIS KKP": "JENIS KKP",
+
+        # ======================================
+        # SPM / SP2D
+        # ======================================
+        "TANGGAL SPM": "TANGGAL SPM",
+        "NOMOR SPM": "NOMOR SPM",
+        "TANGGAL SP2D": "TANGGAL SP2D",
+        "NOMOR SP2D": "NOMOR SP2D",
     }
 
-    df.rename(columns=rename_map, inplace=True)
+    # ==========================================
+    # RENAME OTOMATIS
+    # ==========================================
+    rename_dict = {}
+
+    for col in df.columns:
+
+        clean_col = (
+            str(col)
+            .strip()
+            .upper()
+        )
+
+        if clean_col in COLUMN_MAPPING:
+
+            rename_dict[col] = COLUMN_MAPPING[clean_col]
+
+    df.rename(columns=rename_dict, inplace=True)
 
     # ==========================================
     # KODE SATKER
     # ==========================================
-    if "KODE SATKER" in df.columns:
+    if "Kode Satker" in df.columns:
 
         df["Kode Satker"] = (
-            df["KODE SATKER"]
-            .apply(normalize_kode_satker)
-        )
-
-    elif "KODE SATKER " in df.columns:
-
-        df["Kode Satker"] = (
-            df["KODE SATKER "]
-            .apply(normalize_kode_satker)
+            df["Kode Satker"]
+            .astype(str)
+            .str.extract(r"(\d+)")[0]
+            .fillna("")
+            .str.zfill(6)
         )
 
     else:
@@ -1135,30 +1229,20 @@ def normalize_kkp_dataframe(df):
         df["Kode Satker"] = ""
 
     # ==========================================
-    # NAMA SATKER
+    # SATKER
     # ==========================================
-    if "SATKER" in df.columns:
-
-        df["SATKER"] = (
-            df["SATKER"]
-            .astype(str)
-            .str.strip()
-        )
-
-    elif "NAMA SATKER" in df.columns:
-
-        df["SATKER"] = (
-            df["NAMA SATKER"]
-            .astype(str)
-            .str.strip()
-        )
-
-    else:
-
+    if "SATKER" not in df.columns:
         df["SATKER"] = ""
 
+    df["SATKER"] = (
+        df["SATKER"]
+        .astype(str)
+        .replace("nan", "")
+        .str.strip()
+    )
+
     # ==========================================
-    # TAHUN & BULAN
+    # PERIODE
     # ==========================================
     if "PERIODE" in df.columns:
 
@@ -1181,46 +1265,92 @@ def normalize_kkp_dataframe(df):
     # ==========================================
     # NILAI TRANSAKSI FINAL
     # ==========================================
-    nilai_cols = []
+    if "Nilai Transaksi" not in df.columns:
+        df["Nilai Transaksi"] = 0
 
-    kandidat_cols = [
-        "NILAI TRANSAKSI (NILAI SPM)",
-        "NILAI TAGIHAN",
-        "NILAI_FINAL",
-        "TRANSAKSI"
+    df["Nilai Transaksi"] = (
+        df["Nilai Transaksi"]
+        .astype(str)
+        .str.replace(".", "", regex=False)
+        .str.replace(",", ".", regex=False)
+        .str.replace(r"[^\d\.\-]", "", regex=True)
+        .replace("", "0")
+    )
+
+    df["Nilai Transaksi"] = pd.to_numeric(
+        df["Nilai Transaksi"],
+        errors="coerce"
+    ).fillna(0)
+
+    # ==========================================
+    # FINAL COLUMN STRUCTURE
+    # ==========================================
+    FINAL_COLUMNS = [
+
+        # identitas
+        "Kode BA",
+        "BA/KL",
+        "Kode Satker",
+        "SATKER",
+
+        # kartu
+        "NOMOR KARTU",
+        "NAMA PEMEGANG KKP",
+        "Pagu KKP Per Bulan",
+        "JENIS KKP",
+        "BANK PENERBIT KKP",
+
+        # transaksi
+        "PERIODE",
+        "TOTAL TRANSAKSI (NILAI TAGIHAN TERKAIT APBN)",
+        "Nilai Transaksi",
+
+        # spm/sp2d
+        "TANGGAL SPM",
+        "NOMOR SPM",
+        "TANGGAL SP2D",
+        "NOMOR SP2D",
+        "JENIS SPM/SP2D",
+
+        # program
+        "PROGRAM / KEGIATAN / OUTPUT / AKUN",
+
+        # helper
+        "TAHUN",
+        "BULAN"
     ]
 
-    for col in kandidat_cols:
+    # ==========================================
+    # PASTIKAN SEMUA KOLOM ADA
+    # ==========================================
+    for col in FINAL_COLUMNS:
 
-        if col in df.columns:
+        if col not in df.columns:
+            df[col] = ""
 
-            s = (
+    # ==========================================
+    # PILIH KOLOM FINAL SAJA
+    # ==========================================
+    df = df[FINAL_COLUMNS].copy()
+
+    # ==========================================
+    # HILANGKAN NaN
+    # ==========================================
+    df = df.fillna("")
+
+    # ==========================================
+    # RAPIIHKAN STRING
+    # ==========================================
+    for col in df.columns:
+
+        if df[col].dtype == "object":
+
+            df[col] = (
                 df[col]
                 .astype(str)
-                .str.replace(".", "", regex=False)
-                .str.replace(",", ".", regex=False)
-                .str.replace(r"[^\d\.\-]", "", regex=True)
-                .replace("", np.nan)
+                .replace("nan", "")
+                .str.strip()
             )
-
-            s = pd.to_numeric(
-                s,
-                errors="coerce"
-            )
-
-            nilai_cols.append(s)
-
-    if nilai_cols:
-
-        df["Nilai Transaksi"] = (
-            pd.concat(nilai_cols, axis=1)
-            .max(axis=1)
-            .fillna(0)
-        )
-
-    else:
-
-        df["Nilai Transaksi"] = 0
 
     return df
 
@@ -12661,6 +12791,101 @@ def page_admin():
                         new_count = len(df_kkp)
 
                         update_count = len(new_keys)
+
+                    # =====================================================
+                    # FINAL CLEAN COLUMN
+                    # FORMAT LAMA & BARU DISERAGAMKAN
+                    # =====================================================
+
+                    FINAL_COLUMNS = [
+
+                        # identitas
+                        "Kode BA",
+                        "BA/KL",
+                        "Kode Satker",
+                        "SATKER",
+
+                        # kartu
+                        "NOMOR KARTU",
+                        "NAMA PEMEGANG KKP",
+                        "Pagu KKP Per Bulan",
+                        "JENIS KKP",
+                        "BANK PENERBIT KKP",
+
+                        # transaksi
+                        "PERIODE",
+                        "TOTAL TRANSAKSI (NILAI TAGIHAN TERKAIT APBN)",
+                        "NILAI TRANSAKSI (NILAI SPM)",
+
+                        # spm/sp2d
+                        "TANGGAL SPM",
+                        "NOMOR SPM",
+                        "TANGGAL SP2D",
+                        "NOMOR SP2D",
+                        "JENIS SPM/SP2D",
+
+                        # program
+                        "PROGRAM / KEGIATAN / OUTPUT / AKUN",
+
+                        # final helper
+                        "TAHUN",
+                        "BULAN",
+                        "Nilai Transaksi"
+                    ]
+
+                    # =====================================================
+                    # PASTIKAN SEMUA KOLOM ADA
+                    # =====================================================
+
+                    for col in FINAL_COLUMNS:
+
+                        if col not in final_df.columns:
+                            final_df[col] = ""
+
+                    # =====================================================
+                    # PILIH KOLOM FINAL SAJA
+                    # =====================================================
+
+                    final_df = final_df[FINAL_COLUMNS].copy()
+
+                    # =====================================================
+                    # BUANG KOLOM TIDAK PERLU
+                    # =====================================================
+
+                    DROP_COLUMNS = [
+                        "FORMAT_KKP",
+                        "SATKER2",
+                        "_merge"
+                    ]
+
+                    final_df = final_df.drop(
+                        columns=[
+                            c for c in DROP_COLUMNS
+                            if c in final_df.columns
+                        ],
+                        errors="ignore"
+                    )
+
+                    # =====================================================
+                    # HILANGKAN NaN
+                    # =====================================================
+
+                    final_df = final_df.fillna("")
+
+                    # =====================================================
+                    # RAPIIHKAN STRING
+                    # =====================================================
+
+                    for col in final_df.columns:
+
+                        if final_df[col].dtype == "object":
+
+                            final_df[col] = (
+                                final_df[col]
+                                .astype(str)
+                                .replace("nan", "")
+                                .str.strip()
+                            )
 
                     # =====================================================
                     # NOMOR URUT
