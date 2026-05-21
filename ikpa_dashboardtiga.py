@@ -12469,13 +12469,26 @@ def page_admin():
 
                     # =====================================================
                     # RENAME KOLOM FINAL
+                    # SUPPORT FORMAT LAMA & BARU
                     # =====================================================
 
-                    rename_map = {
-                        "LIMIT KKP": "Pagu KKP Per Bulan"
-                    }
+                    # format lama
+                    if "LIMIT KKP" in df_kkp.columns:
 
-                    df_kkp = df_kkp.rename(columns=rename_map)
+                        df_kkp = df_kkp.rename(
+                            columns={
+                                "LIMIT KKP": "Pagu KKP Per Bulan"
+                            }
+                        )
+
+                    # format baru
+                    elif "PAGU KKP PER BULAN" in df_kkp.columns:
+
+                        df_kkp = df_kkp.rename(
+                            columns={
+                                "PAGU KKP PER BULAN": "Pagu KKP Per Bulan"
+                            }
+                        )
 
                     # =====================================================
                     # KODE SATKER
