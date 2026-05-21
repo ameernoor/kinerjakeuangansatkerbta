@@ -12630,11 +12630,18 @@ def page_admin():
 
                         update_count = 0
                     
-                   # =====================================================
+                    # =====================================================
                     # NOMOR URUT
                     # =====================================================
+
+                    # hapus dulu kalau sudah ada
+                    if "NO" in final_df.columns:
+                        final_df = final_df.drop(columns=["NO"])
+
+                    # reset index
                     final_df = final_df.reset_index(drop=True)
 
+                    # insert ulang nomor urut
                     final_df.insert(
                         0,
                         "NO",
