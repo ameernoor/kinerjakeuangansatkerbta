@@ -4638,7 +4638,34 @@ def process_cms_file(uploaded_file):
 
 # FILE KKP
 def process_excel_file_kkp(uploaded_file):
-    
+    """
+    Membaca file KKP mentah (format lama: Kartu Pengawasan, atau format baru: Daftar Transaksi)
+    dan menghasilkan DataFrame dengan kolom standar yang seragam.
+
+    KOLOM OUTPUT STANDAR:
+    - Kode Satker       : 6 digit string
+    - SATKER            : nama satker (tanpa kode)
+    - Kode BA           : 3 digit string (format lama saja, format baru = "")
+    - BA/KL             : teks BA/KL asli
+    - NOMOR KARTU       : nomor kartu (format lama), "" untuk format baru
+    - NAMA PEMEGANG KKP : nama pemegang kartu
+    - LIMIT KKP         : limit kartu
+    - JENIS KKP         : jenis KKP
+    - BANK PENERBIT KKP : bank penerbit
+    - PERIODE           : string YYYY-MM
+    - TOTAL TRANSAKSI (NILAI TAGIHAN TERKAIT APBN) : nilai tagihan (format lama)
+    - NILAI TRANSAKSI (NILAI SPM) : nilai SPM — kolom utama
+    - TANGGAL SPM       : tanggal SPM (format baru)
+    - NOMOR SPM         : nomor SPM (format baru)
+    - TANGGAL SP2D      : tanggal SP2D (format baru)
+    - NOMOR SP2D        : nomor SP2D (format baru)
+    - NILAI TRANSAKSI KKP (RP) : nilai KKP (format baru)
+    - JENIS SPM/SP2D    : jenis SPM (format baru)
+    - PROGRAM / KEGIATAN / OUTPUT / AKUN : akun (format baru)
+    - TOTAL TRANSAKSI KKP (RP) : total transaksi (format baru)
+    - SATKER2           : kode satker numerik (format baru)
+    - FORMAT_KKP        : "LAMA" atau "BARU" (penanda asal format)
+    """
     import pandas as pd
     import re
 
@@ -4648,18 +4675,46 @@ def process_excel_file_kkp(uploaded_file):
     uploaded_file.seek(0)
 
     # =========================================
+    # SCHEMA KOLOM STANDAR OUTPUT
+    # =========================================
+    STANDARD_COLUMNS = [
+        "Kode Satker",
+        "SATKER",
+        "Kode BA",
+        "BA/KL",
+        "NOMOR KARTU",
+        "NAMA PEMEGANG KKP",
+        "LIMIT KKP",
+        "JENIS KKP",
+        "BANK PENERBIT KKP",
+        "PERIODE",
+        "TOTAL TRANSAKSI (NILAI TAGIHAN TERKAIT APBN)",
+        "NILAI TRANSAKSI (NILAI SPM)",
+        "TANGGAL SPM",
+        "NOMOR SPM",
+        "TANGGAL SP2D",
+        "NOMOR SP2D",
+        "NILAI TRANSAKSI KKP (RP)",
+        "JENIS SPM/SP2D",
+        "PROGRAM / KEGIATAN / OUTPUT / AKUN",
+        "TOTAL TRANSAKSI KKP (RP)",
+        "SATKER2",
+        "FORMAT_KKP",
+    ]
+
+    # =========================================
     # READ RAW
     # =========================================
     df_raw = pd.read_excel(
         uploaded_file,
         header=None,
-        dtype=str
+        dtype=str,
+        sheet_name=0
     )
-
     df_raw = df_raw.fillna("")
 
     # =========================================
-    # PREVIEW TEXT
+    # PREVIEW TEXT (untuk deteksi format)
     # =========================================
     preview_text = " ".join(
         df_raw.head(15)
@@ -4669,330 +4724,309 @@ def process_excel_file_kkp(uploaded_file):
     ).upper()
 
     # =====================================================
-    # HELPER NORMALISASI HEADER
+    # HELPER: NORMALISASI NAMA KOLOM
     # =====================================================
     def normalize_columns(df):
         df.columns = (
             df.columns.astype(str)
             .str.strip()
             .str.upper()
-            .str.replace("\n", " ")
+            .str.replace("\n", " ", regex=False)
             .str.replace(r"\s+", " ", regex=True)
         )
         return df
 
     # =====================================================
+    # HELPER: BERSIHKAN NILAI NUMERIK
     # =====================================================
-    # FORMAT BARU
-    # DAFTAR TRANSAKSI GUP/PTUP KKP
+    def clean_numeric(series):
+        return (
+            pd.to_numeric(
+                series.astype(str)
+                .str.replace(r"[^\d]", "", regex=True)
+                .replace("", "0"),
+                errors="coerce"
+            ).fillna(0)
+        )
+
     # =====================================================
+    # HELPER: PAKSA KOLOM STANDAR ADA
+    # =====================================================
+    def ensure_standard_columns(df):
+        for col in STANDARD_COLUMNS:
+            if col not in df.columns:
+                df[col] = ""
+        return df[STANDARD_COLUMNS].copy()
+
+    # =====================================================
+    # FORMAT BARU: DAFTAR TRANSAKSI GUP/PTUP KKP
     # =====================================================
     if "DAFTAR TRANSAKSI GUP/PTUP KKP" in preview_text:
 
-        header_row = None
+        # -- Kumpulkan semua sheet format baru --
+        uploaded_file.seek(0)
+        xl = pd.ExcelFile(uploaded_file)
+        all_frames = []
 
-        # =========================================
-        # DETEKSI HEADER
-        # =========================================
-        for i in range(min(15, len(df_raw))):
+        for sheet_name in xl.sheet_names:
 
-            row_text = " ".join(
-                df_raw.iloc[i]
-                .astype(str)
-                .tolist()
+            uploaded_file.seek(0)
+            df_sheet_raw = pd.read_excel(
+                uploaded_file,
+                sheet_name=sheet_name,
+                header=None,
+                dtype=str
+            ).fillna("")
+
+            sheet_preview = " ".join(
+                df_sheet_raw.head(8).astype(str).values.flatten()
             ).upper()
 
-            if (
-                "SATKER" in row_text
-                and "NOMOR SPM" in row_text
-            ):
-                header_row = i
-                break
+            # Hanya proses sheet yang punya data transaksi
+            if "DAFTAR TRANSAKSI" not in sheet_preview and "NOMOR SPM" not in sheet_preview:
+                continue
 
-        if header_row is None:
-            return pd.DataFrame()
+            # Deteksi baris header: baris yang ada SATKER + NOMOR SPM
+            header_row = None
+            for i in range(min(15, len(df_sheet_raw))):
+                row_text = " ".join(df_sheet_raw.iloc[i].astype(str).tolist()).upper()
+                if "SATKER" in row_text and "NOMOR SPM" in row_text:
+                    header_row = i
+                    break
 
-        # =========================================
-        # READ ULANG DENGAN HEADER
-        # =========================================
-        uploaded_file.seek(0)
+            if header_row is None:
+                continue
 
-        df = pd.read_excel(
-            uploaded_file,
-            sheet_name=0,
-            header=header_row,
-            dtype=str
-        )
-
-        df = normalize_columns(df)
-
-        # =========================================
-        # HAPUS HEADER GANDA
-        # =========================================
-        if "NO" in df.columns:
-            df = df[
-                ~df["NO"]
-                .astype(str)
-                .str.upper()
-                .eq("NO")
-            ]
-
-        # =========================================
-        # DETEKSI KOLOM SATKER
-        # =========================================
-        satker_col = None
-
-        for c in df.columns:
-            if "SATKER" in c:
-                satker_col = c
-                break
-
-        if satker_col is None:
-            return pd.DataFrame()
-
-        # =========================================
-        # KODE SATKER
-        # =========================================
-        df["Kode Satker"] = (
-            df[satker_col]
-            .astype(str)
-            .str.extract(r"(\d{6})")[0]
-            .fillna("")
-        )
-
-        # =========================================
-        # NAMA SATKER
-        # =========================================
-        df["SATKER"] = (
-            df[satker_col]
-            .astype(str)
-            .str.replace(r"^\d{6}\s*-\s*", "", regex=True)
-            .str.strip()
-        )
-
-        # =========================================
-        # KOLOM NILAI
-        # =========================================
-        nilai_col = None
-
-        for c in df.columns:
-            cc = str(c).upper()
-
-            if (
-                "NILAI TRANSAKSI" in cc
-                or "TOTAL TRANSAKSI" in cc
-            ):
-                nilai_col = c
-                break
-
-        if nilai_col:
-            df["Nilai Transaksi"] = (
-                df[nilai_col]
-                .astype(str)
-                .str.replace(r"[^\d]", "", regex=True)
-                .replace("", "0")
-                .astype(float)
+            uploaded_file.seek(0)
+            df_s = pd.read_excel(
+                uploaded_file,
+                sheet_name=sheet_name,
+                header=header_row,
+                dtype=str
             )
-        else:
-            df["Nilai Transaksi"] = 0
+            df_s = normalize_columns(df_s)
 
-        # =========================================
-        # NOMOR SPM
-        # =========================================
-        nomor_spm_col = None
+            # Hapus baris header ganda
+            if "NO" in df_s.columns:
+                df_s = df_s[~df_s["NO"].astype(str).str.upper().eq("NO")]
 
-        for c in df.columns:
-            if "NOMOR SPM" in c:
-                nomor_spm_col = c
-                break
+            # Cari kolom SATKER
+            satker_col = next((c for c in df_s.columns if "SATKER" in c and "2" not in c), None)
+            if satker_col is None:
+                continue
 
-        if nomor_spm_col:
-            df["Nomor SPM"] = df[nomor_spm_col]
-        else:
-            df["Nomor SPM"] = ""
+            # Ekstrak Kode Satker & nama Satker
+            df_s["Kode Satker"] = (
+                df_s[satker_col].astype(str)
+                .str.extract(r"(\d{6})")[0]
+                .fillna("")
+            )
+            df_s["SATKER"] = (
+                df_s[satker_col].astype(str)
+                .str.replace(r"^\d{6}\s*[-–]\s*", "", regex=True)
+                .str.strip()
+            )
 
-        # =========================================
-        # JENIS SPM
-        # =========================================
-        jenis_col = None
+            # Kolom standar format baru
+            df_s["Kode BA"] = ""
+            df_s["BA/KL"] = ""
+            df_s["NOMOR KARTU"] = ""
+            df_s["NAMA PEMEGANG KKP"] = ""
+            df_s["LIMIT KKP"] = ""
+            df_s["JENIS KKP"] = "KKP"
+            df_s["BANK PENERBIT KKP"] = ""
+            df_s["TOTAL TRANSAKSI (NILAI TAGIHAN TERKAIT APBN)"] = ""
+            df_s["FORMAT_KKK"] = "BARU"
 
-        for c in df.columns:
-            if "JENIS SPM" in c:
-                jenis_col = c
-                break
+            # Kolom NILAI TRANSAKSI (NILAI SPM) — ambil dari NILAI TRANSAKSI KKP
+            nilai_col = next(
+                (c for c in df_s.columns if "NILAI TRANSAKSI KKP" in c),
+                next((c for c in df_s.columns if "NILAI TRANSAKSI" in c), None)
+            )
+            if nilai_col:
+                df_s["NILAI TRANSAKSI (NILAI SPM)"] = clean_numeric(df_s[nilai_col])
+                df_s["NILAI TRANSAKSI KKP (RP)"] = clean_numeric(df_s[nilai_col])
+            else:
+                df_s["NILAI TRANSAKSI (NILAI SPM)"] = 0
+                df_s["NILAI TRANSAKSI KKP (RP)"] = 0
 
-        if jenis_col:
-            df["Jenis SPM"] = df[jenis_col]
-        else:
-            df["Jenis SPM"] = ""
+            # Total transaksi KKP
+            total_col = next((c for c in df_s.columns if "TOTAL TRANSAKSI KKP" in c), None)
+            if total_col:
+                df_s["TOTAL TRANSAKSI KKP (RP)"] = clean_numeric(df_s[total_col])
+            else:
+                df_s["TOTAL TRANSAKSI KKP (RP)"] = df_s["NILAI TRANSAKSI (NILAI SPM)"]
 
-        # =========================================
-        # FILTER VALID
-        # =========================================
-        df = df[
-            df["Kode Satker"]
-            .astype(str)
-            .str.len()
-            .eq(6)
-        ]
+            # NOMOR SPM
+            nomor_spm_col = next((c for c in df_s.columns if "NOMOR SPM" in c), None)
+            df_s["NOMOR SPM"] = df_s[nomor_spm_col].astype(str).str.strip() if nomor_spm_col else ""
 
-        # =========================================
-        # DROP DUPLIKAT HEADER
-        # =========================================
-        df = df[
-            ~df["Kode Satker"]
-            .astype(str)
-            .str.contains("SATKER", na=False)
-        ]
+            # TANGGAL SPM
+            tgl_spm_col = next((c for c in df_s.columns if "TANGGAL SPM" in c), None)
+            df_s["TANGGAL SPM"] = df_s[tgl_spm_col].astype(str).str.strip() if tgl_spm_col else ""
 
-        return df.reset_index(drop=True)
+            # TANGGAL SP2D
+            tgl_sp2d_col = next((c for c in df_s.columns if "TANGGAL SP2D" in c), None)
+            df_s["TANGGAL SP2D"] = df_s[tgl_sp2d_col].astype(str).str.strip() if tgl_sp2d_col else ""
+
+            # NOMOR SP2D
+            nomor_sp2d_col = next((c for c in df_s.columns if "NOMOR SP2D" in c), None)
+            df_s["NOMOR SP2D"] = df_s[nomor_sp2d_col].astype(str).str.strip() if nomor_sp2d_col else ""
+
+            # JENIS SPM/SP2D
+            jenis_spm_col = next((c for c in df_s.columns if "JENIS SPM" in c or "JENIS SP2D" in c), None)
+            df_s["JENIS SPM/SP2D"] = df_s[jenis_spm_col].astype(str).str.strip() if jenis_spm_col else ""
+
+            # PROGRAM / KEGIATAN / OUTPUT / AKUN
+            prog_col = next((c for c in df_s.columns if "PROGRAM" in c or "AKUN" in c), None)
+            df_s["PROGRAM / KEGIATAN / OUTPUT / AKUN"] = df_s[prog_col].astype(str).str.strip() if prog_col else ""
+
+            # SATKER2
+            satker2_col = next((c for c in df_s.columns if "SATKER2" in c or (c.endswith("2") and "SATKER" in c)), None)
+            if satker2_col:
+                df_s["SATKER2"] = df_s[satker2_col].astype(str).str.strip()
+            else:
+                df_s["SATKER2"] = df_s["Kode Satker"]
+
+            # PERIODE — ambil dari TANGGAL SPM (format baru tidak punya kolom PERIODE)
+            if "PERIODE" not in df_s.columns or df_s["PERIODE"].astype(str).str.strip().eq("").all():
+                tgl_parsed = pd.to_datetime(df_s["TANGGAL SPM"], dayfirst=True, errors="coerce")
+                df_s["PERIODE"] = tgl_parsed.dt.strftime("%Y-%m").fillna("")
+
+            df_s["FORMAT_KKP"] = "BARU"
+
+            # Filter valid
+            df_s = df_s[df_s["Kode Satker"].astype(str).str.len().eq(6)]
+            df_s = df_s[~df_s["Kode Satker"].astype(str).str.contains("SATKER", na=False)]
+
+            all_frames.append(df_s)
+
+        if not all_frames:
+            return pd.DataFrame()
+
+        df_out = pd.concat(all_frames, ignore_index=True)
+        return ensure_standard_columns(df_out)
 
     # =====================================================
+    # FORMAT LAMA: KARTU PENGAWASAN GUP/PTUP
     # =====================================================
-    # FORMAT LAMA
-    # KARTU PENGAWASAN
-    # =====================================================
-    # =====================================================
-
     header_row = None
-
     for i in range(min(15, len(df_raw))):
-
-        row_text = " ".join(
-            df_raw.iloc[i]
-            .astype(str)
-            .tolist()
-        ).upper()
-
-        if (
-            "BA/KL" in row_text
-            and "SATKER" in row_text
-        ):
+        row_text = " ".join(df_raw.iloc[i].astype(str).tolist()).upper()
+        if "BA/KL" in row_text and "SATKER" in row_text:
             header_row = i
             break
 
     if header_row is None:
         return pd.DataFrame()
 
-    # =========================================
-    # BUILD DATAFRAME
-    # =========================================
     df = df_raw.iloc[header_row + 1:].copy()
     df.columns = df_raw.iloc[header_row]
-
     df = df.reset_index(drop=True)
-
     df = normalize_columns(df)
 
-    # =========================================
-    # VALIDASI KOLOM WAJIB
-    # =========================================
     if "SATKER" not in df.columns:
         return pd.DataFrame()
 
-    # =========================================
-    # KODE BA
-    # =========================================
+    # Kode BA
     if "BA/KL" in df.columns:
         df["Kode BA"] = (
-            df["BA/KL"]
-            .astype(str)
+            df["BA/KL"].astype(str)
             .str.extract(r"(\d{3})")[0]
             .fillna("")
         )
     else:
         df["Kode BA"] = ""
+        df["BA/KL"] = ""
 
-    # =========================================
-    # KODE SATKER
-    # =========================================
+    # Kode Satker
     df["Kode Satker"] = (
-        df["SATKER"]
-        .astype(str)
+        df["SATKER"].astype(str)
         .str.extract(r"(\d{6})")[0]
         .fillna("")
     )
 
-    # =========================================
-    # NAMA SATKER
-    # =========================================
+    # Nama Satker (tanpa kode di depan)
     df["SATKER"] = (
-        df["SATKER"]
-        .astype(str)
+        df["SATKER"].astype(str)
         .str.replace(r"^\d{6}\s*", "", regex=True)
         .str.strip(" -")
         .str.strip()
     )
 
-    # =========================================
-    # NOMOR KARTU
-    # =========================================
-    nomor_kartu_col = None
-
-    for c in df.columns:
-        if "NOMOR KARTU" in c:
-            nomor_kartu_col = c
-            break
-
+    # NOMOR KARTU — standarkan ke string bersih
+    nomor_kartu_col = next((c for c in df.columns if "NOMOR KARTU" in c), None)
     if nomor_kartu_col:
-        df["Nomor Kartu"] = (
-            df[nomor_kartu_col]
-            .astype(str)
+        df["NOMOR KARTU"] = (
+            df[nomor_kartu_col].astype(str)
             .str.replace(r"\.0$", "", regex=True)
             .str.strip()
         )
     else:
-        df["Nomor Kartu"] = ""
+        df["NOMOR KARTU"] = ""
 
-    # =========================================
-    # NILAI TRANSAKSI
-    # =========================================
-    nilai_col = None
+    # NAMA PEMEGANG KKP
+    nama_col = next((c for c in df.columns if "NAMA PEMEGANG" in c or "NAMA" in c), None)
+    df["NAMA PEMEGANG KKP"] = df[nama_col].astype(str).str.strip() if nama_col else ""
 
-    for c in df.columns:
-        cc = str(c).upper()
+    # LIMIT KKP
+    limit_col = next((c for c in df.columns if "LIMIT" in c), None)
+    df["LIMIT KKP"] = clean_numeric(df[limit_col]) if limit_col else 0
 
-        if (
-            "NILAI TRANSAKSI" in cc
-            or "NILAI SPM" in cc
-            or "TOTAL TRANSAKSI" in cc
-        ):
-            nilai_col = c
-            break
+    # JENIS KKP
+    jenis_kkp_col = next((c for c in df.columns if "JENIS KKP" in c), None)
+    df["JENIS KKP"] = (
+        df[jenis_kkp_col].astype(str).str.strip().str.upper()
+        if jenis_kkp_col else "KKP"
+    )
 
-    if nilai_col:
-        df["Nilai Transaksi"] = (
-            df[nilai_col]
-            .astype(str)
-            .str.replace(r"[^\d]", "", regex=True)
-            .replace("", "0")
-            .astype(float)
-        )
+    # BANK PENERBIT KKP
+    bank_col = next((c for c in df.columns if "BANK" in c), None)
+    df["BANK PENERBIT KKP"] = df[bank_col].astype(str).str.strip() if bank_col else ""
+
+    # PERIODE
+    periode_col = next((c for c in df.columns if "PERIODE" in c), None)
+    df["PERIODE"] = df[periode_col].astype(str).str.strip() if periode_col else ""
+
+    # TOTAL TRANSAKSI (NILAI TAGIHAN TERKAIT APBN)
+    total_tagihan_col = next(
+        (c for c in df.columns if "TOTAL TRANSAKSI" in c and "TAGIHAN" in c), None
+    )
+    if total_tagihan_col:
+        df["TOTAL TRANSAKSI (NILAI TAGIHAN TERKAIT APBN)"] = clean_numeric(df[total_tagihan_col])
     else:
-        df["Nilai Transaksi"] = 0
+        df["TOTAL TRANSAKSI (NILAI TAGIHAN TERKAIT APBN)"] = ""
 
-    # =========================================
-    # FILTER VALID
-    # =========================================
-    df = df[
-        df["Kode Satker"]
-        .astype(str)
-        .str.len()
-        .eq(6)
-    ]
+    # NILAI TRANSAKSI (NILAI SPM) — prioritaskan kolom yang mengandung "SPM" atau "NILAI TRANSAKSI"
+    nilai_col = next(
+        (c for c in df.columns if "NILAI SPM" in c),
+        next((c for c in df.columns if "NILAI TRANSAKSI" in c), None)
+    )
+    if nilai_col:
+        df["NILAI TRANSAKSI (NILAI SPM)"] = clean_numeric(df[nilai_col])
+    else:
+        df["NILAI TRANSAKSI (NILAI SPM)"] = 0
 
-    # =========================================
-    # HAPUS HEADER NYASAR
-    # =========================================
+    # Kolom format baru — tidak ada di format lama, isi kosong
+    df["TANGGAL SPM"] = ""
+    df["NOMOR SPM"] = ""
+    df["TANGGAL SP2D"] = ""
+    df["NOMOR SP2D"] = ""
+    df["NILAI TRANSAKSI KKP (RP)"] = ""
+    df["JENIS SPM/SP2D"] = ""
+    df["PROGRAM / KEGIATAN / OUTPUT / AKUN"] = ""
+    df["TOTAL TRANSAKSI KKP (RP)"] = ""
+    df["SATKER2"] = df["Kode Satker"]
+    df["FORMAT_KKP"] = "LAMA"
+
+    # Filter valid
+    df = df[df["Kode Satker"].astype(str).str.len().eq(6)]
+
+    # Hapus baris header nyasar
     if "NO" in df.columns:
-        df = df[
-            ~df["NO"]
-            .astype(str)
-            .str.upper()
-            .eq("NO")
-        ]
+        df = df[~df["NO"].astype(str).str.upper().eq("NO")]
 
-    return df.reset_index(drop=True)
+    return ensure_standard_columns(df)
 
 
 
@@ -12387,346 +12421,269 @@ def page_admin():
                         pd.DataFrame()
                     )
 
-                    # ===============================
-                    # FALLBACK NOMOR KARTU
-                    # ===============================
-                    if "NOMOR KARTU" not in df_kkp.columns:
-                        df_kkp["NOMOR KARTU"] = "TIDAK ADA"
-
-                    if "NOMOR KARTU" not in master_df.columns:
-                        master_df["NOMOR KARTU"] = "TIDAK ADA"
-
-                    # ===============================
-                    # UNIQUE KEY BARU
-                    # ===============================
-                    UNIQUE_KEY = [
-                        "PERIODE",
+                    # =====================================================
+                    # KOLOM STANDAR MASTER KKP
+                    # =====================================================
+                    MASTER_COLUMNS = [
+                        # Identitas Satker
                         "Kode Satker",
+                        "SATKER",
+                        "Kode BA",
+                        "BA/KL",
+                        # KKP
                         "NOMOR KARTU",
-                        "NILAI TRANSAKSI (NILAI SPM)"
+                        "NAMA PEMEGANG KKP",
+                        "LIMIT KKP",
+                        "JENIS KKP",
+                        "BANK PENERBIT KKP",
+                        # Periode
+                        "PERIODE",
+                        "TAHUN",
+                        "BULAN",
+                        # Transaksi
+                        "TOTAL TRANSAKSI (NILAI TAGIHAN TERKAIT APBN)",
+                        "NILAI TRANSAKSI (NILAI SPM)",
+                        "NILAI_FINAL",
+                        "JUMLAH TRANSAKSI",
+                        # SPM/SP2D (format baru)
+                        "TANGGAL SPM",
+                        "NOMOR SPM",
+                        "TANGGAL SP2D",
+                        "NOMOR SP2D",
+                        "NILAI TRANSAKSI KKP (RP)",
+                        "JENIS SPM/SP2D",
+                        "PROGRAM / KEGIATAN / OUTPUT / AKUN",
+                        "TOTAL TRANSAKSI KKP (RP)",
+                        "SATKER2",
+                        # Penanda asal format
+                        "FORMAT_KKP",
                     ]
 
                     SPM_COL = "NILAI TRANSAKSI (NILAI SPM)"
-                    
-                    # =====================================================
-                    # SINKRON FORMAT BARU ↔ FORMAT LAMA
-                    # =====================================================
 
-                    # dashboard baru pakai ini
-                    df_kkp["Nilai Transaksi"] = (
-                        pd.to_numeric(
-                            df_kkp[SPM_COL],
-                            errors="coerce"
-                        ).fillna(0)
+                    # =====================================================
+                    # UNIQUE KEY — berbeda per format
+                    # Format LAMA : per kartu per periode (Kode Satker + NOMOR KARTU + PERIODE)
+                    # Format BARU : per baris SPM per akun  (Kode Satker + NOMOR SPM + PROGRAM / AKUN)
+                    # Gabungan    : gunakan composite yang bisa membedakan keduanya
+                    # =====================================================
+                    UNIQUE_KEY_LAMA = ["Kode Satker", "NOMOR KARTU", "PERIODE"]
+                    UNIQUE_KEY_BARU = ["Kode Satker", "NOMOR SPM", "PROGRAM / KEGIATAN / OUTPUT / AKUN"]
+
+                    # =====================================================
+                    # NORMALISASI df_kkp
+                    # =====================================================
+                    # Pastikan semua kolom master ada
+                    for col in MASTER_COLUMNS:
+                        if col not in df_kkp.columns:
+                            df_kkp[col] = ""
+
+                    # Kode Satker → string 6 digit
+                    df_kkp["Kode Satker"] = (
+                        pd.to_numeric(df_kkp["Kode Satker"], errors="coerce")
+                        .fillna(0).astype(int).astype(str).str.zfill(6)
                     )
-                    
-                    # =====================================================
-                    # NILAI FINAL (UNTUK FORMAT LAMA + BARU)
-                    # =====================================================
-                    if "TOTAL TRANSAKSI (NILAI TAGIHAN TERKAIT APBN)" not in df_kkp.columns:
-                        df_kkp["TOTAL TRANSAKSI (NILAI TAGIHAN TERKAIT APBN)"] = np.nan
 
+                    # PERIODE → string YYYY-MM
+                    df_kkp["PERIODE"] = (
+                        df_kkp["PERIODE"].astype(str)
+                        .str.replace(".0", "", regex=False)
+                        .str.strip()
+                    )
+
+                    # Isi TAHUN & BULAN dari PERIODE
+                    _periode_dt = pd.to_datetime(df_kkp["PERIODE"], errors="coerce")
+                    df_kkp["TAHUN"] = pd.to_numeric(df_kkp["TAHUN"], errors="coerce").fillna(_periode_dt.dt.year).astype("Int64")
+                    df_kkp["BULAN"] = pd.to_numeric(df_kkp["BULAN"], errors="coerce").fillna(_periode_dt.dt.month).astype("Int64")
+
+                    # NILAI TRANSAKSI (NILAI SPM) → numeric
+                    df_kkp[SPM_COL] = pd.to_numeric(df_kkp[SPM_COL], errors="coerce").fillna(0)
+
+                    # NILAI_FINAL
                     df_kkp["NILAI_FINAL"] = (
-                        pd.to_numeric(
-                            df_kkp["NILAI TRANSAKSI (NILAI SPM)"],
-                            errors="coerce"
-                        )
-                        .fillna(
-                            pd.to_numeric(
-                                df_kkp["TOTAL TRANSAKSI (NILAI TAGIHAN TERKAIT APBN)"],
-                                errors="coerce"
-                            )
-                        )
+                        pd.to_numeric(df_kkp[SPM_COL], errors="coerce")
+                        .fillna(pd.to_numeric(df_kkp["TOTAL TRANSAKSI (NILAI TAGIHAN TERKAIT APBN)"], errors="coerce"))
                     )
 
-                    # dashboard lama pakai ini
-                    df_kkp["NILAI TRANSAKSI (NILAI SPM)"] = (
-                        df_kkp["Nilai Transaksi"]
-                    )
-
-                    # fallback nama satker
-                    if "SATKER" not in df_kkp.columns:
-
-                        if "Nama Satker" in df_kkp.columns:
-                            df_kkp["SATKER"] = df_kkp["Nama Satker"]
-
-                        else:
-                            df_kkp["SATKER"] = ""
-
-                    # fallback jumlah transaksi
-                    if "JUMLAH TRANSAKSI" not in df_kkp.columns:
+                    # JUMLAH TRANSAKSI
+                    if "JUMLAH TRANSAKSI" not in df_kkp.columns or df_kkp["JUMLAH TRANSAKSI"].isna().all():
                         df_kkp["JUMLAH TRANSAKSI"] = 1
 
-                    # Pastikan numeric
-                    df_kkp[SPM_COL] = pd.to_numeric(
-                        df_kkp[SPM_COL],
-                        errors="coerce"
-                    ).fillna(0)
+                    # JENIS KKP
+                    df_kkp["JENIS KKP"] = df_kkp["JENIS KKP"].astype(str).str.strip().str.upper()
+
+                    # Ambil hanya kolom master (urutan baku)
+                    df_kkp = df_kkp[[c for c in MASTER_COLUMNS if c in df_kkp.columns]].copy()
+                    for col in MASTER_COLUMNS:
+                        if col not in df_kkp.columns:
+                            df_kkp[col] = ""
+                    df_kkp = df_kkp[MASTER_COLUMNS]
 
                     # Ambil master dari session
                     master_df = st.session_state.get("kkp_master", pd.DataFrame())
-
-                    # ===============================
-                    # NORMALISASI SUPER AMAN
-                    # ===============================
-                    for df in [df_kkp, master_df]:
-                        if not df.empty:
-
-                            df["PERIODE"] = (
-                                df["PERIODE"]
-                                .astype(str)
-                                .str.replace(".0", "", regex=False)
-                                .str.strip()
-                                .str.upper()
-                            )
-
-                            # ===============================
-                            # NORMALISASI KODE SATKER
-                            # ===============================
-                            df["Kode Satker"] = (
-                                pd.to_numeric(df["Kode Satker"], errors="coerce")
-                                .fillna(0)
-                                .astype(int)
-                                .astype(str)
-                                .str.zfill(6)
-                            )
-
-                            df["JENIS KKP"] = (
-                                df["JENIS KKP"]
-                                .astype(str)
-                                .str.strip()
-                                .str.upper()
-                            )
 
                     # =====================================================
                     # UPLOAD PERTAMA (MASTER KOSONG)
                     # =====================================================
                     if master_df.empty:
-
                         final_df = df_kkp.copy()
                         new_count = len(df_kkp)
                         update_count = 0
-
                         st.info("Master kosong → langsung jadi database utama")
 
                     # =====================================================
                     # SUDAH ADA MASTER → MERGE CERDAS
                     # =====================================================
                     else:
-
-                        master_df[SPM_COL] = pd.to_numeric(
-                            master_df[SPM_COL],
-                            errors="coerce"
-                        ).fillna(0)
-
-                        # Gabungkan upload ke master untuk cek
-                        merged = df_kkp.merge(
-                            master_df,
-                            on=UNIQUE_KEY,
-                            how="left",
-                            indicator=True,
-                            suffixes=("", "_old")
-                        )
-
-                        # ===============================
-                        # DATA BARU
-                        # ===============================
-                        new_rows = merged[merged["_merge"] == "left_only"]
-                        new_count = len(new_rows)
-
-                        # ===============================
-                        # DATA SUDAH ADA → CEK SPM
-                        # ===============================
-                        existing_rows = merged[merged["_merge"] == "both"]
-
-                        updated_rows = []
-
-                        for _, row in existing_rows.iterrows():
-
-                            key_filter = (
-                                (master_df["PERIODE"] == row["PERIODE"]) &
-                                (master_df["Kode Satker"] == row["Kode Satker"]) &
-                                (master_df["JENIS KKP"] == row["JENIS KKP"])
-                            )
-
-                            master_row = master_df.loc[key_filter]
-
-                            if not master_row.empty:
-
-                                master_spm = float(master_row.iloc[0][SPM_COL])
-                                upload_spm = float(row[SPM_COL])
-
-                                # Ambil yang SPM lebih besar
-                                if upload_spm > master_spm:
-                                    updated_rows.append(row[df_kkp.columns])
-
-                        update_count = len(updated_rows)
-
-                        # =========================================
-                        # SCHEMA MASTER KKP
-                        # =========================================
-                        MASTER_COLUMNS = [
-
-                            # IDENTITAS
-                            "NO",
-                            "BA/KL",
-                            "SATKER",
-                            "Kode BA",
-                            "Kode Satker",
-
-                            # KKP
-                            "NOMOR KARTU",
-                            "Nomor Kartu",
-                            "NAMA PEMEGANG KKP",
-                            "LIMIT KKP",
-                            "JENIS KKP",
-                            "BANK PENERBIT KKP",
-
-                            # PERIODE
-                            "PERIODE",
-                            "TAHUN",
-                            "BULAN",
-
-                            # TRANSAKSI
-                            "TOTAL TRANSAKSI (NILAI TAGIHAN TERKAIT APBN)",
-                            "NILAI TRANSAKSI (NILAI SPM)",
-                            "NILAI_FINAL",
-                            "Nilai Transaksi",
-                            "JUMLAH TRANSAKSI",
-
-                            # SPM/SP2D
-                            "TANGGAL SPM",
-                            "NOMOR SPM",
-                            "TANGGAL SP2D",
-                            "NOMOR SP2D",
-                            "NILAI TRANSAKSI KKP (RP)",
-                            "JENIS SPM/SP2D",
-                            "PROGRAM / KEGIATAN / OUTPUT / AKUN",
-                            "TOTAL TRANSAKSI KKP (RP)",
-
-                            # FORMAT BARU
-                            "SATKER2",
-                            "Nomor SPM",
-                            "Jenis SPM"
-                        ]
-
-                        # =========================================
-                        # NORMALISASI DATA BARU
-                        # =========================================
-                        new_df = df_kkp.copy()
-
-                        # rename kolom tambahan format baru
-                        rename_map = {
-                            "Nilai Transaksi": "NILAI TRANSAKSI (NILAI SPM)",
-                        }
-
-                        new_df.rename(columns=rename_map, inplace=True)
-
-                        # isi kolom yang belum ada
+                        # Normalisasi master: pastikan schema sama
                         for col in MASTER_COLUMNS:
-                            if col not in new_df.columns:
-                                new_df[col] = None
+                            if col not in master_df.columns:
+                                master_df[col] = ""
+                        master_df = master_df[[c for c in MASTER_COLUMNS if c in master_df.columns]].copy()
+                        for col in MASTER_COLUMNS:
+                            if col not in master_df.columns:
+                                master_df[col] = ""
+                        master_df = master_df[MASTER_COLUMNS]
 
-                        # ambil hanya schema master
-                        new_df = new_df[MASTER_COLUMNS]
-
-                        # =========================================
-                        # CONCAT AMAN
-                        # =========================================
-                        new_df = new_df.loc[
-                            :,
-                            ~new_df.columns.duplicated()
-                        ]
-
-                        master_df = master_df.loc[
-                            :,
-                            ~master_df.columns.duplicated()
-                        ]
-
-                        master_df = pd.concat(
-                            [master_df, new_df],
-                            ignore_index=True
+                        # Normalisasi Kode Satker master
+                        master_df["Kode Satker"] = (
+                            pd.to_numeric(master_df["Kode Satker"], errors="coerce")
+                            .fillna(0).astype(int).astype(str).str.zfill(6)
                         )
-                        
-                        # ==========================================
-                        # HAPUS DUPLIKAT SUPER AMAN
-                        # ==========================================
-                        master_df = master_df.drop_duplicates(
-                            subset=UNIQUE_KEY,
-                            keep="first"
-                        ).reset_index(drop=True)
-                        
-                        # ===============================
-                        # HAPUS DATA LAMA YANG DIUPDATE
-                        # ===============================
-                        if update_count > 0:
+                        master_df["PERIODE"] = (
+                            master_df["PERIODE"].astype(str)
+                            .str.replace(".0", "", regex=False).str.strip()
+                        )
+                        master_df[SPM_COL] = pd.to_numeric(master_df[SPM_COL], errors="coerce").fillna(0)
 
-                            update_df = pd.DataFrame(updated_rows)
+                        # =====================================================
+                        # STRATEGI MERGE: pisahkan upload berdasarkan FORMAT_KKP
+                        # =====================================================
+                        upload_lama = df_kkp[df_kkp["FORMAT_KKP"].astype(str).str.upper().eq("LAMA")].copy()
+                        upload_baru = df_kkp[df_kkp["FORMAT_KKP"].astype(str).str.upper().eq("BARU")].copy()
 
-                            master_df = master_df.merge(
-                                update_df[UNIQUE_KEY],
-                                on=UNIQUE_KEY,
+                        master_lama = master_df[master_df["FORMAT_KKP"].astype(str).str.upper().eq("LAMA")].copy()
+                        master_baru = master_df[master_df["FORMAT_KKP"].astype(str).str.upper().eq("BARU")].copy()
+
+                        # =========================================
+                        # MERGE FORMAT LAMA
+                        # key: Kode Satker + NOMOR KARTU + PERIODE
+                        # Jika key sama → ambil nilai SPM terbesar
+                        # Jika key baru → tambah baris
+                        # =========================================
+                        def merge_kkp(upload_df, master_part, ukey):
+                            if upload_df.empty:
+                                return master_part, 0, 0
+                            if master_part.empty:
+                                return upload_df.copy(), len(upload_df), 0
+
+                            # Pastikan key ada
+                            for k in ukey:
+                                if k not in upload_df.columns:
+                                    upload_df[k] = ""
+                                if k not in master_part.columns:
+                                    master_part[k] = ""
+
+                            # Normalisasi key string
+                            for df_tmp in [upload_df, master_part]:
+                                for k in ukey:
+                                    df_tmp[k] = df_tmp[k].astype(str).str.strip()
+
+                            merged = upload_df.merge(
+                                master_part[ukey].drop_duplicates(),
+                                on=ukey,
                                 how="left",
                                 indicator=True
                             )
 
-                            master_df = master_df[master_df["_merge"] == "left_only"]
-                            master_df = master_df.drop(columns=["_merge"])
+                            new_rows_mask = merged["_merge"] == "left_only"
+                            existing_mask = merged["_merge"] == "both"
 
-                            master_df = pd.concat([master_df, update_df], ignore_index=True)
-                        
+                            new_rows = merged[new_rows_mask].drop(columns=["_merge"])
+                            existing_rows = merged[existing_mask].drop(columns=["_merge"])
 
-                        # ===============================
-                        # TAMBAH DATA BARU
-                        # ===============================
-                        if new_count > 0:
+                            n_new = len(new_rows)
+                            n_update = 0
 
-                            # ambil data baru saja
-                            cols_safe = [
-                                c for c in df_kkp.columns
-                                if c in new_rows.columns
-                            ]
+                            # Untuk yang sudah ada: bandingkan nilai SPM, ambil terbesar
+                            if not existing_rows.empty:
+                                # Gabungkan upload & master pada key
+                                compare = existing_rows[ukey + [SPM_COL]].copy()
+                                compare.columns = ukey + ["SPM_UPLOAD"]
 
-                            new_rows_clean = (
-                                new_rows[cols_safe]
-                                .copy()
-                            )
+                                master_spm = master_part[ukey + [SPM_COL]].copy()
+                                master_spm.columns = ukey + ["SPM_MASTER"]
 
-                            # ==========================================
-                            # SAMAKAN SCHEMA MASTER
-                            # ==========================================
-                            for col in MASTER_COLUMNS:
+                                cmp = compare.merge(master_spm, on=ukey, how="left")
+                                cmp["SPM_UPLOAD"] = pd.to_numeric(cmp["SPM_UPLOAD"], errors="coerce").fillna(0)
+                                cmp["SPM_MASTER"] = pd.to_numeric(cmp["SPM_MASTER"], errors="coerce").fillna(0)
 
-                                if col not in new_rows_clean.columns:
-                                    new_rows_clean[col] = None
+                                # Key yang nilai upload > master → perlu update
+                                keys_to_update = cmp[cmp["SPM_UPLOAD"] > cmp["SPM_MASTER"]][ukey]
 
-                            # urutkan kolom
-                            new_rows_clean = new_rows_clean[MASTER_COLUMNS]
+                                if not keys_to_update.empty:
+                                    n_update = len(keys_to_update)
+                                    # Hapus dari master
+                                    master_part = master_part.merge(
+                                        keys_to_update,
+                                        on=ukey,
+                                        how="left",
+                                        indicator=True
+                                    )
+                                    master_part = master_part[master_part["_merge"] == "left_only"].drop(columns=["_merge"])
 
-                            # buang duplicate column
-                            new_rows_clean = new_rows_clean.loc[
-                                :,
-                                ~new_rows_clean.columns.duplicated()
-                            ]
+                                    # Tambahkan baris upload yang lebih besar
+                                    rows_to_add = existing_rows.merge(keys_to_update, on=ukey, how="inner")
+                                    master_part = pd.concat([master_part, rows_to_add], ignore_index=True)
 
-                            master_df = master_df.loc[
-                                :,
-                                ~master_df.columns.duplicated()
-                            ]
+                            # Tambah baris baru
+                            if n_new > 0:
+                                master_part = pd.concat([master_part, new_rows], ignore_index=True)
 
-                            # concat aman
-                            master_df = pd.concat(
-                                [master_df, new_rows_clean],
-                                ignore_index=True
-                            )
+                            return master_part, n_new, n_update
 
-                            # hapus duplicate final
-                            master_df = master_df.drop_duplicates(
-                                subset=UNIQUE_KEY,
-                                keep="first"
-                            ).reset_index(drop=True)
+                        result_lama, new_lama, upd_lama = merge_kkp(upload_lama, master_lama, UNIQUE_KEY_LAMA)
+                        result_baru, new_baru, upd_baru = merge_kkp(upload_baru, master_baru, UNIQUE_KEY_BARU)
 
-                        final_df = master_df.copy()
+                        new_count = new_lama + new_baru
+                        update_count = upd_lama + upd_baru
+
+                        # Gabung kembali lama + baru
+                        final_df = pd.concat([result_lama, result_baru], ignore_index=True)
+
+                        # Pastikan semua kolom master ada
+                        for col in MASTER_COLUMNS:
+                            if col not in final_df.columns:
+                                final_df[col] = ""
+                        final_df = final_df[MASTER_COLUMNS]
+
+                        # Hapus duplikat final (safety net)
+                        # Buat composite key gabungan lama+baru
+                        final_df["_DEDUP_KEY"] = (
+                            final_df["FORMAT_KKP"].astype(str).str.upper()
+                            + "|" + final_df["Kode Satker"].astype(str)
+                            + "|" + final_df["NOMOR KARTU"].astype(str)
+                            + "|" + final_df["PERIODE"].astype(str)
+                            + "|" + final_df["NOMOR SPM"].astype(str)
+                            + "|" + final_df["PROGRAM / KEGIATAN / OUTPUT / AKUN"].astype(str)
+                        )
+                        final_df = final_df.sort_values(SPM_COL, ascending=False)
+                        final_df = final_df.drop_duplicates(subset=["_DEDUP_KEY"], keep="first")
+                        final_df = final_df.drop(columns=["_DEDUP_KEY"]).reset_index(drop=True)
+
+                    # =====================================================
+                    # NOMOR URUT
+                    # =====================================================
+                    final_df.insert(0, "NO", range(1, len(final_df) + 1))
+
+                    # =====================================================
+                    # TAMBAH Nilai Transaksi & NILAI_FINAL (backward compat)
+                    # =====================================================
+                    final_df["Nilai Transaksi"] = pd.to_numeric(final_df[SPM_COL], errors="coerce").fillna(0)
+                    final_df["NILAI_FINAL"] = (
+                        pd.to_numeric(final_df[SPM_COL], errors="coerce")
+                        .fillna(pd.to_numeric(final_df["TOTAL TRANSAKSI (NILAI TAGIHAN TERKAIT APBN)"], errors="coerce"))
+                    )
 
                     # ===============================
                     # UPDATE SESSION
