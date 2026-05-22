@@ -1293,17 +1293,11 @@ def normalize_kkp_dataframe(df):
         "Kode Satker",
         "SATKER",
 
-        # kartu
-        "NOMOR KARTU",
-        "NAMA PEMEGANG KKP",
+        # pagu
         "Pagu KKP Per Bulan",
-        "JENIS KKP",
-        "BANK PENERBIT KKP",
 
         # transaksi
         "PERIODE",
-        "TOTAL TRANSAKSI (NILAI TAGIHAN TERKAIT APBN)",
-        "NILAI TRANSAKSI (NILAI SPM)",
         "Nilai Transaksi",
 
         # helper
@@ -1322,13 +1316,30 @@ def normalize_kkp_dataframe(df):
     # ==========================================
     # PILIH KOLOM FINAL SAJA
     # ==========================================
-    df = df[FINAL_COLUMNS].copy()
+    available_cols = [
+        c for c in FINAL_COLUMNS
+        if c in df.columns
+    ]
+
+    df = df[available_cols].copy()
 
     # ==========================================
     # HILANGKAN NaN
     # ==========================================
     df = df.fillna("")
 
+    # ==========================================
+    # BA/KL -> HANYA NAMA KEMENTERIAN
+    # ==========================================
+    if "BA/KL" in df.columns:
+
+        df["BA/KL"] = (
+            df["BA/KL"]
+            .astype(str)
+            .str.replace(r"^\d+\s*[-.]?\s*", "", regex=True)
+            .str.strip()
+        )
+    
     # ==========================================
     # RAPIIHKAN STRING
     # ==========================================
@@ -1342,6 +1353,57 @@ def normalize_kkp_dataframe(df):
                 .replace("nan", "")
                 .str.strip()
             )
+    
+    # ==========================================
+    # NUMERIC CLEAN
+    # ==========================================
+    for num_col in [
+        "Pagu KKP Per Bulan",
+        "Nilai Transaksi"
+    ]:
+
+        if num_col in df.columns:
+
+            df[num_col] = pd.to_numeric(
+                df[num_col],
+                errors="coerce"
+            ).fillna(0)
+
+    # ==========================================
+    # AGREGASI PER SATKER
+    # ==========================================
+    group_cols = [
+        "Kode BA",
+        "BA/KL",
+        "Kode Satker",
+        "SATKER",
+        "PERIODE",
+        "TAHUN",
+        "BULAN"
+    ]
+
+    group_cols = [
+        c for c in group_cols
+        if c in df.columns
+    ]
+
+    agg_dict = {}
+
+    if "Pagu KKP Per Bulan" in df.columns:
+        agg_dict["Pagu KKP Per Bulan"] = "sum"
+
+    if "Nilai Transaksi" in df.columns:
+        agg_dict["Nilai Transaksi"] = "sum"
+
+    df = (
+        df
+        .groupby(
+            group_cols,
+            dropna=False,
+            as_index=False
+        )
+        .agg(agg_dict)
+    )
 
     return df
 
@@ -12738,30 +12800,26 @@ def page_admin():
 
                     FINAL_COLUMNS = [
 
-                        # identitas
-                        "Kode BA",
-                        "BA/KL",
-                        "Kode Satker",
-                        "SATKER",
+                    # identitas
+                    "Kode BA",
+                    "BA/KL",
+                    "Kode Satker",
+                    "SATKER",
 
-                        # kartu
-                        "NOMOR KARTU",
-                        "NAMA PEMEGANG KKP",
-                        "Pagu KKP Per Bulan",
-                        "JENIS KKP",
-                        "BANK PENERBIT KKP",
+                    # pagu
+                    "Pagu KKP Per Bulan",
 
-                        # transaksi
-                        "PERIODE",
-                        "TOTAL TRANSAKSI (NILAI TAGIHAN TERKAIT APBN)",
-                        "NILAI TRANSAKSI (NILAI SPM)",
+                    # transaksi
+                    "PERIODE",
 
-                        # final helper
-                        "TAHUN",
-                        "BULAN",
-                        "Nilai Transaksi",
-                        "FORMAT_KKP",
-                    ]
+                    # helper
+                    "TAHUN",
+                    "BULAN",
+
+                    # final
+                    "Nilai Transaksi",
+                    "FORMAT_KKP",
+                ]
 
                     # =====================================================
                     # PASTIKAN SEMUA KOLOM ADA
@@ -12776,7 +12834,12 @@ def page_admin():
                     # PILIH KOLOM FINAL SAJA
                     # =====================================================
 
-                    final_df = final_df[FINAL_COLUMNS].copy()
+                    available_cols = [
+                        c for c in FINAL_COLUMNS
+                        if c in final_df.columns
+                    ]
+
+                    final_df = final_df[available_cols].copy()
 
                     # =====================================================
                     # BUANG KOLOM TIDAK PERLU
@@ -12803,6 +12866,70 @@ def page_admin():
                     # =====================================================
 
                     final_df = final_df.fillna("")
+                    
+                    # ==========================================
+                    # CLEAN NUMERIC
+                    # ==========================================
+                    for num_col in [
+                        "Pagu KKP Per Bulan",
+                        "Nilai Transaksi"
+                    ]:
+
+                        if num_col in final_df.columns:
+
+                            final_df[num_col] = pd.to_numeric(
+                                final_df[num_col],
+                                errors="coerce"
+                            ).fillna(0)
+
+                    # ==========================================
+                    # BA/KL -> HANYA NAMA
+                    # ==========================================
+                    if "BA/KL" in final_df.columns:
+
+                        final_df["BA/KL"] = (
+                            final_df["BA/KL"]
+                            .astype(str)
+                            .str.replace(r"^\d+\s*[-.]?\s*", "", regex=True)
+                            .str.strip()
+                        )
+
+                    # ==========================================
+                    # AGREGASI SATKER
+                    # ==========================================
+                    group_cols = [
+                        "Kode BA",
+                        "BA/KL",
+                        "Kode Satker",
+                        "SATKER",
+                        "PERIODE",
+                        "TAHUN",
+                        "BULAN",
+                        "FORMAT_KKP"
+                    ]
+
+                    group_cols = [
+                        c for c in group_cols
+                        if c in final_df.columns
+                    ]
+
+                    agg_dict = {}
+
+                    if "Pagu KKP Per Bulan" in final_df.columns:
+                        agg_dict["Pagu KKP Per Bulan"] = "sum"
+
+                    if "Nilai Transaksi" in final_df.columns:
+                        agg_dict["Nilai Transaksi"] = "sum"
+
+                    final_df = (
+                        final_df
+                        .groupby(
+                            group_cols,
+                            dropna=False,
+                            as_index=False
+                        )
+                        .agg(agg_dict)
+)
 
                     # =====================================================
                     # RAPIIHKAN STRING
