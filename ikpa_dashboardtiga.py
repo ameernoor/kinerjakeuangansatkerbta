@@ -4802,29 +4802,20 @@ def process_excel_file_kkp(uploaded_file):
     Membaca file KKP mentah (format lama: Kartu Pengawasan, atau format baru: Daftar Transaksi)
     dan menghasilkan DataFrame dengan kolom standar yang seragam.
 
-    KOLOM OUTPUT STANDAR:
-    - Kode Satker       : 6 digit string
-    - SATKER            : nama satker (tanpa kode)
-    - Kode BA           : 3 digit string (format lama saja, format baru = "")
-    - BA/KL             : teks BA/KL asli
-    - NOMOR KARTU       : nomor kartu (format lama), "" untuk format baru
-    - NAMA PEMEGANG KKP : nama pemegang kartu
-    - LIMIT KKP         : limit kartu
-    - JENIS KKP         : jenis KKP
-    - BANK PENERBIT KKP : bank penerbit
-    - PERIODE           : string YYYY-MM
-    - TOTAL TRANSAKSI (NILAI TAGIHAN TERKAIT APBN) : nilai tagihan (format lama)
-    - NILAI TRANSAKSI (NILAI SPM) : nilai SPM — kolom utama
-    - TANGGAL SPM       : tanggal SPM (format baru)
-    - NOMOR SPM         : nomor SPM (format baru)
-    - TANGGAL SP2D      : tanggal SP2D (format baru)
-    - NOMOR SP2D        : nomor SP2D (format baru)
-    - NILAI TRANSAKSI KKP (RP) : nilai KKP (format baru)
-    - JENIS SPM/SP2D    : jenis SPM (format baru)
-    - PROGRAM / KEGIATAN / OUTPUT / AKUN : akun (format baru)
-    - TOTAL TRANSAKSI KKP (RP) : total transaksi (format baru)
-    - SATKER2           : kode satker numerik (format baru)
-    - FORMAT_KKP        : "LAMA" atau "BARU" (penanda asal format)
+    KOLOM OUTPUT STANDAR (sama untuk kedua format):
+    - Kode BA, BA/KL          : dari format lama; kosong untuk format baru
+    - Kode Satker, SATKER     : keduanya ada
+    - NOMOR KARTU             : format lama; kosong untuk format baru
+    - NAMA PEMEGANG KKP       : format lama; kosong untuk format baru
+    - Pagu KKP Per Bulan      : LIMIT KKP (lama) / PAGU KKP PER BULAN (baru)
+    - JENIS KKP, BANK PENERBIT KKP : format lama; default "KKP"/"" untuk baru
+    - PERIODE                 : YYYY-MM (lama langsung, baru dari TANGGAL SPM)
+    - TOTAL TRANSAKSI (NILAI TAGIHAN TERKAIT APBN) : format lama; "" untuk baru
+    - NILAI TRANSAKSI (NILAI SPM) : format lama / NILAI TRANSAKSI KKP (baru)
+    - TANGGAL SPM/SP2D, NOMOR SPM/SP2D : format baru; "" untuk lama
+    - JENIS SPM/SP2D          : selalu kosong (tidak ada di kedua file)
+    - PROGRAM / KEGIATAN / OUTPUT / AKUN : format baru; "" untuk lama
+    - TAHUN, BULAN, Nilai Transaksi, FORMAT_KKP
     """
     import pandas as pd
     import re
@@ -4837,14 +4828,18 @@ def process_excel_file_kkp(uploaded_file):
     # =========================================
     # SCHEMA KOLOM STANDAR OUTPUT
     # =========================================
+    # =========================================
+    # KOLOM STANDAR OUTPUT (sama untuk lama & baru)
+    # Kolom yg tidak ada di suatu format → diisi ""
+    # =========================================
     STANDARD_COLUMNS = [
-        "Kode Satker",
-        "SATKER",
         "Kode BA",
         "BA/KL",
+        "Kode Satker",
+        "SATKER",
         "NOMOR KARTU",
         "NAMA PEMEGANG KKP",
-        "LIMIT KKP",
+        "Pagu KKP Per Bulan",
         "JENIS KKP",
         "BANK PENERBIT KKP",
         "PERIODE",
@@ -4854,17 +4849,52 @@ def process_excel_file_kkp(uploaded_file):
         "NOMOR SPM",
         "TANGGAL SP2D",
         "NOMOR SP2D",
-        "NILAI TRANSAKSI KKP (RP)",
         "JENIS SPM/SP2D",
         "PROGRAM / KEGIATAN / OUTPUT / AKUN",
-        "TOTAL TRANSAKSI KKP (RP)",
-        "SATKER2",
+        "TAHUN",
+        "BULAN",
+        "Nilai Transaksi",
         "FORMAT_KKP",
     ]
 
     # =========================================
+    # HELPERS
+    # =========================================
+    def normalize_columns(df):
+        df.columns = (
+            df.columns.astype(str)
+            .str.strip()
+            .str.upper()
+            .str.replace("\n", " ", regex=False)
+            .str.replace(r"\s+", " ", regex=True)
+        )
+        return df
+
+    def clean_numeric(series):
+        return (
+            pd.to_numeric(
+                series.astype(str)
+                .str.replace(r"[^\d]", "", regex=True)
+                .replace("", "0"),
+                errors="coerce"
+            ).fillna(0)
+        )
+
+    def ensure_standard_columns(df):
+        for col in STANDARD_COLUMNS:
+            if col not in df.columns:
+                df[col] = ""
+        df = df[STANDARD_COLUMNS].copy()
+        df = df.fillna("")
+        for col in df.columns:
+            if df[col].dtype == "object":
+                df[col] = df[col].astype(str).replace("nan", "").str.strip()
+        return df
+
+    # =========================================
     # READ RAW
     # =========================================
+    uploaded_file.seek(0)
     df_raw = pd.read_excel(
         uploaded_file,
         header=None,
@@ -4882,41 +4912,6 @@ def process_excel_file_kkp(uploaded_file):
         .values
         .flatten()
     ).upper()
-
-    # =====================================================
-    # HELPER: NORMALISASI NAMA KOLOM
-    # =====================================================
-    def normalize_columns(df):
-        df.columns = (
-            df.columns.astype(str)
-            .str.strip()
-            .str.upper()
-            .str.replace("\n", " ", regex=False)
-            .str.replace(r"\s+", " ", regex=True)
-        )
-        return df
-
-    # =====================================================
-    # HELPER: BERSIHKAN NILAI NUMERIK
-    # =====================================================
-    def clean_numeric(series):
-        return (
-            pd.to_numeric(
-                series.astype(str)
-                .str.replace(r"[^\d]", "", regex=True)
-                .replace("", "0"),
-                errors="coerce"
-            ).fillna(0)
-        )
-
-    # =====================================================
-    # HELPER: PAKSA KOLOM STANDAR ADA
-    # =====================================================
-    def ensure_standard_columns(df):
-        for col in STANDARD_COLUMNS:
-            if col not in df.columns:
-                df[col] = ""
-        return df[STANDARD_COLUMNS].copy()
 
     # =====================================================
     # FORMAT BARU: DAFTAR TRANSAKSI GUP/PTUP KKP
@@ -4999,48 +4994,41 @@ def process_excel_file_kkp(uploaded_file):
             .str.strip()
         )
 
-        # Kolom standar format baru
+        # =========================================
+        # KOLOM YANG TIDAK ADA DI FORMAT BARU → KOSONG
+        # =========================================
         df_s["Kode BA"] = ""
         df_s["BA/KL"] = ""
         df_s["NOMOR KARTU"] = ""
         df_s["NAMA PEMEGANG KKP"] = ""
-        df_s["LIMIT KKP"] = ""
         df_s["JENIS KKP"] = "KKP"
         df_s["BANK PENERBIT KKP"] = ""
         df_s["TOTAL TRANSAKSI (NILAI TAGIHAN TERKAIT APBN)"] = ""
+        df_s["JENIS SPM/SP2D"] = ""
 
-        # NOMOR SP2D
+        # NOMOR SP2D (dibutuhkan untuk filter KPPN sebelum kolom lain)
         nomor_sp2d_col = next((c for c in df_s.columns if "NOMOR SP2D" in c), None)
         df_s["NOMOR SP2D"] = df_s[nomor_sp2d_col].astype(str).str.strip() if nomor_sp2d_col else ""
 
         # =========================================
         # FILTER KPPN 109 BATURAJA
-        # Identifikasi via NOMOR SP2D yang diawali "26109"
-        # (format SP2D: kode KPPN 5 digit + sequence)
         # =========================================
         df_s = df_s[df_s["NOMOR SP2D"].astype(str).str.startswith("26109")]
 
         if df_s.empty:
             return pd.DataFrame()
 
-        # Kolom NILAI TRANSAKSI (NILAI SPM) — ambil dari NILAI TRANSAKSI KKP
+        # NILAI TRANSAKSI (NILAI SPM) — dari NILAI TRANSAKSI KKP (RP)
         nilai_col = next(
             (c for c in df_s.columns if "NILAI TRANSAKSI KKP" in c),
             next((c for c in df_s.columns if "NILAI TRANSAKSI" in c), None)
         )
-        if nilai_col:
-            df_s["NILAI TRANSAKSI (NILAI SPM)"] = clean_numeric(df_s[nilai_col])
-            df_s["NILAI TRANSAKSI KKP (RP)"] = clean_numeric(df_s[nilai_col])
-        else:
-            df_s["NILAI TRANSAKSI (NILAI SPM)"] = 0
-            df_s["NILAI TRANSAKSI KKP (RP)"] = 0
+        df_s["NILAI TRANSAKSI (NILAI SPM)"] = clean_numeric(df_s[nilai_col]) if nilai_col else 0
+        df_s["Nilai Transaksi"] = df_s["NILAI TRANSAKSI (NILAI SPM)"]
 
-        # Total transaksi KKP
-        total_col = next((c for c in df_s.columns if "TOTAL TRANSAKSI KKP" in c), None)
-        if total_col:
-            df_s["TOTAL TRANSAKSI KKP (RP)"] = clean_numeric(df_s[total_col])
-        else:
-            df_s["TOTAL TRANSAKSI KKP (RP)"] = df_s["NILAI TRANSAKSI (NILAI SPM)"]
+        # Pagu KKP Per Bulan — dari kolom PAGU KKP PER BULAN
+        pagu_col = next((c for c in df_s.columns if "PAGU KKP" in c), None)
+        df_s["Pagu KKP Per Bulan"] = clean_numeric(df_s[pagu_col]) if pagu_col else 0
 
         # NOMOR SPM
         nomor_spm_col = next((c for c in df_s.columns if "NOMOR SPM" in c), None)
@@ -5054,31 +5042,21 @@ def process_excel_file_kkp(uploaded_file):
         tgl_sp2d_col = next((c for c in df_s.columns if "TANGGAL SP2D" in c), None)
         df_s["TANGGAL SP2D"] = df_s[tgl_sp2d_col].astype(str).str.strip() if tgl_sp2d_col else ""
 
-        # JENIS SPM/SP2D
-        jenis_spm_col = next((c for c in df_s.columns if "JENIS SPM" in c or "JENIS SP2D" in c), None)
-        df_s["JENIS SPM/SP2D"] = df_s[jenis_spm_col].astype(str).str.strip() if jenis_spm_col else ""
-
         # PROGRAM / KEGIATAN / OUTPUT / AKUN
         prog_col = next((c for c in df_s.columns if "PROGRAM" in c or "AKUN" in c), None)
         df_s["PROGRAM / KEGIATAN / OUTPUT / AKUN"] = df_s[prog_col].astype(str).str.strip() if prog_col else ""
 
-        # SATKER2
-        satker2_col = next((c for c in df_s.columns if "SATKER2" in c or (c.endswith("2") and "SATKER" in c)), None)
-        if satker2_col:
-            df_s["SATKER2"] = df_s[satker2_col].astype(str).str.strip()
-        else:
-            df_s["SATKER2"] = df_s["Kode Satker"]
-
-        # PERIODE — ambil dari TANGGAL SPM (format baru tidak punya kolom PERIODE)
-        if "PERIODE" not in df_s.columns or df_s["PERIODE"].astype(str).str.strip().eq("").all():
-            tgl_parsed = pd.to_datetime(df_s["TANGGAL SPM"], dayfirst=True, errors="coerce")
-            df_s["PERIODE"] = tgl_parsed.dt.strftime("%Y-%m").fillna("")
+        # PERIODE — dari TANGGAL SPM (format baru tidak punya kolom PERIODE)
+        tgl_parsed = pd.to_datetime(df_s["TANGGAL SPM"], dayfirst=True, errors="coerce")
+        df_s["PERIODE"] = tgl_parsed.dt.strftime("%Y-%m").fillna("")
+        df_s["TAHUN"] = tgl_parsed.dt.year
+        df_s["BULAN"] = tgl_parsed.dt.month
 
         df_s["FORMAT_KKP"] = "BARU"
 
         # Filter valid kode satker 6 digit
         df_s = df_s[df_s["Kode Satker"].astype(str).str.len().eq(6)]
-        df_s = df_s[~df_s["Kode Satker"].astype(str).str.contains("SATKER", na=False)]
+        df_s = df_s[~df_s["Kode Satker"].astype(str).str.contains("SATKER|nan", na=False)]
 
         return ensure_standard_columns(df_s.reset_index(drop=True))
 
@@ -5103,7 +5081,7 @@ def process_excel_file_kkp(uploaded_file):
     if "SATKER" not in df.columns:
         return pd.DataFrame()
 
-    # Kode BA
+    # Kode BA dari kolom BA/KL
     if "BA/KL" in df.columns:
         df["Kode BA"] = (
             df["BA/KL"].astype(str)
@@ -5114,14 +5092,13 @@ def process_excel_file_kkp(uploaded_file):
         df["Kode BA"] = ""
         df["BA/KL"] = ""
 
-    # Kode Satker
+    # Kode Satker & Nama Satker
     df["Kode Satker"] = (
         df["SATKER"].astype(str)
         .str.extract(r"(\d{6})")[0]
         .fillna("")
+        .str.zfill(6)
     )
-
-    # Nama Satker (tanpa kode di depan)
     df["SATKER"] = (
         df["SATKER"].astype(str)
         .str.replace(r"^\d{6}\s*", "", regex=True)
@@ -5129,7 +5106,7 @@ def process_excel_file_kkp(uploaded_file):
         .str.strip()
     )
 
-    # NOMOR KARTU — standarkan ke string bersih
+    # NOMOR KARTU
     nomor_kartu_col = next((c for c in df.columns if "NOMOR KARTU" in c), None)
     if nomor_kartu_col:
         df["NOMOR KARTU"] = (
@@ -5144,9 +5121,9 @@ def process_excel_file_kkp(uploaded_file):
     nama_col = next((c for c in df.columns if "NAMA PEMEGANG" in c or "NAMA" in c), None)
     df["NAMA PEMEGANG KKP"] = df[nama_col].astype(str).str.strip() if nama_col else ""
 
-    # LIMIT KKP
+    # Pagu KKP Per Bulan — dari LIMIT KKP
     limit_col = next((c for c in df.columns if "LIMIT" in c), None)
-    df["LIMIT KKP"] = clean_numeric(df[limit_col]) if limit_col else 0
+    df["Pagu KKP Per Bulan"] = clean_numeric(df[limit_col]) if limit_col else 0
 
     # JENIS KKP
     jenis_kkp_col = next((c for c in df.columns if "JENIS KKP" in c), None)
@@ -5167,35 +5144,36 @@ def process_excel_file_kkp(uploaded_file):
     total_tagihan_col = next(
         (c for c in df.columns if "TOTAL TRANSAKSI" in c and "TAGIHAN" in c), None
     )
-    if total_tagihan_col:
-        df["TOTAL TRANSAKSI (NILAI TAGIHAN TERKAIT APBN)"] = clean_numeric(df[total_tagihan_col])
-    else:
-        df["TOTAL TRANSAKSI (NILAI TAGIHAN TERKAIT APBN)"] = ""
+    df["TOTAL TRANSAKSI (NILAI TAGIHAN TERKAIT APBN)"] = (
+        clean_numeric(df[total_tagihan_col]) if total_tagihan_col else ""
+    )
 
-    # NILAI TRANSAKSI (NILAI SPM) — prioritaskan kolom yang mengandung "SPM" atau "NILAI TRANSAKSI"
+    # NILAI TRANSAKSI (NILAI SPM)
     nilai_col = next(
         (c for c in df.columns if "NILAI SPM" in c),
         next((c for c in df.columns if "NILAI TRANSAKSI" in c), None)
     )
-    if nilai_col:
-        df["NILAI TRANSAKSI (NILAI SPM)"] = clean_numeric(df[nilai_col])
-    else:
-        df["NILAI TRANSAKSI (NILAI SPM)"] = 0
+    df["NILAI TRANSAKSI (NILAI SPM)"] = clean_numeric(df[nilai_col]) if nilai_col else 0
+    df["Nilai Transaksi"] = df["NILAI TRANSAKSI (NILAI SPM)"]
 
     # Kolom format baru — tidak ada di format lama, isi kosong
     df["TANGGAL SPM"] = ""
     df["NOMOR SPM"] = ""
     df["TANGGAL SP2D"] = ""
     df["NOMOR SP2D"] = ""
-    df["NILAI TRANSAKSI KKP (RP)"] = ""
     df["JENIS SPM/SP2D"] = ""
     df["PROGRAM / KEGIATAN / OUTPUT / AKUN"] = ""
-    df["TOTAL TRANSAKSI KKP (RP)"] = ""
-    df["SATKER2"] = df["Kode Satker"]
+
+    # TAHUN & BULAN dari PERIODE
+    periode_dt = pd.to_datetime(df["PERIODE"], errors="coerce")
+    df["TAHUN"] = periode_dt.dt.year
+    df["BULAN"] = periode_dt.dt.month
+
     df["FORMAT_KKP"] = "LAMA"
 
-    # Filter valid
+    # Filter valid kode satker 6 digit
     df = df[df["Kode Satker"].astype(str).str.len().eq(6)]
+    df = df[~df["Kode Satker"].astype(str).str.contains("SATKER|nan", na=False)]
 
     # Hapus baris header nyasar
     if "NO" in df.columns:
@@ -12690,40 +12668,16 @@ def page_admin():
 
                     # =====================================================
                     # NILAI TRANSAKSI FINAL
+                    # (sudah diset oleh process_excel_file_kkp, pastikan tipe numerik)
                     # =====================================================
 
-                    nilai_cols = []
-
-                    candidate_cols = [
-                        "NILAI TRANSAKSI (NILAI SPM)",
-                        "NILAI TAGIHAN",
-                        "NILAI_FINAL",
-                        "TRANSAKSI",
-                        "Nilai Transaksi"
-                    ]
-
-                    for col in candidate_cols:
-
-                        if col in df_kkp.columns:
-
-                            nilai_cols.append(
-                                pd.to_numeric(
-                                    df_kkp[col],
-                                    errors="coerce"
-                                )
-                            )
-
-                    if nilai_cols:
-
-                        df_kkp["Nilai Transaksi"] = (
-                            pd.concat(nilai_cols, axis=1)
-                            .max(axis=1)
-                            .fillna(0)
-                        )
-
+                    if "Nilai Transaksi" not in df_kkp.columns or df_kkp["Nilai Transaksi"].astype(str).str.strip().eq("").all():
+                        if "NILAI TRANSAKSI (NILAI SPM)" in df_kkp.columns:
+                            df_kkp["Nilai Transaksi"] = pd.to_numeric(df_kkp["NILAI TRANSAKSI (NILAI SPM)"], errors="coerce").fillna(0)
+                        else:
+                            df_kkp["Nilai Transaksi"] = 0
                     else:
-
-                        df_kkp["Nilai Transaksi"] = 0
+                        df_kkp["Nilai Transaksi"] = pd.to_numeric(df_kkp["Nilai Transaksi"], errors="coerce").fillna(0)
 
                     # =====================================================
                     # MASTER EXISTING
@@ -12830,7 +12784,8 @@ def page_admin():
                         # final helper
                         "TAHUN",
                         "BULAN",
-                        "Nilai Transaksi"
+                        "Nilai Transaksi",
+                        "FORMAT_KKP",
                     ]
 
                     # =====================================================
@@ -12853,8 +12808,10 @@ def page_admin():
                     # =====================================================
 
                     DROP_COLUMNS = [
-                        "FORMAT_KKP",
                         "SATKER2",
+                        "LIMIT KKP",
+                        "NILAI TRANSAKSI KKP (RP)",
+                        "TOTAL TRANSAKSI KKP (RP)",
                         "_merge"
                     ]
 
