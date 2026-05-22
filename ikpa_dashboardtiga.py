@@ -1210,6 +1210,33 @@ def normalize_kkp_dataframe(df):
             rename_dict[col] = COLUMN_MAPPING[clean_col]
 
     df.rename(columns=rename_dict, inplace=True)
+    
+    # ==========================================
+    # EXTRACT KODE BA DARI BA/KL
+    # ==========================================
+    if "Kode BA" not in df.columns:
+
+        if "BA/KL" in df.columns:
+
+            df["Kode BA"] = (
+                df["BA/KL"]
+                .astype(str)
+                .str.extract(r"(\d+)")
+                [0]
+                .fillna("")
+                .str.zfill(3)
+            )
+
+    else:
+
+        df["Kode BA"] = (
+            df["Kode BA"]
+            .astype(str)
+            .str.extract(r"(\d+)")
+            [0]
+            .fillna("")
+            .str.zfill(3)
+        )
 
     # ==========================================
     # KODE SATKER
@@ -1289,7 +1316,6 @@ def normalize_kkp_dataframe(df):
 
         # identitas
         "Kode BA",
-        "BA/KL",
         "Kode Satker",
         "SATKER",
 
@@ -1374,7 +1400,6 @@ def normalize_kkp_dataframe(df):
     # ==========================================
     group_cols = [
         "Kode BA",
-        "BA/KL",
         "Kode Satker",
         "SATKER",
         "PERIODE",
@@ -12802,7 +12827,6 @@ def page_admin():
 
                     # identitas
                     "Kode BA",
-                    "BA/KL",
                     "Kode Satker",
                     "SATKER",
 
@@ -12899,7 +12923,6 @@ def page_admin():
                     # ==========================================
                     group_cols = [
                         "Kode BA",
-                        "BA/KL",
                         "Kode Satker",
                         "SATKER",
                         "PERIODE",
