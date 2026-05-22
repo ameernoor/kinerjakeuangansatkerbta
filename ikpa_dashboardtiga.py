@@ -1303,17 +1303,8 @@ def normalize_kkp_dataframe(df):
         # transaksi
         "PERIODE",
         "TOTAL TRANSAKSI (NILAI TAGIHAN TERKAIT APBN)",
+        "NILAI TRANSAKSI (NILAI SPM)",
         "Nilai Transaksi",
-
-        # spm/sp2d
-        "TANGGAL SPM",
-        "NOMOR SPM",
-        "TANGGAL SP2D",
-        "NOMOR SP2D",
-        "JENIS SPM/SP2D",
-
-        # program
-        "PROGRAM / KEGIATAN / OUTPUT / AKUN",
 
         # helper
         "TAHUN",
@@ -4845,12 +4836,6 @@ def process_excel_file_kkp(uploaded_file):
         "PERIODE",
         "TOTAL TRANSAKSI (NILAI TAGIHAN TERKAIT APBN)",
         "NILAI TRANSAKSI (NILAI SPM)",
-        "TANGGAL SPM",
-        "NOMOR SPM",
-        "TANGGAL SP2D",
-        "NOMOR SP2D",
-        "JENIS SPM/SP2D",
-        "PROGRAM / KEGIATAN / OUTPUT / AKUN",
         "TAHUN",
         "BULAN",
         "Nilai Transaksi",
@@ -12770,16 +12755,6 @@ def page_admin():
                         "PERIODE",
                         "TOTAL TRANSAKSI (NILAI TAGIHAN TERKAIT APBN)",
                         "NILAI TRANSAKSI (NILAI SPM)",
-
-                        # spm/sp2d
-                        "TANGGAL SPM",
-                        "NOMOR SPM",
-                        "TANGGAL SP2D",
-                        "NOMOR SP2D",
-                        "JENIS SPM/SP2D",
-
-                        # program
-                        "PROGRAM / KEGIATAN / OUTPUT / AKUN",
 
                         # final helper
                         "TAHUN",
