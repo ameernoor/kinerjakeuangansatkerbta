@@ -8707,11 +8707,6 @@ def page_dashboard():
             # ===============================
             df_kkp = st.session_state.kkp_master.copy()
             
-            # ===============================
-            # AMANKAN KOLOM KKP
-            # ===============================
-            if "NILAI TRANSAKSI (NILAI SPM)" not in df_kkp.columns:
-                df_kkp["NILAI TRANSAKSI (NILAI SPM)"] = 0
 
             if "LIMIT KKP" not in df_kkp.columns:
                 df_kkp["LIMIT KKP"] = 0
@@ -8859,17 +8854,34 @@ def page_dashboard():
             # FILTER DATA VALID KKP
             # ===============================
 
+            # ===============================
+            # FILTER DATA VALID KKP
+            # ===============================
+
             if tipe_chart == "Jumlah Transaksi":
 
-                # hanya satker yang punya transaksi
-                df_kkp_valid = df_kkp[
-                    df_kkp["NILAI TRANSAKSI (NILAI SPM)"].fillna(0) > 0
-                ].copy()
+                # transaksi hanya jika ada nominal transaksi
+                if "NILAI TRANSAKSI (NILAI SPM)" in df_kkp.columns:
+
+                    df_kkp_valid = df_kkp[
+                        df_kkp["NILAI TRANSAKSI (NILAI SPM)"].fillna(0) > 0
+                    ].copy()
+
+                else:
+
+                    df_kkp_valid = pd.DataFrame()
 
             else:
 
-                # nominal tetap tampil
-                df_kkp_valid = df_kkp.copy()
+                # nominal wajib punya kolom nominal
+                if "NILAI TRANSAKSI (NILAI SPM)" in df_kkp.columns:
+
+                    df_kkp_valid = df_kkp.copy()
+
+                else:
+
+                    st.info("Data nominal KKP tidak tersedia")
+                    df_kkp_valid = pd.DataFrame()
 
             # Jika tidak ada data transaksi
             if df_kkp_valid.empty:
