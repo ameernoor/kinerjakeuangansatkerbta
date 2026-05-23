@@ -103,7 +103,6 @@ def render_table_pin_satker(df):
     df = df.loc[:, ~df.columns.duplicated()].copy()
     df.insert(0, "__rowNum__", range(1, len(df) + 1))
     
-     # 🔥 TAMBAHKAN INI
     from st_aggrid import GridOptionsBuilder
     gb = GridOptionsBuilder.from_dataframe(df)
 
@@ -1437,7 +1436,7 @@ def fix_ikpa_header(df_raw):
     
     import pandas as pd
 
-    df = None  # 🔥 ANTI ERROR WAJIB
+    df = None  
 
     try:
         for i in range(min(10, len(df_raw))):
@@ -1451,7 +1450,7 @@ def fix_ikpa_header(df_raw):
                 header1 = df_raw.iloc[header_row]
                 header2 = df_raw.iloc[header_row + 1]
 
-                # 🔥 DETEKSI HEADER 3 BARIS (KHUSUS MARET)
+                # DETEKSI HEADER 3 BARIS (KHUSUS MARET)
                 row_next = " ".join(
                     df_raw.iloc[header_row + 2].astype(str).str.upper().values
                 )
@@ -1553,7 +1552,7 @@ def fix_ikpa_header(df_raw):
                 df = df[[c for c in df.columns if not c.startswith("IGNORE")]]
 
                 # ===============================
-                # 🔥 FIX KHUSUS FILE MARET
+                # FIX KHUSUS FILE MARET
                 # ===============================
                 if "Keterangan" in df.columns:
                     mask = df["Keterangan"].astype(str).str.upper().str.contains("NILAI", na=False)
@@ -1695,7 +1694,7 @@ def standardize_dipa(df_raw):
     df.columns = [str(c).strip() for c in df.columns]
 
     # ===============================
-    # 🔥 FIND COL (VERSI KUAT)
+    # FIND COL
     # ===============================
     def find_col(possible_names):
         for c in df.columns:
@@ -1724,7 +1723,7 @@ def standardize_dipa(df_raw):
         "PAGU_RUPIAH"
     ])
 
-    # 🔥 BACKUP DETEKSI PAGU
+    # BACKUP DETEKSI PAGU
     if col_pagu is None:
         for c in df.columns:
             if "PAGU" in str(c).upper():
@@ -2008,10 +2007,10 @@ def parse_dipa(df_raw):
 # ============================================================
 def auto_process_dipa(df_raw):
     
-    # 🔥 FIX HEADER DULU
+    # FIX HEADER
     df_raw = fix_dipa_header(df_raw)
 
-    # 🔥 LANGSUNG STANDARDIZE (JANGAN PAKAI YANG LAIN)
+    # STANDARDIZE
     df = standardize_dipa(df_raw)
 
     # safety
@@ -8707,6 +8706,21 @@ def page_dashboard():
             # AMBIL DATA DARI SESSION
             # ===============================
             df_kkp = st.session_state.kkp_master.copy()
+            
+            # ===============================
+            # AMANKAN KOLOM KKP
+            # ===============================
+            if "NILAI TRANSAKSI (NILAI SPM)" not in df_kkp.columns:
+                df_kkp["NILAI TRANSAKSI (NILAI SPM)"] = 0
+
+            if "LIMIT KKP" not in df_kkp.columns:
+                df_kkp["LIMIT KKP"] = 0
+
+            if "SATKER" not in df_kkp.columns:
+                df_kkp["SATKER"] = "SATKER TIDAK DIKETAHUI"
+
+            if "Kode Satker" not in df_kkp.columns:
+                df_kkp["Kode Satker"] = "000000"
 
             # ===============================
             # NORMALISASI PERIODE
@@ -8721,16 +8735,22 @@ def page_dashboard():
             # ===============================
             # NORMALISASI NOMINAL
             # ===============================
-            df_kkp["NILAI TRANSAKSI (NILAI SPM)"] = (
-                df_kkp["NILAI TRANSAKSI (NILAI SPM)"]
-                .astype(str)
-                .str.replace(r"[^\d]", "", regex=True)
-            )
+            if "NILAI TRANSAKSI (NILAI SPM)" in df_kkp.columns:
 
-            df_kkp["NILAI TRANSAKSI (NILAI SPM)"] = pd.to_numeric(
-                df_kkp["NILAI TRANSAKSI (NILAI SPM)"],
-                errors="coerce"
-            ).fillna(0)
+                df_kkp["NILAI TRANSAKSI (NILAI SPM)"] = (
+                    df_kkp["NILAI TRANSAKSI (NILAI SPM)"]
+                    .astype(str)
+                    .str.replace(r"[^\d]", "", regex=True)
+                )
+
+                df_kkp["NILAI TRANSAKSI (NILAI SPM)"] = pd.to_numeric(
+                    df_kkp["NILAI TRANSAKSI (NILAI SPM)"],
+                    errors="coerce"
+                ).fillna(0)
+
+            else:
+
+                df_kkp["NILAI TRANSAKSI (NILAI SPM)"] = 0
 
 
             # ===============================
@@ -8834,37 +8854,55 @@ def page_dashboard():
             # ===============================
             # KKP PER SATKER
             # ===============================
-            if tipe_chart == "Jumlah Transaksi":
 
-                kkp_chart = (
-                    df_kkp
-                    .groupby("SATKER")
-                    .size()
-                    .reset_index(name="Value")
-                )
+            # Hanya ambil data yang punya transaksi
+            df_kkp_valid = df_kkp[
+                df_kkp["NILAI TRANSAKSI (NILAI SPM)"].fillna(0) > 0
+            ].copy()
+
+            # Jika tidak ada data transaksi
+            if df_kkp_valid.empty:
+
+                st.info("Data transaksi KKP tidak tersedia")
+                kkp_chart = pd.DataFrame(columns=["SATKER", "Value"])
 
             else:
 
-                nominal_satker = (
-                    df_kkp
-                    .groupby("SATKER")
-                    .agg(NOMINAL=("NILAI TRANSAKSI (NILAI SPM)", "sum"))
-                    .reset_index()
-                )
+                if tipe_chart == "Jumlah Transaksi":
 
-                kkp_chart = nominal_satker.merge(
-                    pagu_satker,
-                    on="SATKER",
-                    how="left"
-                )
+                    kkp_chart = (
+                        df_kkp_valid
+                        .groupby("SATKER")
+                        .size()
+                        .reset_index(name="Value")
+                    )
 
-                kkp_chart["Value"] = (
-                    kkp_chart["NOMINAL"] /
-                    kkp_chart["PAGU"].replace(0, pd.NA)
-                ) * 100
+                else:
 
-                kkp_chart["Value"] = kkp_chart["Value"].fillna(0)
+                    nominal_satker = (
+                        df_kkp_valid
+                        .groupby("SATKER")
+                        .agg(NOMINAL=("NILAI TRANSAKSI (NILAI SPM)", "sum"))
+                        .reset_index()
+                    )
 
+                    kkp_chart = nominal_satker.merge(
+                        pagu_satker,
+                        on="SATKER",
+                        how="left"
+                    )
+
+                    kkp_chart["Value"] = (
+                        kkp_chart["NOMINAL"] /
+                        kkp_chart["PAGU"].replace(0, pd.NA)
+                    ) * 100
+
+                    kkp_chart["Value"] = kkp_chart["Value"].fillna(0)
+
+            # Jika data kosong jangan lanjut chart
+            if kkp_chart.empty:
+                st.warning("Data transaksi KKP tidak tersedia")
+                st.stop()
 
             # ===============================
             # TOP & BOTTOM
