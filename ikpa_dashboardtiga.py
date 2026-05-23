@@ -1315,7 +1315,6 @@ def normalize_kkp_dataframe(df):
     FINAL_COLUMNS = [
 
         # identitas
-        "Kode BA",
         "Kode Satker",
         "SATKER",
 
@@ -12826,7 +12825,6 @@ def page_admin():
                     FINAL_COLUMNS = [
 
                     # identitas
-                    "Kode BA",
                     "Kode Satker",
                     "SATKER",
 
