@@ -8855,10 +8855,21 @@ def page_dashboard():
             # KKP PER SATKER
             # ===============================
 
-            # Hanya ambil data yang punya transaksi
-            df_kkp_valid = df_kkp[
-                df_kkp["NILAI TRANSAKSI (NILAI SPM)"].fillna(0) > 0
-            ].copy()
+            # ===============================
+            # FILTER DATA VALID KKP
+            # ===============================
+
+            if tipe_chart == "Jumlah Transaksi":
+
+                # hanya satker yang punya transaksi
+                df_kkp_valid = df_kkp[
+                    df_kkp["NILAI TRANSAKSI (NILAI SPM)"].fillna(0) > 0
+                ].copy()
+
+            else:
+
+                # nominal tetap tampil
+                df_kkp_valid = df_kkp.copy()
 
             # Jika tidak ada data transaksi
             if df_kkp_valid.empty:
@@ -8899,118 +8910,120 @@ def page_dashboard():
 
                     kkp_chart["Value"] = kkp_chart["Value"].fillna(0)
 
-            # Jika data kosong jangan lanjut chart
-            if kkp_chart.empty:
-                st.warning("Data transaksi KKP tidak tersedia")
-                st.stop()
+                    # Jika data kosong jangan tampilkan chart KKP
+                    if kkp_chart.empty:
 
-            # ===============================
-            # TOP & BOTTOM
-            # ===============================
-            kkp_top = kkp_chart.sort_values("Value", ascending=False).head(10)
+                        st.info("Data transaksi KKP tidak tersedia")
 
-            if tipe_chart == "Jumlah Transaksi":
+                    else:
 
-                kkp_bottom = (
-                    kkp_chart
-                    .sort_values("Value", ascending=True)
-                    .head(10)
-                )
+                        # ===============================
+                        # TOP & BOTTOM
+                        # ===============================
+                        kkp_top = kkp_chart.sort_values("Value", ascending=False).head(10)
 
-            else:
+                        if tipe_chart == "Jumlah Transaksi":
 
-                kkp_bottom = (
-                    kkp_chart[kkp_chart["PAGU"] > 0]
-                    .sort_values("Value", ascending=True)
-                    .head(10)
-                )
+                            kkp_bottom = (
+                                kkp_chart
+                                .sort_values("Value", ascending=True)
+                                .head(10)
+                            )
 
+                        else:
 
-            # ===============================
-            # LABEL
-            # ===============================
-            if tipe_chart == "Jumlah Transaksi":
-
-                kkp_top["LABEL"] = kkp_top["Value"].astype(int)
-                kkp_bottom["LABEL"] = kkp_bottom["Value"].astype(int)
-
-                title_top = "10 Satker dengan Jumlah Transaksi KKP Terbesar"
-                title_bottom = "10 Satker dengan Jumlah Transaksi KKP Terendah"
-
-            else:
-
-                kkp_top["LABEL"] = kkp_top["Value"].apply(lambda x: f"{x:.2f}%")
-                kkp_bottom["LABEL"] = kkp_bottom["Value"].apply(lambda x: f"{x:.2f}%")
-
-                title_top = "10 Satker dengan % Realisasi KKP Tertinggi"
-                title_bottom = "10 Satker dengan % Realisasi KKP Terendah"
+                            kkp_bottom = (
+                                kkp_chart[kkp_chart["PAGU"] > 0]
+                                .sort_values("Value", ascending=True)
+                                .head(10)
+                            )
 
 
-            kkp_top = kkp_top.reset_index(drop=True)
-            kkp_top["Rank"] = kkp_top.index + 1
+                        # ===============================
+                        # LABEL
+                        # ===============================
+                        if tipe_chart == "Jumlah Transaksi":
 
-            kkp_bottom = kkp_bottom.reset_index(drop=True)
-            kkp_bottom["Rank"] = kkp_bottom.index + 1
+                            kkp_top["LABEL"] = kkp_top["Value"].astype(int)
+                            kkp_bottom["LABEL"] = kkp_bottom["Value"].astype(int)
 
+                            title_top = "10 Satker dengan Jumlah Transaksi KKP Terbesar"
+                            title_bottom = "10 Satker dengan Jumlah Transaksi KKP Terendah"
 
-            # ===============================
-            # CHART
-            # ===============================
-            col_left, col_right = st.columns(2)
+                        else:
 
+                            kkp_top["LABEL"] = kkp_top["Value"].apply(lambda x: f"{x:.2f}%")
+                            kkp_bottom["LABEL"] = kkp_bottom["Value"].apply(lambda x: f"{x:.2f}%")
 
-            # ===============================
-            # TOP CHART
-            # ===============================
-            with col_left:
-
-                fig_kkp_top = px.bar(
-                    kkp_top,
-                    x="Value",
-                    y="SATKER",
-                    orientation="h",
-                    text="LABEL",
-                    color="Rank",
-                    color_continuous_scale=["#00441B","#74C476"],
-                    title=title_top
-                )
-
-                fig_kkp_top.update_layout(
-                    height=550,
-                    yaxis={'categoryorder':'total ascending'},
-                    coloraxis_showscale=False
-                )
-
-                fig_kkp_top.update_traces(textposition="outside")
-
-                st.plotly_chart(fig_kkp_top, use_container_width=True)
+                            title_top = "10 Satker dengan % Realisasi KKP Tertinggi"
+                            title_bottom = "10 Satker dengan % Realisasi KKP Terendah"
 
 
-            # ===============================
-            # BOTTOM CHART
-            # ===============================
-            with col_right:
+                        kkp_top = kkp_top.reset_index(drop=True)
+                        kkp_top["Rank"] = kkp_top.index + 1
 
-                fig_kkp_bottom = px.bar(
-                    kkp_bottom,
-                    x="Value",
-                    y="SATKER",
-                    orientation="h",
-                    text="LABEL",
-                    color="Rank",
-                    color_continuous_scale=["#FEE0D2","#DE2D26"],
-                    title=title_bottom
-                )
+                        kkp_bottom = kkp_bottom.reset_index(drop=True)
+                        kkp_bottom["Rank"] = kkp_bottom.index + 1
 
-                fig_kkp_bottom.update_layout(
-                    height=550,
-                    yaxis={'categoryorder':'total ascending'},
-                    coloraxis_showscale=False
-                )
 
-                fig_kkp_bottom.update_traces(textposition="outside")
+                        # ===============================
+                        # CHART
+                        # ===============================
+                        col_left, col_right = st.columns(2)
 
-                st.plotly_chart(fig_kkp_bottom, use_container_width=True)
+
+                        # ===============================
+                        # TOP CHART
+                        # ===============================
+                        with col_left:
+
+                            fig_kkp_top = px.bar(
+                                kkp_top,
+                                x="Value",
+                                y="SATKER",
+                                orientation="h",
+                                text="LABEL",
+                                color="Rank",
+                                color_continuous_scale=["#00441B","#74C476"],
+                                title=title_top
+                            )
+
+                            fig_kkp_top.update_layout(
+                                height=550,
+                                yaxis={'categoryorder':'total ascending'},
+                                coloraxis_showscale=False
+                            )
+
+                            fig_kkp_top.update_traces(textposition="outside")
+
+                            st.plotly_chart(fig_kkp_top, use_container_width=True)
+
+
+                        # ===============================
+                        # BOTTOM CHART
+                        # ===============================
+                        with col_right:
+
+                            fig_kkp_bottom = px.bar(
+                                kkp_bottom,
+                                x="Value",
+                                y="SATKER",
+                                orientation="h",
+                                text="LABEL",
+                                color="Rank",
+                                color_continuous_scale=["#FEE0D2","#DE2D26"],
+                                title=title_bottom
+                            )
+
+                            fig_kkp_bottom.update_layout(
+                                height=550,
+                                yaxis={'categoryorder':'total ascending'},
+                                coloraxis_showscale=False
+                            )
+
+                            fig_kkp_bottom.update_traces(textposition="outside")
+
+                            st.plotly_chart(fig_kkp_bottom, use_container_width=True)
 
            
             
