@@ -1975,7 +1975,7 @@ def parse_dipa(df_raw):
 
 
     # ======================================================
-    # 🔑 PERBAIKAN NAMA SATKER (KHUSUS SPAN 2022–2023)
+    # PERBAIKAN NAMA SATKER (KHUSUS SPAN 2022–2023)
     # ======================================================
     ref = st.session_state.reference_df[
         ["Kode Satker", "Uraian Satker-SINGKAT"]
@@ -2035,7 +2035,7 @@ def is_omspan_dipa(df_raw):
 
 
 # ============================================================
-# 🔄 ADAPTER DIPA OMSPAN → FORMAT DIPA STANDAR (FINAL)
+# ADAPTER DIPA OMSPAN → FORMAT DIPA STANDAR (FINAL)
 # ============================================================
 def adapt_dipa_omspan(df_raw):
     df = df_raw.copy()
@@ -2456,7 +2456,7 @@ def register_ikpa_satker(df_final, month, year, source="Manual"):
         )
 
     # ===============================
-    # 🔥 SIMPAN
+    # SIMPAN
     # ===============================
     st.session_state.data_storage[key] = df
     
@@ -4643,8 +4643,6 @@ def process_cms_file(uploaded_file):
         for c in df.columns
     ]
 
-    st.write("HEADER CMS FINAL:")
-    st.write(df.columns.tolist())
 
     # =====================================================
     # SAMAKAN KOLOM KPPN
@@ -4695,18 +4693,8 @@ def process_cms_file(uploaded_file):
             df["KODE KPPN"] == "109"
         ]
 
-    # =====================================================
-    # DEBUG KPPN
-    # =====================================================
-    if "KODE KPPN" in df.columns:
 
-        st.write("SAMPLE KPPN:")
-
-        st.write(
-            df["KODE KPPN"]
-            .dropna()
-            .unique()[:20]
-        )
+    
 
     # =====================================================
     # JIKA KOSONG SETELAH FILTER
@@ -4772,10 +4760,6 @@ def process_cms_file(uploaded_file):
         .str.match(r"^\d{6}$", na=False)
     ]
 
-    st.write(
-        "JUMLAH SATKER VALID:",
-        len(df)
-    )
 
     # =====================================================
     # FIX NAMA SATKER
@@ -4845,20 +4829,7 @@ def process_cms_file(uploaded_file):
                 errors="coerce"
             ).fillna(0)
 
-    # =====================================================
-    # DEBUG FINAL
-    # =====================================================
-    st.write("JUMLAH DATA CMS:", len(df))
 
-    if "KODE KPPN" in df.columns:
-
-        st.write("JUMLAH DATA PER KPPN:")
-
-        st.write(
-            df["KODE KPPN"]
-            .value_counts()
-            .head(20)
-        )
 
     # =====================================================
     # MINIMAL DATA VALID
@@ -13642,19 +13613,6 @@ def page_admin():
                                 .str.zfill(3)
                             )
 
-                            # =====================================
-                            # DEBUG
-                            # =====================================
-                            st.write("SEMUA KPPN CMS:")
-
-                            st.write(
-                                sorted(
-                                    df["KODE KPPN"]
-                                    .dropna()
-                                    .unique()
-                                    .tolist()
-                                )[:50]
-                            )
 
                             # =====================================
                             # FILTER
@@ -13681,15 +13639,6 @@ def page_admin():
                         df["TRIWULAN"] = selected_triwulan
                         df["SOURCE_SHEET"] = sheet
 
-                        # =========================================
-                        # DEBUG
-                        # =========================================
-                        st.success(
-                            f"Sheet {sheet} berhasil "
-                            f"({len(df)} baris)"
-                        )
-
-                        st.write(df.head())
 
                         # =========================================
                         # SIMPAN
@@ -13739,21 +13688,6 @@ def page_admin():
                     ],
                     keep="first"
                 )
-
-                # =================================================
-                # DEBUG FINAL
-                # =================================================
-                st.write("FINAL CMS:")
-                st.write(df_final.head())
-
-                st.write("TOTAL DATA:", len(df_final))
-
-                if "KODE KPPN" in df_final.columns:
-
-                    st.write(
-                        df_final["KODE KPPN"]
-                        .value_counts()
-                    )
 
                 if not all_valid_data:
                     st.error("❌ Tidak ada data CMS KPPN 109 ditemukan.")
