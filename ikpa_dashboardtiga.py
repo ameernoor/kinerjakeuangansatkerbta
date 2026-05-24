@@ -6272,9 +6272,25 @@ def add_kkp_pagu_column(df_pivot, df_master):
     df_master["Kode Satker"] = df_master["Kode Satker"].astype(str).str.zfill(6)
     df_pivot["Kode Satker"] = df_pivot["Kode Satker"].astype(str).str.zfill(6)
 
+    # deteksi kolom pagu (support nama kolom lama & baru)
+    pagu_col = None
+    for candidate in ["LIMIT KKP", "Pagu KKP Per Bulan", "PAGU KKP PER BULAN"]:
+        if candidate in df_master.columns:
+            pagu_col = candidate
+            break
+
+    if pagu_col is None:
+        df_pivot["PAGU KKP"] = 0
+        cols = df_pivot.columns.tolist()
+        if "PAGU KKP" in cols:
+            cols.remove("PAGU KKP")
+        insert_pos = 2 if "SATKER" in cols else 1
+        cols.insert(insert_pos, "PAGU KKP")
+        return df_pivot[cols]
+
     # normalisasi limit
     df_master["LIMIT KKP"] = (
-        df_master["LIMIT KKP"]
+        df_master[pagu_col]
         .astype(str)
         .str.replace(r"[^\d]", "", regex=True)
     )
@@ -6351,28 +6367,75 @@ def generate_kkp_chart(df, periode="Bulanan", tahun_filter=None):
 # -----------------------------------
 # KKP BULANAN
 # -----------------------------------
-def generate_kkp_monthly_from_session(df, tahun_filter=None):
+def generate_kkp_monthly_from_session(df, tahun_filter=None, tipe="Jumlah Nominal"):
     
     df = df.copy()
+
+    # Normalisasi kolom nama satker (support lama & baru)
+    if "Nama Satker" not in df.columns:
+        if "SATKER" in df.columns:
+            df["Nama Satker"] = df["SATKER"]
+        else:
+            df["Nama Satker"] = df["Kode Satker"].astype(str)
+
+    # Normalisasi TAHUN & BULAN
+    if "TAHUN" not in df.columns and "PERIODE" in df.columns:
+        df["PERIODE"] = pd.to_datetime(df["PERIODE"], errors="coerce")
+        df["TAHUN"] = df["PERIODE"].dt.year
+        df["BULAN"] = df["PERIODE"].dt.month
+
+    df["TAHUN"] = pd.to_numeric(df["TAHUN"], errors="coerce")
+    df["BULAN"] = pd.to_numeric(df["BULAN"], errors="coerce")
 
     if tahun_filter is not None:
         df = df[df["TAHUN"] == tahun_filter]
 
-    agg_df = (
-        df.groupby(
-            ["Kode Satker","Nama Satker","BULAN"],
-            as_index=False
+    # Deteksi kolom nilai
+    nilai_col = None
+    for c in ["Nilai Transaksi", "NILAI TRANSAKSI (NILAI SPM)", "NILAI TRANSAKSI"]:
+        if c in df.columns:
+            nilai_col = c
+            break
+
+    if nilai_col is None:
+        nilai_col = "Nilai Transaksi"
+        df["Nilai Transaksi"] = 0
+
+    if tipe == "Jumlah Transaksi":
+        agg_df = (
+            df.groupby(
+                ["Kode Satker", "Nama Satker", "BULAN"],
+                as_index=False
+            )
+            .agg(Nilai_=(nilai_col, "count"))
         )
-        .agg({
-            "Nilai Transaksi":"sum"
-        })
+        agg_df = agg_df.rename(columns={"Nilai_": nilai_col})
+    else:
+        df[nilai_col] = pd.to_numeric(
+            df[nilai_col].astype(str).str.replace(r"[^\d]", "", regex=True),
+            errors="coerce"
+        ).fillna(0)
+        agg_df = (
+            df.groupby(
+                ["Kode Satker", "Nama Satker", "BULAN"],
+                as_index=False
+            )
+            .agg({nilai_col: "sum"})
+        )
+
+    pivot = agg_df.pivot_table(
+        index=["Kode Satker", "Nama Satker"],
+        columns="BULAN",
+        values=nilai_col,
+        fill_value=0
     )
 
-    pivot = agg_df.pivot(
-        index=["Kode Satker","Nama Satker"],
-        columns="BULAN",
-        values="Nilai Transaksi"
-    ).fillna(0)
+    # Pastikan kolom bulan lengkap 1-12
+    pivot = pivot.reindex(columns=range(1, 13), fill_value=0)
+
+    MONTH_MAP = {1:"JAN",2:"FEB",3:"MAR",4:"APR",5:"MEI",6:"JUN",
+                 7:"JUL",8:"AGU",9:"SEP",10:"OKT",11:"NOV",12:"DES"}
+    pivot.columns = [MONTH_MAP.get(c, str(c)) for c in pivot.columns]
 
     pivot = pivot.reset_index()
 
@@ -6382,147 +6445,132 @@ def generate_kkp_monthly_from_session(df, tahun_filter=None):
 # -----------------------------------
 # KKP TRIWULAN
 # -----------------------------------
-def generate_kkp_quarterly_from_session(df, tahun_filter=None):
+def generate_kkp_quarterly_from_session(df, tahun_filter=None, tipe="Jumlah Nominal"):
 
     df = df.copy()
 
-    # ===============================
-    # FIX TAHUN & BULAN
-    # ===============================
-    if "Tahun" not in df.columns:
-        df["Tahun"] = pd.to_numeric(
-            df["TAHUN"],
-            errors="coerce"
-        )
+    # Normalisasi kolom nama satker
+    if "Nama Satker" not in df.columns:
+        if "SATKER" in df.columns:
+            df["Nama Satker"] = df["SATKER"]
+        else:
+            df["Nama Satker"] = df["Kode Satker"].astype(str)
 
-    if "Bulan" not in df.columns:
-        df["Bulan"] = pd.to_numeric(
-            df["BULAN"],
-            errors="coerce"
-        )
+    # Normalisasi TAHUN & BULAN
+    if "PERIODE" in df.columns and ("TAHUN" not in df.columns or "BULAN" not in df.columns):
+        df["PERIODE"] = pd.to_datetime(df["PERIODE"], errors="coerce")
+        df["TAHUN"] = df["PERIODE"].dt.year
+        df["BULAN"] = df["PERIODE"].dt.month
 
-    # ===============================
-    # TRIWULAN
-    # ===============================
-    df["Triwulan"] = (
-        (df["Bulan"] - 1) // 3
-    ) + 1
+    df["TAHUN"] = pd.to_numeric(df.get("TAHUN", 0), errors="coerce")
+    df["BULAN"] = pd.to_numeric(df.get("BULAN", 1), errors="coerce")
 
-    # ===============================
-    # FILTER TAHUN
-    # ===============================
+    df["Triwulan"] = ((df["BULAN"] - 1) // 3) + 1
+
     if tahun_filter is not None:
-        df = df[df["Tahun"] == tahun_filter]
+        df = df[df["TAHUN"] == tahun_filter]
 
-    # ===============================
-    # AGREGASI
-    # ===============================
-    agg_df = (
-        df.groupby(
-            [
-                "Kode Satker",
-                "Nama Satker",
-                "Triwulan"
-            ],
-            as_index=False
+    # Deteksi kolom nilai
+    nilai_col = None
+    for c in ["Nilai Transaksi", "NILAI TRANSAKSI (NILAI SPM)", "NILAI TRANSAKSI"]:
+        if c in df.columns:
+            nilai_col = c
+            break
+    if nilai_col is None:
+        nilai_col = "Nilai Transaksi"
+        df["Nilai Transaksi"] = 0
+
+    if tipe == "Jumlah Transaksi":
+        agg_df = (
+            df.groupby(["Kode Satker", "Nama Satker", "Triwulan"], as_index=False)
+            .agg(Nilai_=(nilai_col, "count"))
         )
-        .agg({
-            "Nilai Transaksi": "sum"
-        })
-    )
+        agg_df = agg_df.rename(columns={"Nilai_": nilai_col})
+    else:
+        df[nilai_col] = pd.to_numeric(
+            df[nilai_col].astype(str).str.replace(r"[^\d]", "", regex=True),
+            errors="coerce"
+        ).fillna(0)
+        agg_df = (
+            df.groupby(["Kode Satker", "Nama Satker", "Triwulan"], as_index=False)
+            .agg({nilai_col: "sum"})
+        )
 
-    # ===============================
-    # PIVOT
-    # ===============================
     pivot = agg_df.pivot_table(
-        index=[
-            "Kode Satker",
-            "Nama Satker"
-        ],
+        index=["Kode Satker", "Nama Satker"],
         columns="Triwulan",
-        values="Nilai Transaksi",
+        values=nilai_col,
         fill_value=0
     )
 
-    # pastikan TW lengkap
-    pivot = pivot.reindex(
-        columns=[1,2,3,4],
-        fill_value=0
-    )
-
-    pivot.columns = [
-        "TW1",
-        "TW2",
-        "TW3",
-        "TW4"
-    ]
-
+    pivot = pivot.reindex(columns=[1,2,3,4], fill_value=0)
+    pivot.columns = ["TW1", "TW2", "TW3", "TW4"]
     pivot = pivot.reset_index()
 
-    cols = [
-        "Kode Satker",
-        "Nama Satker",
-        "TW1",
-        "TW2",
-        "TW3",
-        "TW4"
-    ]
-
-    return pivot[cols]
+    return pivot[["Kode Satker", "Nama Satker", "TW1", "TW2", "TW3", "TW4"]]
 
 
 # -----------------------------------
 # KKP TAHUNAN
 # -----------------------------------
-def generate_kkp_yearly_from_session(df):
+def generate_kkp_yearly_from_session(df, tipe="Jumlah Nominal"):
 
     df = df.copy()
 
-    # ===============================
-    # FIX TAHUN
-    # ===============================
-    if "Tahun" not in df.columns:
-        df["Tahun"] = pd.to_numeric(
-            df["TAHUN"],
+    # Normalisasi kolom nama satker
+    if "Nama Satker" not in df.columns:
+        if "SATKER" in df.columns:
+            df["Nama Satker"] = df["SATKER"]
+        else:
+            df["Nama Satker"] = df["Kode Satker"].astype(str)
+
+    # Normalisasi TAHUN
+    if "TAHUN" in df.columns:
+        df["Tahun"] = pd.to_numeric(df["TAHUN"], errors="coerce")
+    elif "PERIODE" in df.columns:
+        df["PERIODE"] = pd.to_datetime(df["PERIODE"], errors="coerce")
+        df["Tahun"] = df["PERIODE"].dt.year
+    else:
+        df["Tahun"] = 0
+
+    # Deteksi kolom nilai
+    nilai_col = None
+    for c in ["Nilai Transaksi", "NILAI TRANSAKSI (NILAI SPM)", "NILAI TRANSAKSI"]:
+        if c in df.columns:
+            nilai_col = c
+            break
+    if nilai_col is None:
+        nilai_col = "Nilai Transaksi"
+        df["Nilai Transaksi"] = 0
+
+    if tipe == "Jumlah Transaksi":
+        agg_df = (
+            df.groupby(["Kode Satker", "Nama Satker", "Tahun"], as_index=False)
+            .agg(Nilai_=(nilai_col, "count"))
+        )
+        agg_df = agg_df.rename(columns={"Nilai_": nilai_col})
+    else:
+        df[nilai_col] = pd.to_numeric(
+            df[nilai_col].astype(str).str.replace(r"[^\d]", "", regex=True),
             errors="coerce"
+        ).fillna(0)
+        agg_df = (
+            df.groupby(["Kode Satker", "Nama Satker", "Tahun"], as_index=False)
+            .agg({nilai_col: "sum"})
         )
 
-    # ===============================
-    # AGREGASI
-    # ===============================
-    agg_df = (
-        df.groupby(
-            [
-                "Kode Satker",
-                "Nama Satker",
-                "Tahun"
-            ],
-            as_index=False
-        )
-        .agg({
-            "Nilai Transaksi": "sum"
-        })
-    )
-
-    # ===============================
-    # PIVOT
-    # ===============================
     pivot = (
         agg_df
         .pivot_table(
-            index=[
-                "Kode Satker",
-                "Nama Satker"
-            ],
+            index=["Kode Satker", "Nama Satker"],
             columns="Tahun",
-            values="Nilai Transaksi",
+            values=nilai_col,
             fill_value=0
         )
         .sort_index(axis=1)
     )
 
     pivot.columns = pivot.columns.astype(str)
-
     pivot = pivot.reset_index()
 
     return pivot
@@ -6531,16 +6579,16 @@ def generate_kkp_yearly_from_session(df):
 # -----------------------------------
 # WRAPPER KKP
 # -----------------------------------
-def generate_kkp_from_session(df, periode="Bulanan", tahun_filter=None):
+def generate_kkp_from_session(df, periode="Bulanan", tahun_filter=None, tipe="Jumlah Nominal"):
     
     if periode == "Bulanan":
-        return generate_kkp_monthly_from_session(df, tahun_filter)
+        return generate_kkp_monthly_from_session(df, tahun_filter, tipe=tipe)
 
     elif periode == "Triwulan":
-        return generate_kkp_quarterly_from_session(df, tahun_filter)
+        return generate_kkp_quarterly_from_session(df, tahun_filter, tipe=tipe)
 
     else:
-        return generate_kkp_yearly_from_session(df)
+        return generate_kkp_yearly_from_session(df, tipe=tipe)
     
     
 # Persentase Realisasi KKP
@@ -6549,7 +6597,18 @@ def add_kkp_percentage_columns(df_pivot, df_master):
     df = df_master.copy()
 
     df["PERIODE"] = pd.to_datetime(df["PERIODE"], errors="coerce")
-    df["LIMIT KKP"] = clean_nominal(df["LIMIT KKP"])
+
+    # deteksi kolom pagu (support nama kolom lama & baru)
+    pagu_col = None
+    for candidate in ["LIMIT KKP", "Pagu KKP Per Bulan", "PAGU KKP PER BULAN"]:
+        if candidate in df.columns:
+            pagu_col = candidate
+            break
+
+    if pagu_col is None:
+        return df_pivot
+
+    df["LIMIT KKP"] = clean_nominal(df[pagu_col])
 
     df["Kode Satker"] = df["Kode Satker"].astype(str).str.zfill(6)
     df_pivot["Kode Satker"] = df_pivot["Kode Satker"].astype(str).str.zfill(6)
@@ -8730,37 +8789,39 @@ def page_dashboard():
             # ===============================
             # NORMALISASI NOMINAL
             # ===============================
-            if "NILAI TRANSAKSI (NILAI SPM)" in df_kkp.columns:
+            # Normalisasi kolom nilai transaksi (support nama kolom lama & baru)
+            _nominal_col = None
+            for _c in ["NILAI TRANSAKSI (NILAI SPM)", "Nilai Transaksi", "NILAI TRANSAKSI"]:
+                if _c in df_kkp.columns:
+                    _nominal_col = _c
+                    break
 
-                df_kkp["NILAI TRANSAKSI (NILAI SPM)"] = (
-                    df_kkp["NILAI TRANSAKSI (NILAI SPM)"]
-                    .astype(str)
-                    .str.replace(r"[^\d]", "", regex=True)
-                )
-
+            if _nominal_col is not None:
                 df_kkp["NILAI TRANSAKSI (NILAI SPM)"] = pd.to_numeric(
-                    df_kkp["NILAI TRANSAKSI (NILAI SPM)"],
+                    df_kkp[_nominal_col].astype(str).str.replace(r"[^\d]", "", regex=True),
                     errors="coerce"
                 ).fillna(0)
-
             else:
-
                 df_kkp["NILAI TRANSAKSI (NILAI SPM)"] = 0
 
 
             # ===============================
             # NORMALISASI LIMIT KKP
             # ===============================
-            df_kkp["LIMIT KKP"] = (
-                df_kkp["LIMIT KKP"]
-                .astype(str)
-                .str.replace(r"[^\d]", "", regex=True)
-            )
+            # Normalisasi kolom pagu (support nama kolom lama & baru)
+            _pagu_col = None
+            for _c in ["LIMIT KKP", "Pagu KKP Per Bulan", "PAGU KKP PER BULAN"]:
+                if _c in df_kkp.columns:
+                    _pagu_col = _c
+                    break
 
-            df_kkp["LIMIT KKP"] = pd.to_numeric(
-                df_kkp["LIMIT KKP"],
-                errors="coerce"
-            ).fillna(0)
+            if _pagu_col is not None:
+                df_kkp["LIMIT KKP"] = pd.to_numeric(
+                    df_kkp[_pagu_col].astype(str).str.replace(r"[^\d]", "", regex=True),
+                    errors="coerce"
+                ).fillna(0)
+            else:
+                df_kkp["LIMIT KKP"] = 0
 
 
             # ===============================
@@ -9702,6 +9763,10 @@ def page_dashboard():
 
                     # normalisasi kode satker
                     df_pivot["Kode Satker"] = df_pivot["Kode Satker"].astype(str).str.zfill(6)
+
+                    # Normalisasi nama kolom satker agar konsisten
+                    if "Nama Satker" in df_pivot.columns and "SATKER" not in df_pivot.columns:
+                        df_pivot = df_pivot.rename(columns={"Nama Satker": "SATKER"})
 
                     # =====================================================
                     # FILTER BA (dari session state filter_ba_main)
