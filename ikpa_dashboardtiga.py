@@ -5879,7 +5879,7 @@ def classify_jenis_satker(df):
 
 
 
-# BAGIAN 4 CHART DASHBOARD UTAMA
+# BAGIAN 4 CHART DASHBOARD Satker
 def safe_chart(
     df_part,
     jenis,
@@ -6925,7 +6925,7 @@ def generate_cms_from_session(
 if "cms_master" not in st.session_state:
     st.session_state.cms_master = pd.DataFrame()
 
-# HALAMAN 1: DASHBOARD UTAMA
+# HALAMAN 1: DASHBOARD Satker
 def page_dashboard():
     
     df_full = pd.DataFrame()
@@ -6947,7 +6947,7 @@ def page_dashboard():
     st.markdown('<div class="hero">', unsafe_allow_html=True)
     st.markdown('<div class="hero-content">', unsafe_allow_html=True)
 
-    st.markdown('<div class="hero-title">Dashboard Utama Kinerja Keuangan</div>', unsafe_allow_html=True)
+    st.markdown('<div class="hero-title">Dashboard Kinerja Keuangan Satker</div>', unsafe_allow_html=True)
     st.markdown('<div class="hero-sub">Satker Mitra KPPN Baturaja</div>', unsafe_allow_html=True)
 
     st.markdown('</div>', unsafe_allow_html=True)
@@ -7662,7 +7662,7 @@ def page_dashboard():
             st.markdown("## 📋 Tabel Detail Satker")
 
             # ===============================
-            # 🔎 AMBIL FILTER KODE BA (DARI DASHBOARD UTAMA)
+            # 🔎 AMBIL FILTER KODE BA (DARI DASHBOARD SATKER)
             # ===============================
             selected_ba = st.session_state.get("filter_ba_main", None)
 
@@ -15336,10 +15336,10 @@ def main():
     st.sidebar.markdown("---")
 
     if "page" not in st.session_state:
-        st.session_state.page = "Dashboard Utama"
+        st.session_state.page = "Dashboard Satker"
 
-    if st.sidebar.button("📊 Dashboard Utama", use_container_width=True):
-        st.session_state.page = "Dashboard Utama"
+    if st.sidebar.button("📊 Dashboard Satker", use_container_width=True):
+        st.session_state.page = "Dashboard Satker"
 
     if st.sidebar.button("📈 Dashboard Internal", use_container_width=True):
         st.session_state.page = "Dashboard Internal"
@@ -15350,9 +15350,8 @@ def main():
     st.sidebar.markdown("---")
 
     st.sidebar.info("""
-    **Dashboard IKPA**  
-    Indikator Kinerja Pelaksanaan Anggaran  
-    KPPN Baturaja  
+    **DAKSA**  
+    Dashboard Analitik Kinerja Satker Terintegrasi
 
     📧 Support: ameer.noor@kemenkeu.go.id
     """)
@@ -15360,7 +15359,7 @@ def main():
     # ===============================
     # Routing Halaman
     # ===============================
-    if st.session_state.page == "Dashboard Utama":
+    if st.session_state.page == "Dashboard Satker":
         page_dashboard()
 
     elif st.session_state.page == "Dashboard Internal":
