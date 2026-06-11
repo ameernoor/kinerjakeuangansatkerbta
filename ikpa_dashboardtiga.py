@@ -15332,6 +15332,9 @@ def main():
     # ============================================================
     # Sidebar + Routing halaman
     # ============================================================
+    st.sidebar.image(
+        "https://raw.githubusercontent.com/ameernoor/kinerjakeuangansatkerbta/main/logo_daksa.jpg",
+        use_container_width=True)
     st.sidebar.title("🧭 Navigasi")
     st.sidebar.markdown("---")
 
