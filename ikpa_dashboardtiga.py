@@ -6947,7 +6947,7 @@ def page_dashboard():
     st.markdown('<div class="hero">', unsafe_allow_html=True)
     st.markdown('<div class="hero-content">', unsafe_allow_html=True)
 
-    st.markdown('<div class="hero-title">Dashboard Kinerja Keuangan Satker</div>', unsafe_allow_html=True)
+    st.markdown('<div class="hero-title">Dashboard Kinerja Keuangan</div>', unsafe_allow_html=True)
     st.markdown('<div class="hero-sub">Satker Mitra KPPN Baturaja</div>', unsafe_allow_html=True)
 
     st.markdown('</div>', unsafe_allow_html=True)
@@ -15353,9 +15353,6 @@ def main():
     st.sidebar.markdown("---")
 
     st.sidebar.info("""
-    **DAKSA**  
-    Dashboard Analitik Kinerja Satker Terintegrasi
-
     📧 Support: ameer.noor@kemenkeu.go.id
     """)
 
