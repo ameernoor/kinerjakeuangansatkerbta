@@ -8728,97 +8728,98 @@ def page_dashboard():
 
                 st.plotly_chart(fig_digipay_bottom, use_container_width=True)
             
-            # ===============================
+# ===============================
             # CHART KKP
             # ===============================
 
-            # ===============================
-            # AMBIL DATA DARI SESSION
-            # ===============================
-            df_kkp = st.session_state.kkp_master.copy()
-            
+            # Jalankan blok ini HANYA JIKA "Jumlah Nominal" yang dipilih
+            if tipe_chart == "Jumlah Nominal":
 
-            if "SATKER" not in df_kkp.columns:
-                df_kkp["SATKER"] = "SATKER TIDAK DIKETAHUI"
+                # ===============================
+                # AMBIL DATA DARI SESSION
+                # ===============================
+                df_kkp = st.session_state.kkp_master.copy()
+                
+                if "SATKER" not in df_kkp.columns:
+                    df_kkp["SATKER"] = "SATKER TIDAK DIKETAHUI"
 
-            if "Kode Satker" not in df_kkp.columns:
-                df_kkp["Kode Satker"] = "000000"
+                if "Kode Satker" not in df_kkp.columns:
+                    df_kkp["Kode Satker"] = "000000"
 
-            # ===============================
-            # NORMALISASI PERIODE
-            # ===============================
-            df_kkp["PERIODE"] = pd.to_datetime(df_kkp["PERIODE"], errors="coerce")
+                # ===============================
+                # NORMALISASI PERIODE
+                # ===============================
+                df_kkp["PERIODE"] = pd.to_datetime(df_kkp["PERIODE"], errors="coerce")
 
-            df_kkp["TAHUN"] = df_kkp["PERIODE"].dt.year
-            df_kkp["BULAN"] = df_kkp["PERIODE"].dt.month
-            df_kkp["TRIWULAN"] = df_kkp["PERIODE"].dt.quarter
+                df_kkp["TAHUN"] = df_kkp["PERIODE"].dt.year
+                df_kkp["BULAN"] = df_kkp["PERIODE"].dt.month
+                df_kkp["TRIWULAN"] = df_kkp["PERIODE"].dt.quarter
 
-            # ===============================
-            # FILTER UI KHUSUS KKP
-            # (independen dari filter Digipay)
-            # ===============================
-            _kkp_tahun_list = sorted(df_kkp["TAHUN"].dropna().astype(int).unique())
-            _kkp_tahun_terbaru = max(_kkp_tahun_list) if _kkp_tahun_list else int(pd.Timestamp.now().year)
+                # ===============================
+                # FILTER UI KHUSUS KKP
+                # ===============================
+                _kkp_tahun_list = sorted(df_kkp["TAHUN"].dropna().astype(int).unique())
+                _kkp_tahun_terbaru = max(_kkp_tahun_list) if _kkp_tahun_list else int(pd.Timestamp.now().year)
 
-            st.markdown("**Filter KKP:**")
-            _kkp_col1, _kkp_col2, _kkp_col3 = st.columns(3)
+                st.markdown("**Filter KKP:**")
+                _kkp_col1, _kkp_col2, _kkp_col3 = st.columns(3)
 
-            with _kkp_col1:
-                _kkp_periode = st.selectbox(
-                    "Periode KKP",
-                    ["Bulanan", "Triwulan", "Tahunan"],
-                    index=["Bulanan", "Triwulan", "Tahunan"].index(periode_chart),
-                    key="kkp_chart_periode"
-                )
-
-            with _kkp_col2:
-                _kkp_tahun = st.selectbox(
-                    "Tahun KKP",
-                    _kkp_tahun_list,
-                    index=_kkp_tahun_list.index(_kkp_tahun_terbaru) if _kkp_tahun_terbaru in _kkp_tahun_list else 0,
-                    key="kkp_chart_tahun"
-                )
-
-            _kkp_bulan_selected = None
-            _kkp_tw_selected = None
-
-            _bulan_map_kkp = {
-                1:"Januari",2:"Februari",3:"Maret",4:"April",
-                5:"Mei",6:"Juni",7:"Juli",8:"Agustus",
-                9:"September",10:"Oktober",11:"November",12:"Desember"
-            }
-
-            if _kkp_periode == "Bulanan":
-                _kkp_bulan_list = sorted(
-                    df_kkp[df_kkp["TAHUN"] == _kkp_tahun]["BULAN"].dropna().astype(int).unique()
-                )
-                _kkp_bulan_terbaru = max(_kkp_bulan_list) if _kkp_bulan_list else 1
-                with _kkp_col3:
-                    _kkp_bulan_selected = st.selectbox(
-                        "Bulan KKP",
-                        _kkp_bulan_list,
-                        index=_kkp_bulan_list.index(_kkp_bulan_terbaru) if _kkp_bulan_terbaru in _kkp_bulan_list else 0,
-                        format_func=lambda x: _bulan_map_kkp.get(x, x),
-                        key="kkp_chart_bulan"
-                    )
-            elif _kkp_periode == "Triwulan":
-                _kkp_tw_list = sorted(
-                    df_kkp[df_kkp["TAHUN"] == _kkp_tahun]["TRIWULAN"].dropna().astype(int).unique()
-                )
-                _kkp_tw_options = [f"TW{i}" for i in _kkp_tw_list]
-                with _kkp_col3:
-                    _kkp_tw_selected = st.selectbox(
-                        "Triwulan KKP",
-                        _kkp_tw_options,
-                        index=len(_kkp_tw_options) - 1 if _kkp_tw_options else 0,
-                        key="kkp_chart_tw"
+                with _kkp_col1:
+                    _kkp_periode = st.selectbox(
+                        "Periode KKP",
+                        ["Bulanan", "Triwulan", "Tahunan"],
+                        index=["Bulanan", "Triwulan", "Tahunan"].index(periode_chart),
+                        key="kkp_chart_periode"
                     )
 
-            # Override variabel filter untuk digunakan di blok KKP di bawah
-            tahun_chart = _kkp_tahun
-            bulan_selected = _kkp_bulan_selected
-            triwulan_selected = _kkp_tw_selected
-            periode_chart_kkp = _kkp_periode
+                with _kkp_col2:
+                    _kkp_tahun = st.selectbox(
+                        "Tahun KKP",
+                        _kkp_tahun_list,
+                        index=_kkp_tahun_list.index(_kkp_tahun_terbaru) if _kkp_tahun_terbaru in _kkp_tahun_list else 0,
+                        key="kkp_chart_tahun"
+                    )
+
+                _kkp_bulan_selected = None
+                _kkp_tw_selected = None
+
+                _bulan_map_kkp = {
+                    1:"Januari",2:"Februari",3:"Maret",4:"April",
+                    5:"Mei",6:"Juni",7:"Juli",8:"Agustus",
+                    9:"September",10:"Oktober",11:"November",12:"Desember"
+                }
+
+                if _kkp_periode == "Bulanan":
+                    _kkp_bulan_list = sorted(
+                        df_kkp[df_kkp["TAHUN"] == _kkp_tahun]["BULAN"].dropna().astype(int).unique()
+                    )
+                    _kkp_bulan_terbaru = max(_kkp_bulan_list) if _kkp_bulan_list else 1
+                    with _kkp_col3:
+                        _kkp_bulan_selected = st.selectbox(
+                            "Bulan KKP",
+                            _kkp_bulan_list,
+                            index=_kkp_bulan_list.index(_kkp_bulan_terbaru) if _kkp_bulan_terbaru in _kkp_bulan_list else 0,
+                            format_func=lambda x: _bulan_map_kkp.get(x, x),
+                            key="kkp_chart_bulan"
+                        )
+                elif _kkp_periode == "Triwulan":
+                    _kkp_tw_list = sorted(
+                        df_kkp[df_kkp["TAHUN"] == _kkp_tahun]["TRIWULAN"].dropna().astype(int).unique()
+                    )
+                    _kkp_tw_options = [f"TW{i}" for i in _kkp_tw_list]
+                    with _kkp_col3:
+                        _kkp_tw_selected = st.selectbox(
+                            "Triwulan KKP",
+                            _kkp_tw_options,
+                            index=len(_kkp_tw_options) - 1 if _kkp_tw_options else 0,
+                            key="kkp_chart_tw"
+                        )
+
+                # Override variabel filter untuk digunakan di blok KKP di bawah
+                tahun_chart = _kkp_tahun
+                bulan_selected = _kkp_bulan_selected
+                triwulan_selected = _kkp_tw_selected
+                periode_chart_kkp = _kkp_periode
 
 
             # ===============================
