@@ -8736,9 +8736,11 @@ def page_dashboard():
             # AMBIL DATA DARI SESSION
             # ===============================
             df_kkp = st.session_state.kkp_master.copy()
+            
 
             if "SATKER" not in df_kkp.columns:
                 df_kkp["SATKER"] = "SATKER TIDAK DIKETAHUI"
+
             if "Kode Satker" not in df_kkp.columns:
                 df_kkp["Kode Satker"] = "000000"
 
@@ -8746,6 +8748,7 @@ def page_dashboard():
             # NORMALISASI PERIODE
             # ===============================
             df_kkp["PERIODE"] = pd.to_datetime(df_kkp["PERIODE"], errors="coerce")
+
             df_kkp["TAHUN"] = df_kkp["PERIODE"].dt.year
             df_kkp["BULAN"] = df_kkp["PERIODE"].dt.month
             df_kkp["TRIWULAN"] = df_kkp["PERIODE"].dt.quarter
@@ -8758,10 +8761,7 @@ def page_dashboard():
             _kkp_tahun_terbaru = max(_kkp_tahun_list) if _kkp_tahun_list else int(pd.Timestamp.now().year)
 
             st.markdown("**Filter KKP:**")
-
             _kkp_col1, _kkp_col2, _kkp_col3 = st.columns(3)
-
-
 
             with _kkp_col1:
                 _kkp_periode = st.selectbox(
@@ -8770,8 +8770,6 @@ def page_dashboard():
                     index=["Bulanan", "Triwulan", "Tahunan"].index(periode_chart),
                     key="kkp_chart_periode"
                 )
-
-
 
             with _kkp_col2:
                 _kkp_tahun = st.selectbox(
@@ -8783,7 +8781,7 @@ def page_dashboard():
 
             _kkp_bulan_selected = None
             _kkp_tw_selected = None
-            
+
             _bulan_map_kkp = {
                 1:"Januari",2:"Februari",3:"Maret",4:"April",
                 5:"Mei",6:"Juni",7:"Juli",8:"Agustus",
@@ -8803,7 +8801,6 @@ def page_dashboard():
                         format_func=lambda x: _bulan_map_kkp.get(x, x),
                         key="kkp_chart_bulan"
                     )
-
             elif _kkp_periode == "Triwulan":
                 _kkp_tw_list = sorted(
                     df_kkp[df_kkp["TAHUN"] == _kkp_tahun]["TRIWULAN"].dropna().astype(int).unique()
@@ -8823,6 +8820,7 @@ def page_dashboard():
             triwulan_selected = _kkp_tw_selected
             periode_chart_kkp = _kkp_periode
 
+            
             # 3️⃣ FILTER DATA KKP (Gunakan variabel baru akhiran _kkp)
             if periode_chart_kkp == "Bulanan":
                 df_kkp = df_kkp[
