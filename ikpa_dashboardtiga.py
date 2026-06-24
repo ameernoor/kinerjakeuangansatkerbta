@@ -8732,34 +8732,18 @@ def page_dashboard():
             # CHART KKP
             # ===============================
 
-            # Jalankan blok ini HANYA JIKA "Jumlah Nominal" yang dipilih
+            # 1️⃣ INISIALISASI DEFAULT VALUE (Agar CMS Chart tidak error saat Transaksi dipilih)
+            _kkp_tahun_list = sorted(df_kkp["TAHUN"].dropna().astype(int).unique())
+            
+            # Gunakan fallback ke filter utama Digipay jika data KKP kosong
+            periode_chart_kkp = periode_chart 
+            tahun_chart_kkp = tahun_chart if tahun_chart in _kkp_tahun_list else (max(_kkp_tahun_list) if _kkp_tahun_list else int(pd.Timestamp.now().year))
+            bulan_selected_kkp = None
+            triwulan_selected_kkp = None
+
+
+            # 2️⃣ FILTER UI KHUSUS KKP HANYA MUNCUL DI "Jumlah Nominal"
             if tipe_chart == "Jumlah Nominal":
-
-                # ===============================
-                # AMBIL DATA DARI SESSION
-                # ===============================
-                df_kkp = st.session_state.kkp_master.copy()
-                
-                if "SATKER" not in df_kkp.columns:
-                    df_kkp["SATKER"] = "SATKER TIDAK DIKETAHUI"
-
-                if "Kode Satker" not in df_kkp.columns:
-                    df_kkp["Kode Satker"] = "000000"
-
-                # ===============================
-                # NORMALISASI PERIODE
-                # ===============================
-                df_kkp["PERIODE"] = pd.to_datetime(df_kkp["PERIODE"], errors="coerce")
-
-                df_kkp["TAHUN"] = df_kkp["PERIODE"].dt.year
-                df_kkp["BULAN"] = df_kkp["PERIODE"].dt.month
-                df_kkp["TRIWULAN"] = df_kkp["PERIODE"].dt.quarter
-
-                # ===============================
-                # FILTER UI KHUSUS KKP
-                # ===============================
-                _kkp_tahun_list = sorted(df_kkp["TAHUN"].dropna().astype(int).unique())
-                _kkp_tahun_terbaru = max(_kkp_tahun_list) if _kkp_tahun_list else int(pd.Timestamp.now().year)
 
                 st.markdown("**Filter KKP:**")
                 _kkp_col1, _kkp_col2, _kkp_col3 = st.columns(3)
@@ -8776,18 +8760,9 @@ def page_dashboard():
                     _kkp_tahun = st.selectbox(
                         "Tahun KKP",
                         _kkp_tahun_list,
-                        index=_kkp_tahun_list.index(_kkp_tahun_terbaru) if _kkp_tahun_terbaru in _kkp_tahun_list else 0,
+                        index=_kkp_tahun_list.index(tahun_chart_kkp) if tahun_chart_kkp in _kkp_tahun_list else 0,
                         key="kkp_chart_tahun"
                     )
-
-                _kkp_bulan_selected = None
-                _kkp_tw_selected = None
-
-                _bulan_map_kkp = {
-                    1:"Januari",2:"Februari",3:"Maret",4:"April",
-                    5:"Mei",6:"Juni",7:"Juli",8:"Agustus",
-                    9:"September",10:"Oktober",11:"November",12:"Desember"
-                }
 
                 if _kkp_periode == "Bulanan":
                     _kkp_bulan_list = sorted(
@@ -8815,12 +8790,27 @@ def page_dashboard():
                             key="kkp_chart_tw"
                         )
 
-                # Override variabel filter untuk digunakan di blok KKP di bawah
-                tahun_chart = _kkp_tahun
-                bulan_selected = _kkp_bulan_selected
-                triwulan_selected = _kkp_tw_selected
+                # Ambil nilai aktual dari input widget
                 periode_chart_kkp = _kkp_periode
+                tahun_chart_kkp = _kkp_tahun
+                bulan_selected_kkp = _kkp_bulan_selected
+                triwulan_selected_kkp = _kkp_tw_selected
 
+
+            # 3️⃣ FILTER DATA KKP (Gunakan variabel baru akhiran _kkp)
+            if periode_chart_kkp == "Bulanan":
+                df_kkp = df_kkp[
+                    (df_kkp["TAHUN"] == tahun_chart_kkp) &
+                    (df_kkp["BULAN"] <= (bulan_selected_kkp if bulan_selected_kkp else 12))
+                ]
+            elif periode_chart_kkp == "Triwulan":
+                tw = int(triwulan_selected_kkp.replace("TW", "")) if triwulan_selected_kkp else 4
+                df_kkp = df_kkp[
+                    (df_kkp["TAHUN"] == tahun_chart_kkp) &
+                    (df_kkp["TRIWULAN"] <= tw)
+                ]
+            else:
+                df_kkp = df_kkp[df_kkp["TAHUN"] <= tahun_chart_kkp]
 
             # ===============================
             # NORMALISASI NOMINAL
