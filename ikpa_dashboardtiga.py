@@ -14926,7 +14926,6 @@ def page_admin():
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
             )
 
-        st.markdown("---")
         st.markdown("### 📗 Template Data Referensi Satker & K/L")
 
         # 🧩 Use latest reference data for template content
