@@ -8820,21 +8820,6 @@ def page_dashboard():
             triwulan_selected = _kkp_tw_selected
             periode_chart_kkp = _kkp_periode
 
-            
-            # 3️⃣ FILTER DATA KKP (Gunakan variabel baru akhiran _kkp)
-            if periode_chart_kkp == "Bulanan":
-                df_kkp = df_kkp[
-                    (df_kkp["TAHUN"] == tahun_chart_kkp) &
-                    (df_kkp["BULAN"] <= (bulan_selected_kkp if bulan_selected_kkp else 12))
-                ]
-            elif periode_chart_kkp == "Triwulan":
-                tw = int(triwulan_selected_kkp.replace("TW", "")) if triwulan_selected_kkp else 4
-                df_kkp = df_kkp[
-                    (df_kkp["TAHUN"] == tahun_chart_kkp) &
-                    (df_kkp["TRIWULAN"] <= tw)
-                ]
-            else:
-                df_kkp = df_kkp[df_kkp["TAHUN"] <= tahun_chart_kkp]
 
             # ===============================
             # NORMALISASI NOMINAL
