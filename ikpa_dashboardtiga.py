@@ -15350,11 +15350,24 @@ def main():
         st.session_state.page = "Admin"
 
     st.sidebar.markdown("---")
-
-    st.sidebar.info("""
-    📧 Support: ameer.noor@kemenkeu.go.id
+    
+    st.sidebar.markdown("""
+    ### 👨‍💻 Credits
+    
+    **Lead Developer**  
+    **Diah Ayuning Tyas**  
+    📧 tyasayu1703@gmail.com
+    
+    **Co-Developer**  
+    **Muhamad Ameer Noor**  
+    📧 ameer.noor@kemenkeu.go.id
     """)
 
+    st.sidebar.info("""
+    ### ✉️ Support
+    
+    ameer.noor@kemenkeu.go.id
+    """)
     # ===============================
     # Routing Halaman
     # ===============================
