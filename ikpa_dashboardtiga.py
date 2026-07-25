@@ -12782,7 +12782,11 @@ def page_admin():
         # ===============================
         st.markdown("---")
         st.subheader("💳 Upload Data KKP")
-
+        st.caption(
+            "Sistem dapat memproses Data KKP  yang bersumber dari :\n"
+            "Aplikasi New SINTESA → menu Monev KKP → KPPN → Data Transaksi"
+        )        
+        
         uploaded_file_kkp = st.file_uploader(
             "Pilih file Excel Data KKP",
             type=["xlsx", "xls"],
@@ -13315,13 +13319,16 @@ def page_admin():
         # =========================================
         st.markdown("---")
         st.subheader("📤 Upload Data Pagu KKP (Untuk 2026 dan seterusnya)")
-        st.info("Menu ini berfungsi mengupdate angka **Pagu KKP Per Bulan** yang nilainya masih 0 pada database (KKP_MASTER) di Github berdasarkan file Excel Monev KKP yang diupload.")
+        st.caption(
+            "Sistem dapat memproses Data Pagu KKP  yang bersumber dari :\n"
+            "Aplikasi New SINTESA → menu Monev KKP → KPPN → Ringkasan Laporan"
+        )        
 
         col_tahun, col_file = st.columns([1, 2])
         
         with col_tahun:
             # Menu pilihan tahun
-            tahun_pagu = st.selectbox("Pilih Tahun Target", [2026, 2027, 2028, 2029, 2030], index=0)
+            tahun_pagu = st.selectbox("Pilih Tahun", [2026, 2027, 2028, 2029, 2030], index=0)
             
         with col_file:
             # Uploader
