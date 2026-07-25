@@ -12115,8 +12115,9 @@ def process_upload_pagu_kkp(uploaded_file, tahun_pilih):
             df_master = pd.concat([df_master, df_new], ignore_index=True)
             
         # 5. REKALKULASI & PENYUSUNAN ULANG
-        # Sortir secara logis agar baris baru tidak menumpuk di paling bawah secara acak
-        df_master = df_master.sort_values(by=["TAHUN", "BULAN", "Kode Satker"]).reset_index(drop=True)
+        # Sortir prioritas: 1. Kode Satker, 2. Tahun, 3. Bulan (semua Ascending)
+        df_master = df_master.sort_values(by=["Kode Satker", "TAHUN", "BULAN"], ascending=[True, True, True]).reset_index(drop=True)
+        
         # Tulis ulang kolom NO agar berurutan kembali 1, 2, 3...
         df_master["NO"] = range(1, len(df_master) + 1)
         
@@ -12143,7 +12144,7 @@ def process_upload_pagu_kkp(uploaded_file, tahun_pilih):
         
     except Exception as e:
         return False, f"❌ Terjadi kesalahan saat memproses file: {str(e)}"
-
+        
 # ============================================================
 #  Menu Admin
 # ============================================================
