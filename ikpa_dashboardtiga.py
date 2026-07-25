@@ -12004,6 +12004,7 @@ def process_upload_pagu_kkp(uploaded_file, tahun_pilih):
     try:
         import pandas as pd
         import numpy as np
+        import re
         
         # 1. BACA DATA DARI FILE MONEV
         df_raw = pd.read_excel(uploaded_file, header=None)
@@ -12014,7 +12015,6 @@ def process_upload_pagu_kkp(uploaded_file, tahun_pilih):
         tanggal_col = None
         up_kkp_col = None
         
-        # Mencari letak kolom di baris-baris awal (header)
         for i in range(15):
             row_vals = df_raw.iloc[i].astype(str).str.strip().str.upper()
             for j, val in enumerate(row_vals):
@@ -12024,73 +12024,80 @@ def process_upload_pagu_kkp(uploaded_file, tahun_pilih):
                     nama_satker_col = j
                 elif "TANGGAL SURAT PENETAPAN" in val:
                     tanggal_col = j
-                elif val == "UP KKP PER BULAN":
+                elif "UP KKP PER BULAN" in val:
                     up_kkp_col = j
 
-        # Fallback index jika kolom tidak terdeteksi (berdasarkan standar Monev saat ini)
+        # Fallback index jika kolom tidak terdeteksi 
         if kode_satker_col is None: kode_satker_col = 4
         if nama_satker_col is None: nama_satker_col = 6
         if tanggal_col is None: tanggal_col = 9
         if up_kkp_col is None: up_kkp_col = 10
         
-        # Data riil dimulai pada row 8 di Excel (indeks pandas 7)
         df_data = df_raw.iloc[7:].copy()
         df_data = df_data[[kode_satker_col, nama_satker_col, tanggal_col, up_kkp_col]]
         df_data.columns = ["Kode Satker", "Nama Satker", "Tanggal", "Pagu Baru"]
         
-        # 2. PEMBERSIHAN & FORMATTING DATA MONEV
+        # 2. PEMBERSIHAN & FORMATTING EKSTRA KETAT
         df_data["Kode Satker"] = df_data["Kode Satker"].astype(str).str.extract(r'(\d+)', expand=False).str.zfill(6)
         df_data["Nama Satker"] = df_data["Nama Satker"].astype(str).str.strip()
-        df_data["Pagu Baru"] = pd.to_numeric(df_data["Pagu Baru"], errors='coerce').fillna(0)
         
-        # Ekstraksi bulan dari kolom Tanggal dengan format dd/mm/yyyy
+        # Fungsi pembersih angka (menghapus Rp, titik, koma desimal, dll)
+        def clean_currency(x):
+            if pd.isna(x): return 0
+            s = str(x).upper().replace('RP', '').replace(' ', '')
+            s = s.split(',')[0] # Buang desimal jika ada koma
+            s = s.replace('.', '') # Buang titik pemisah ribuan
+            try:
+                return float(s)
+            except:
+                return 0
+                
+        df_data["Pagu Baru"] = df_data["Pagu Baru"].apply(clean_currency)
+        
+        # Ekstraksi bulan 
         df_data["Tanggal"] = pd.to_datetime(df_data["Tanggal"], dayfirst=True, errors="coerce")
-        # Jika gagal di-parse (kosong/salah format), default diasumsikan berlaku dari awal tahun (Bulan 1)
         df_data["Bulan Mulai"] = df_data["Tanggal"].dt.month.fillna(1).astype(int)
         
-        # Filter baris yang valid
+        # Filter (hanya ambil yang pagunya di atas 0 setelah dibersihkan)
         df_data = df_data[df_data["Kode Satker"].notna() & (df_data["Kode Satker"] != "000000") & (df_data["Pagu Baru"] > 0)]
         df_data = df_data.drop_duplicates(subset=["Kode Satker"])
         
         if df_data.empty:
-            return False, "❌ Tidak ada data Satker/Pagu yang valid di file Monev."
+            return False, "❌ Tidak ada data Satker/Pagu yang valid. Pastikan kolom Pagu di Monev terisi angka dengan benar."
             
-        # 3. LOAD DATA MASTER DARI GITHUB
+        # 3. LOAD & BERSIHKAN DATA MASTER DARI GITHUB
         df_master, is_ok = load_kkp_master_from_github()
         if not is_ok or df_master.empty:
             return False, "❌ Gagal memuat database KKP_MASTER dari GitHub."
             
-        # 4. PROSES UPDATE & GENERATE ROW MASTER
-        # Ekstrak string digit ke kolom temporary untuk pencocokan yang aman
         df_master["Kode Satker_temp"] = df_master["Kode Satker"].astype(str).str.extract(r'(\d+)', expand=False).str.zfill(6)
         df_master["Pagu KKP Per Bulan"] = pd.to_numeric(df_master["Pagu KKP Per Bulan"], errors="coerce").fillna(0)
-        df_master["TAHUN"] = pd.to_numeric(df_master["TAHUN"], errors="coerce")
-        df_master["BULAN"] = pd.to_numeric(df_master["BULAN"], errors="coerce")
+        df_master["TAHUN"] = pd.to_numeric(df_master["TAHUN"], errors="coerce").fillna(0).astype(int)
+        df_master["BULAN"] = pd.to_numeric(df_master["BULAN"], errors="coerce").fillna(0).astype(int)
         
         new_rows = []
         updated_count = 0
         added_count = 0
         
+        # 4. PROSES ITERASI BULAN
         for _, row in df_data.iterrows():
             kodesatker = row["Kode Satker"]
             namasatker = row["Nama Satker"]
             pagu_baru = row["Pagu Baru"]
             bulan_mulai = row["Bulan Mulai"]
             
-            # Memastikan ketersediaan row untuk setiap bulan mulai dari SK terbit hingga Desember
             for bln in range(bulan_mulai, 13):
                 mask = (df_master["Kode Satker_temp"] == kodesatker) & \
-                       (df_master["TAHUN"] == tahun_pilih) & \
-                       (df_master["BULAN"] == bln)
+                       (df_master["TAHUN"] == int(tahun_pilih)) & \
+                       (df_master["BULAN"] == int(bln))
                 
                 if mask.sum() > 0:
-                    # Row sudah ada. Update Pagu KKP jika nilainya masih 0
-                    mask_zero_pagu = mask & (df_master["Pagu KKP Per Bulan"] == 0)
+                    # Menggunakan kondisi <= 0.0 agar lebih aman dibanding '== 0'
+                    mask_zero_pagu = mask & (df_master["Pagu KKP Per Bulan"] <= 0.0)
                     if mask_zero_pagu.sum() > 0:
                         df_master.loc[mask_zero_pagu, "Pagu KKP Per Bulan"] = pagu_baru
                         updated_count += mask_zero_pagu.sum()
                 else:
-                    # Row belum ada, buatkan baris baru khusus bulan tersebut
                     periode_str = f"{tahun_pilih}-{bln:02d}"
                     new_row = {
                         "NO": 0, 
@@ -12106,19 +12113,14 @@ def process_upload_pagu_kkp(uploaded_file, tahun_pilih):
                     new_rows.append(new_row)
                     added_count += 1
                     
-        # Hapus kolom temporary 
         df_master = df_master.drop(columns=["Kode Satker_temp"])
         
-        # Gabungkan baris baru (jika ada) ke dataframe master
         if new_rows:
             df_new = pd.DataFrame(new_rows)
             df_master = pd.concat([df_master, df_new], ignore_index=True)
             
         # 5. REKALKULASI & PENYUSUNAN ULANG
-        # Sortir prioritas: 1. Kode Satker, 2. Tahun, 3. Bulan (semua Ascending)
         df_master = df_master.sort_values(by=["Kode Satker", "TAHUN", "BULAN"], ascending=[True, True, True]).reset_index(drop=True)
-        
-        # Tulis ulang kolom NO agar berurutan kembali 1, 2, 3...
         df_master["NO"] = range(1, len(df_master) + 1)
         
         if updated_count == 0 and added_count == 0:
