@@ -12002,77 +12002,128 @@ def detect_format(df):
 # ============================================================
 def process_upload_pagu_kkp(uploaded_file, tahun_pilih):
     try:
+        import pandas as pd
+        import numpy as np
+        
         # 1. BACA DATA DARI FILE MONEV
         df_raw = pd.read_excel(uploaded_file, header=None)
         
-        # Deteksi indeks kolom dinamis (mencari letak 'KODE SATKER' dan 'UP KKP PER BULAN')
-        kode_satker_col = 4   # Default jika tidak ketemu
-        up_kkp_col = 10       # Default jika tidak ketemu
+        # Deteksi indeks kolom dinamis
+        kode_satker_col = None
+        nama_satker_col = None
+        tanggal_col = None
+        up_kkp_col = None
         
-        # Sesuai petunjuk, judul ada di row 5 dan 8 (indeks pandas < 15)
+        # Mencari letak kolom di baris-baris awal (header)
         for i in range(15):
             row_vals = df_raw.iloc[i].astype(str).str.strip().str.upper()
             for j, val in enumerate(row_vals):
                 if val == "KODE SATKER":
                     kode_satker_col = j
+                elif val == "NAMA SATKER":
+                    nama_satker_col = j
+                elif "TANGGAL SURAT PENETAPAN" in val:
+                    tanggal_col = j
                 elif val == "UP KKP PER BULAN":
                     up_kkp_col = j
+
+        # Fallback index jika kolom tidak terdeteksi (berdasarkan standar Monev saat ini)
+        if kode_satker_col is None: kode_satker_col = 4
+        if nama_satker_col is None: nama_satker_col = 6
+        if tanggal_col is None: tanggal_col = 9
+        if up_kkp_col is None: up_kkp_col = 10
         
-        # Isian data dimulai pada row 8 di Excel (indeks pandas 7)
+        # Data riil dimulai pada row 8 di Excel (indeks pandas 7)
         df_data = df_raw.iloc[7:].copy()
+        df_data = df_data[[kode_satker_col, nama_satker_col, tanggal_col, up_kkp_col]]
+        df_data.columns = ["Kode Satker", "Nama Satker", "Tanggal", "Pagu Baru"]
         
-        # Ambil kolom spesifik
-        df_data = df_data[[kode_satker_col, up_kkp_col]]
-        df_data.columns = ["Kode Satker", "Pagu Baru"]
-        
-        # BERSIHKAN KODE SATKER: Pastikan jadi string dan di-pad dengan 0 agar pasti 6 digit
+        # 2. PEMBERSIHAN & FORMATTING DATA MONEV
         df_data["Kode Satker"] = df_data["Kode Satker"].astype(str).str.extract(r'(\d+)', expand=False).str.zfill(6)
-        
-        # BERSIHKAN PAGU: Ubah ke numerik
+        df_data["Nama Satker"] = df_data["Nama Satker"].astype(str).str.strip()
         df_data["Pagu Baru"] = pd.to_numeric(df_data["Pagu Baru"], errors='coerce').fillna(0)
         
-        # Buang baris kosong / satker tidak valid
-        df_data = df_data[df_data["Kode Satker"].notna() & (df_data["Kode Satker"] != "000000")]
+        # Ekstraksi bulan dari kolom Tanggal dengan format dd/mm/yyyy
+        df_data["Tanggal"] = pd.to_datetime(df_data["Tanggal"], dayfirst=True, errors="coerce")
+        # Jika gagal di-parse (kosong/salah format), default diasumsikan berlaku dari awal tahun (Bulan 1)
+        df_data["Bulan Mulai"] = df_data["Tanggal"].dt.month.fillna(1).astype(int)
+        
+        # Filter baris yang valid
+        df_data = df_data[df_data["Kode Satker"].notna() & (df_data["Kode Satker"] != "000000") & (df_data["Pagu Baru"] > 0)]
         df_data = df_data.drop_duplicates(subset=["Kode Satker"])
         
         if df_data.empty:
-            return False, "❌ Tidak ada data Satker yang valid di file Monev."
+            return False, "❌ Tidak ada data Satker/Pagu yang valid di file Monev."
             
-        # 2. LOAD DATA MASTER DARI GITHUB
+        # 3. LOAD DATA MASTER DARI GITHUB
         df_master, is_ok = load_kkp_master_from_github()
         if not is_ok or df_master.empty:
             return False, "❌ Gagal memuat database KKP_MASTER dari GitHub."
             
-        # 3. PROSES UPDATE MASTER
-        # Ekstrak digit master ke kolom temporary untuk pencocokan 100% aman (menghindari miss format float/int)
+        # 4. PROSES UPDATE & GENERATE ROW MASTER
+        # Ekstrak string digit ke kolom temporary untuk pencocokan yang aman
         df_master["Kode Satker_temp"] = df_master["Kode Satker"].astype(str).str.extract(r'(\d+)', expand=False).str.zfill(6)
         df_master["Pagu KKP Per Bulan"] = pd.to_numeric(df_master["Pagu KKP Per Bulan"], errors="coerce").fillna(0)
         df_master["TAHUN"] = pd.to_numeric(df_master["TAHUN"], errors="coerce")
+        df_master["BULAN"] = pd.to_numeric(df_master["BULAN"], errors="coerce")
         
-        matched_count = 0
-        for index, row in df_data.iterrows():
+        new_rows = []
+        updated_count = 0
+        added_count = 0
+        
+        for _, row in df_data.iterrows():
             kodesatker = row["Kode Satker"]
+            namasatker = row["Nama Satker"]
             pagu_baru = row["Pagu Baru"]
+            bulan_mulai = row["Bulan Mulai"]
             
-            # Hanya proses yang ada isinya di Monev
-            if pagu_baru > 0:
-                # SYARAT UPDATE: Kode Satker cocok, Tahun cocok, dan Pagu Master masih 0
+            # Memastikan ketersediaan row untuk setiap bulan mulai dari SK terbit hingga Desember
+            for bln in range(bulan_mulai, 13):
                 mask = (df_master["Kode Satker_temp"] == kodesatker) & \
                        (df_master["TAHUN"] == tahun_pilih) & \
-                       (df_master["Pagu KKP Per Bulan"] == 0)
+                       (df_master["BULAN"] == bln)
                 
-                matched = mask.sum()
-                if matched > 0:
-                    matched_count += matched
-                    df_master.loc[mask, "Pagu KKP Per Bulan"] = pagu_baru
+                if mask.sum() > 0:
+                    # Row sudah ada. Update Pagu KKP jika nilainya masih 0
+                    mask_zero_pagu = mask & (df_master["Pagu KKP Per Bulan"] == 0)
+                    if mask_zero_pagu.sum() > 0:
+                        df_master.loc[mask_zero_pagu, "Pagu KKP Per Bulan"] = pagu_baru
+                        updated_count += mask_zero_pagu.sum()
+                else:
+                    # Row belum ada, buatkan baris baru khusus bulan tersebut
+                    periode_str = f"{tahun_pilih}-{bln:02d}"
+                    new_row = {
+                        "NO": 0, 
+                        "Kode Satker": kodesatker,
+                        "SATKER": namasatker,
+                        "PERIODE": periode_str,
+                        "TAHUN": tahun_pilih,
+                        "BULAN": bln,
+                        "FORMAT_KKP": "UPDATE PAGU",
+                        "Pagu KKP Per Bulan": pagu_baru,
+                        "Nilai Transaksi": 0
+                    }
+                    new_rows.append(new_row)
+                    added_count += 1
                     
-        # Hapus kolom temporary setelah selesai
+        # Hapus kolom temporary 
         df_master = df_master.drop(columns=["Kode Satker_temp"])
         
-        if matched_count == 0:
-            return True, "⚠️ File berhasil dibaca, namun tidak ada data yang perlu diupdate (semua Pagu KKP tahun tersebut mungkin sudah terisi atau kode satker/tahun tidak match)."
+        # Gabungkan baris baru (jika ada) ke dataframe master
+        if new_rows:
+            df_new = pd.DataFrame(new_rows)
+            df_master = pd.concat([df_master, df_new], ignore_index=True)
             
-        # 4. PUSH KEMBALI KE GITHUB
+        # 5. REKALKULASI & PENYUSUNAN ULANG
+        # Sortir secara logis agar baris baru tidak menumpuk di paling bawah secara acak
+        df_master = df_master.sort_values(by=["TAHUN", "BULAN", "Kode Satker"]).reset_index(drop=True)
+        # Tulis ulang kolom NO agar berurutan kembali 1, 2, 3...
+        df_master["NO"] = range(1, len(df_master) + 1)
+        
+        if updated_count == 0 and added_count == 0:
+            return True, "⚠️ File berhasil diproses, namun semua bulan untuk Satker tersebut sudah tercatat dan pagu telah terisi (tidak ada pembaruan)."
+            
+        # 6. PUSH KEMBALI KE GITHUB
         token = st.secrets.get("GITHUB_TOKEN")
         repo_name = st.secrets.get("GITHUB_REPO")
         
@@ -12083,13 +12134,12 @@ def process_upload_pagu_kkp(uploaded_file, tahun_pilih):
             repo_path="data_kkp/KKP_MASTER.xlsx", 
             repo_name=repo_name, 
             token=token, 
-            commit_message=f"Update Pagu KKP Tahun {tahun_pilih} via Dashboard"
+            commit_message=f"Update & Generate Pagu KKP Tahun {tahun_pilih} via Dashboard"
         )
         
-        # Perbarui Session State agar data langsung terefleksi di dashboard visualisasi
         st.session_state.kkp_master = df_master
         
-        return True, f"✅ Berhasil mengupdate Pagu KKP untuk {matched_count} baris transaksi pada KKP_MASTER."
+        return True, f"✅ Berhasil! Mengupdate Pagu untuk {updated_count} baris eksisting, dan menambahkan {added_count} baris bulan baru pada KKP_MASTER."
         
     except Exception as e:
         return False, f"❌ Terjadi kesalahan saat memproses file: {str(e)}"
