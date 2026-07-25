@@ -4961,7 +4961,6 @@ def process_excel_file_kkp(uploaded_file):
 
         # =========================================
         # HANYA BACA SHEET PERTAMA YANG BERISI DATA
-        # (file sering punya banyak sheet duplikat / pivot)
         # =========================================
         uploaded_file.seek(0)
         xl = pd.ExcelFile(uploaded_file)
@@ -4987,13 +4986,25 @@ def process_excel_file_kkp(uploaded_file):
             if "DAFTAR TRANSAKSI" not in sheet_preview and "NOMOR SPM" not in sheet_preview:
                 continue
 
-            # Deteksi baris header: baris yang ada SATKER + NOMOR SPM
+            # =========================================
+            # PERBAIKAN: Deteksi baris header (Merge Cells)
+            # =========================================
             for i in range(min(15, len(df_sheet_raw))):
-                row_text = " ".join(df_sheet_raw.iloc[i].astype(str).tolist()).upper()
-                if "SATKER" in row_text and "NOMOR SPM" in row_text:
+                row_text_1 = " ".join(df_sheet_raw.iloc[i].astype(str).tolist()).upper()
+                
+                # Kasus 1: Header normal berada di 1 baris (Format ideal)
+                if "SATKER" in row_text_1 and "NOMOR SPM" in row_text_1:
                     target_sheet = sheet_name
                     target_header_row = i
                     break
+                
+                # Kasus 2: Header terbagi di 2 baris akibat merge cell
+                if i + 1 < len(df_sheet_raw):
+                    row_text_2 = " ".join(df_sheet_raw.iloc[i+1].astype(str).tolist()).upper()
+                    if "SATKER" in row_text_1 and "NOMOR SPM" in row_text_2:
+                        target_sheet = sheet_name
+                        target_header_row = [i, i+1]  # Gunakan dua baris sebagai header
+                        break
 
             # Ambil sheet pertama yang valid saja — stop di sini
             if target_sheet is not None:
@@ -5012,8 +5023,27 @@ def process_excel_file_kkp(uploaded_file):
             header=target_header_row,
             dtype=str
         )
+        
+        # =========================================
+        # PERBAIKAN: Ratakan MultiIndex jika header terdiri dari 2 baris
+        # =========================================
+        if isinstance(target_header_row, list):
+            flat_cols = []
+            for c in df_s.columns:
+                # Kolom kosong biasanya dinamai 'Unnamed' oleh Pandas.
+                # Kita buang teks 'Unnamed' lalu gabung baris 1 dan baris 2.
+                c0 = str(c[0]) if 'Unnamed' not in str(c[0]) else ''
+                c1 = str(c[1]) if 'Unnamed' not in str(c[1]) else ''
+                flat_cols.append(f"{c0} {c1}".strip())
+            df_s.columns = flat_cols
+
         df_s = normalize_columns(df_s)
 
+        # (Lanjutkan dengan skrip asli Anda mulai dari sini)
+        # Hapus baris header ganda
+        if "NO" in df_s.columns:
+            df_s = df_s[~df_s["NO"].astype(str).str.upper().eq("NO")]
+        
         # Hapus baris header ganda
         if "NO" in df_s.columns:
             df_s = df_s[~df_s["NO"].astype(str).str.upper().eq("NO")]
