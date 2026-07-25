@@ -12836,8 +12836,9 @@ def page_admin():
         st.markdown("---")
         st.subheader("💳 Upload Data KKP")
         st.caption(
-            "Sistem dapat memproses Data KKP  yang bersumber dari :\n"
-            "Aplikasi New SINTESA → menu Monev KKP → KPPN → Data Transaksi"
+            "Sistem dapat memproses Data KKP  yang bersumber dari :\n "
+            "Aplikasi New SINTESA → menu Monev KKP → KPPN → Data Transaksi :\n"
+            "Setelah mengupload Data KKP, lakukan upload Data Pagu KKP untuk memastikan Data Pagu KKP terisi"
         )        
         
         uploaded_file_kkp = st.file_uploader(
