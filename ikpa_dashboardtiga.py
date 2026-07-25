@@ -11998,6 +11998,103 @@ def detect_format(df):
     return "UNKNOWN"
 
 # ============================================================
+#  Fungsi Pemrosesan Pagu KKP
+# ============================================================
+def process_upload_pagu_kkp(uploaded_file, tahun_pilih):
+    try:
+        # 1. BACA DATA DARI FILE MONEV
+        df_raw = pd.read_excel(uploaded_file, header=None)
+        
+        # Deteksi indeks kolom dinamis (mencari letak 'KODE SATKER' dan 'UP KKP PER BULAN')
+        kode_satker_col = 4   # Default jika tidak ketemu
+        up_kkp_col = 10       # Default jika tidak ketemu
+        
+        # Sesuai petunjuk, judul ada di row 5 dan 8 (indeks pandas < 15)
+        for i in range(15):
+            row_vals = df_raw.iloc[i].astype(str).str.strip().str.upper()
+            for j, val in enumerate(row_vals):
+                if val == "KODE SATKER":
+                    kode_satker_col = j
+                elif val == "UP KKP PER BULAN":
+                    up_kkp_col = j
+        
+        # Isian data dimulai pada row 8 di Excel (indeks pandas 7)
+        df_data = df_raw.iloc[7:].copy()
+        
+        # Ambil kolom spesifik
+        df_data = df_data[[kode_satker_col, up_kkp_col]]
+        df_data.columns = ["Kode Satker", "Pagu Baru"]
+        
+        # BERSIHKAN KODE SATKER: Pastikan jadi string dan di-pad dengan 0 agar pasti 6 digit
+        df_data["Kode Satker"] = df_data["Kode Satker"].astype(str).str.extract(r'(\d+)', expand=False).str.zfill(6)
+        
+        # BERSIHKAN PAGU: Ubah ke numerik
+        df_data["Pagu Baru"] = pd.to_numeric(df_data["Pagu Baru"], errors='coerce').fillna(0)
+        
+        # Buang baris kosong / satker tidak valid
+        df_data = df_data[df_data["Kode Satker"].notna() & (df_data["Kode Satker"] != "000000")]
+        df_data = df_data.drop_duplicates(subset=["Kode Satker"])
+        
+        if df_data.empty:
+            return False, "❌ Tidak ada data Satker yang valid di file Monev."
+            
+        # 2. LOAD DATA MASTER DARI GITHUB
+        df_master, is_ok = load_kkp_master_from_github()
+        if not is_ok or df_master.empty:
+            return False, "❌ Gagal memuat database KKP_MASTER dari GitHub."
+            
+        # 3. PROSES UPDATE MASTER
+        # Ekstrak digit master ke kolom temporary untuk pencocokan 100% aman (menghindari miss format float/int)
+        df_master["Kode Satker_temp"] = df_master["Kode Satker"].astype(str).str.extract(r'(\d+)', expand=False).str.zfill(6)
+        df_master["Pagu KKP Per Bulan"] = pd.to_numeric(df_master["Pagu KKP Per Bulan"], errors="coerce").fillna(0)
+        df_master["TAHUN"] = pd.to_numeric(df_master["TAHUN"], errors="coerce")
+        
+        matched_count = 0
+        for index, row in df_data.iterrows():
+            kodesatker = row["Kode Satker"]
+            pagu_baru = row["Pagu Baru"]
+            
+            # Hanya proses yang ada isinya di Monev
+            if pagu_baru > 0:
+                # SYARAT UPDATE: Kode Satker cocok, Tahun cocok, dan Pagu Master masih 0
+                mask = (df_master["Kode Satker_temp"] == kodesatker) & \
+                       (df_master["TAHUN"] == tahun_pilih) & \
+                       (df_master["Pagu KKP Per Bulan"] == 0)
+                
+                matched = mask.sum()
+                if matched > 0:
+                    matched_count += matched
+                    df_master.loc[mask, "Pagu KKP Per Bulan"] = pagu_baru
+                    
+        # Hapus kolom temporary setelah selesai
+        df_master = df_master.drop(columns=["Kode Satker_temp"])
+        
+        if matched_count == 0:
+            return True, "⚠️ File berhasil dibaca, namun tidak ada data yang perlu diupdate (semua Pagu KKP tahun tersebut mungkin sudah terisi atau kode satker/tahun tidak match)."
+            
+        # 4. PUSH KEMBALI KE GITHUB
+        token = st.secrets.get("GITHUB_TOKEN")
+        repo_name = st.secrets.get("GITHUB_REPO")
+        
+        file_bytes = to_excel_bytes(df_master)
+        
+        push_to_github(
+            file_bytes=file_bytes, 
+            repo_path="data_kkp/KKP_MASTER.xlsx", 
+            repo_name=repo_name, 
+            token=token, 
+            commit_message=f"Update Pagu KKP Tahun {tahun_pilih} via Dashboard"
+        )
+        
+        # Perbarui Session State agar data langsung terefleksi di dashboard visualisasi
+        st.session_state.kkp_master = df_master
+        
+        return True, f"✅ Berhasil mengupdate Pagu KKP untuk {matched_count} baris transaksi pada KKP_MASTER."
+        
+    except Exception as e:
+        return False, f"❌ Terjadi kesalahan saat memproses file: {str(e)}"
+
+# ============================================================
 #  Menu Admin
 # ============================================================
 def page_admin():
@@ -13213,7 +13310,42 @@ def page_admin():
                 except Exception as e:
                     st.error(f"Gagal memproses atau menyimpan data KKP: {e}")
                     
-    
+        # =========================================
+        # Submenu Upload Data Pagu KKP
+        # =========================================
+        st.markdown("---")
+        st.subheader("📤 Upload Data Pagu KKP (Untuk 2026 dan seterusnya)")
+        st.info("Menu ini berfungsi mengupdate angka **Pagu KKP Per Bulan** yang nilainya masih 0 pada database (KKP_MASTER) di Github berdasarkan file Excel Monev KKP yang diupload.")
+
+        col_tahun, col_file = st.columns([1, 2])
+        
+        with col_tahun:
+            # Menu pilihan tahun
+            tahun_pagu = st.selectbox("Pilih Tahun Target", [2026, 2027, 2028, 2029, 2030], index=0)
+            
+        with col_file:
+            # Uploader
+            uploaded_pagu_kkp = st.file_uploader("Upload File Monev KKP (Excel)", type=["xlsx", "xls"], key="pagu_kkp_uploader")
+
+        if st.button("Update Pagu KKP Master", type="primary", key="btn_update_pagu"):
+            if uploaded_pagu_kkp is not None:
+                with st.spinner(f"Memproses update Pagu KKP untuk tahun {tahun_pagu}..."):
+                    success, msg = process_upload_pagu_kkp(uploaded_pagu_kkp, tahun_pagu)
+                    
+                    if success:
+                        if "⚠️" in msg:
+                            st.warning(msg)
+                        else:
+                            st.success(msg)
+                    else:
+                        st.error(msg)
+            else:
+                st.warning("⚠️ Silakan upload file Monev KKP terlebih dahulu.")
+        
+        
+        # =========================================
+        # Submenu Upload Data Digipay
+        # =========================================
         st.markdown("---")
         st.subheader("Upload Data Digipay")
 
