@@ -2604,11 +2604,25 @@ def process_excel_file(uploaded_file, upload_year):
             month = VALID_MONTHS.get(month_raw, "UNKNOWN")
         except:
             pass
-
-    # ===============================
-    # DATA MULAI BARIS KE-5 (index 4)
-    # ===============================
-    df_data = df_raw.iloc[4:].reset_index(drop=True)
+    
+    # ======================================
+    # Detect where the actual data starts
+    # ======================================
+    data_start = 4
+    
+    for r in range(len(df_raw)):
+        row = [str(x).strip().upper() for x in df_raw.iloc[r].fillna("")]
+        if (
+            len(row) > 6
+            and row[0] == "NO"
+            and row[4] == "KODE SATKER"
+            and row[6] == "KETERANGAN"
+        ):
+            # Skip the two header rows
+            data_start = r + 2
+            break
+    
+    df_data = df_raw.iloc[data_start:].reset_index(drop=True)
 
     # ===============================
     # DETEKSI FORMAT: 3-baris vs 4-baris
